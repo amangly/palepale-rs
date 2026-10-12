@@ -1,10 +1,10 @@
 # Palepale CLI
 
-A Rust coding agent for your terminal. Read code, edit files, run commands, and switch models in one workspace.
+Use your [palepale.tech](https://palepale.tech) account to run a coding agent in your terminal. Read code, edit files, run commands, and switch models in your project.
 
 ## Get started
 
-Download the binary for Windows x64, macOS ARM64, or Linux x64 from [Releases](https://github.com/amangly/palepale-cli/releases/latest). Rename it to `palepale.exe` on Windows or `palepale` on macOS/Linux.
+Download the CLI for Windows x64, macOS Apple Silicon, or Linux x64 from the [Palepale download page](https://palepale.tech/docs/cli) or [GitHub Releases](https://github.com/amangly/palepale-cli/releases/latest). Rename it to `palepale.exe` on Windows or `palepale` on macOS/Linux.
 
 Run it from your project folder:
 
@@ -14,9 +14,11 @@ Run it from your project folder:
 
 On macOS/Linux, run `chmod +x palepale` once, then `./palepale`.
 
-The first launch opens browser pairing. Sign in to your Palepale account, match the code, and choose **Connect CLI**. Later launches reuse the saved device key.
+The first launch opens palepale.tech in your browser. Sign in, match the code shown in your terminal, and choose **Connect CLI**. Later launches use your saved login.
 
 Run `palepale install` to add the CLI to your user PATH. Before installation, use `./palepale install` or `.\palepale.exe install`.
+
+After installing, open a new terminal in your project folder and run `palepale`. Describe what you want to build or fix, then use `/models` to choose a model.
 
 ## Use
 
@@ -39,7 +41,7 @@ Use `/logout` then `/login` to connect another account. Changing the browser acc
 
 Release builds check for updates at startup, at most once a day. Run `palepale update` to check now, then restart. Downloads are checked against `SHA256SUMS`; updates preserve your saved account, settings, and conversations.
 
-Settings live in `~/.palepale/config.toml`. Set `auto_update = false` to disable automatic updates. `PALEPALE_HOME` changes the state folder; `PALEPALE_OFFLINE=1` starts without network access.
+Settings live in `~/.palepale/config.toml`. Set `auto_update = false` to disable automatic updates.
 
 ## Development
 
