@@ -276,6 +276,8 @@ mod tests {
                 content: "contents".into(),
                 is_error: false,
                 details: None,
+                asks: Vec::new(),
+                refused: None,
             },
         });
         p.event(&AgentEvent::Delta {

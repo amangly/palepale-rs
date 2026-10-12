@@ -3,6 +3,7 @@ mod api;
 mod app;
 mod auth;
 mod backend;
+mod battery;
 mod cli;
 mod commands;
 mod effort;

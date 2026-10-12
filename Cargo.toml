@@ -1,7 +1,8 @@
 # Keep cffetch outside the workspace so the vendored dependency retains its own
 # formatting and lint configuration. Run its tests from its directory.
+# The battery's cloned repos are their own projects, never members.
 [workspace]
-exclude = ["crates/cffetch"]
+exclude = ["crates/cffetch", "bench/cache"]
 
 [package]
 name = "palepale"
@@ -62,6 +63,10 @@ path = "tests/e2e/main.rs"
 [[test]]
 name = "smoke"
 path = "tests/smoke.rs"
+
+[[test]]
+name = "battery"
+path = "tests/battery/main.rs"
 
 [profile.release]
 lto = "fat"

@@ -686,6 +686,8 @@ mod tests {
                     content: "a.txt".into(),
                     is_error: false,
                     details: None,
+                    asks: Vec::new(),
+                    refused: None,
                 },
             },
             now,
@@ -711,6 +713,8 @@ mod tests {
                 content: output.clone(),
                 is_error: false,
                 details: None,
+                asks: Vec::new(),
+                refused: None,
             },
         });
         let collapsed = texts(&mut feed, now);

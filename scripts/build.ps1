@@ -36,7 +36,7 @@ try {
         $cargoArgs = switch ($Task) {
             'build' { @('build', '--locked', '--release') }
             'test' { @('test', '--locked', '--bins') }
-            'e2e' { @('test', '--locked', '--test', 'e2e') }
+            'e2e' { @('test', '--locked', '--test', 'e2e', '--test', 'battery') }
         }
         & cargo +1.98.1 @cargoArgs
     }

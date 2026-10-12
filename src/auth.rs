@@ -58,9 +58,12 @@ pub fn load(paths: &Paths) -> anyhow::Result<Option<Key>> {
     }
 }
 
+/// The variable a key in the environment comes from.
+pub const ENV_VAR: &str = "PALEPALE_API_KEY";
+
 /// `PALEPALE_API_KEY`, which wins over a stored key while it is set.
 pub fn from_env() -> Option<Key> {
-    settings::env("PALEPALE_API_KEY").map(|secret| Key {
+    settings::env(ENV_VAR).map(|secret| Key {
         secret: normalize(&secret),
         origin: Origin::Env,
     })

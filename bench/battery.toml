@@ -1,0 +1,25 @@
+# One battery run: the model, how often each task runs, and what stops it. `make battery` reads
+# this; the shipped binary never does.
+model = "glm-5.3"
+repeats = 3
+parallel = 4
+
+[cap_micros]
+value = 60000000
+reason = "the local stop threshold for one full run; live usage needs explicit approval"
+
+[run_cap_micros]
+value = 2000000
+reason = "stop a task after this observed charge; concurrent requests may still be in flight"
+
+[run_wall_secs]
+value = 900
+reason = "a slow task takes a few minutes; fifteen means a command or the stream is stuck"
+
+[stop_grace_secs]
+value = 10
+reason = "time for palepale to end its commands after Ctrl-C before it is killed"
+
+[check_secs]
+value = 600
+reason = "a task's check is its repo's test suite; a cold Rust build of one is a few minutes"

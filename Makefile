@@ -3,7 +3,7 @@ SHELL := bash
 .SHELLFLAGS := -eu -o pipefail -c
 CARGO ?= cargo
 
-.PHONY: lint test e2e smoke golden check build
+.PHONY: lint test e2e smoke battery battery-setup golden check build
 
 lint:
 	$(CARGO) fmt -- --check
@@ -12,8 +12,9 @@ lint:
 test:
 	$(CARGO) test --locked --bins
 
+# The battery's own tests run here too, against the fake; its live runs are ignored.
 e2e:
-	$(CARGO) test --locked --test e2e
+	$(CARGO) test --locked --test e2e --test battery
 
 # Explicitly configured backend; never in CI.
 smoke:
@@ -21,6 +22,17 @@ smoke:
 	@test -n "$${PALEPALE_SMOKE_MODEL:-}" || { echo "set PALEPALE_SMOKE_MODEL"; exit 1; }
 	@test -n "$${PALEPALE_SMOKE_KEY:-}" || { echo "set PALEPALE_SMOKE_KEY (smoke spends real money)"; exit 1; }
 	$(CARGO) test --locked --test smoke -- --ignored --test-threads=1
+
+# The tool-use battery (bench/); never in CI. Setup clones the repos and runs
+# their code; the battery spends real money. `make battery TASKS=a,b REPEATS=1` runs a pilot.
+battery-setup:
+	$(CARGO) test --locked --test battery setup -- --ignored --exact --nocapture
+
+battery:
+	@test -n "$${PALEPALE_SMOKE_URL:-}" || { echo "set PALEPALE_SMOKE_URL"; exit 1; }
+	@test -n "$${PALEPALE_SMOKE_MODEL:-}" || { echo "set PALEPALE_SMOKE_MODEL"; exit 1; }
+	@test -n "$${PALEPALE_SMOKE_KEY:-}" || { echo "set PALEPALE_SMOKE_KEY (the battery spends real money)"; exit 1; }
+	BATTERY_TASKS="$(TASKS)" BATTERY_REPEATS="$(REPEATS)" $(CARGO) test --locked --test battery live -- --ignored --exact --nocapture
 
 # Rewrites golden files and insta snapshots from current output; only for a deliberate change.
 golden:

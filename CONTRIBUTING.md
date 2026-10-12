@@ -36,11 +36,18 @@ For changes to auth, API behavior, tools, or terminal interaction, run `make e2e
 | `src/io/` | External I/O interfaces |
 | `data/` | Runtime prompts, tool descriptions, schemas, and settings |
 | `tests/` | Fixtures and integration tests |
+| `bench/` | Pinned tasks, patches, and benchmark settings |
 | `crates/cffetch/` | Vendored web-fetch dependency |
 | `scripts/` | Windows build wrapper |
 | `.github/` | CI and release workflows |
 
 Markdown in `data/` is runtime input compiled into the CLI. Keep those files with their tool schemas and prompt configuration.
+
+## Benchmarks
+
+`make e2e` also checks the benchmark runner against local fixtures. `make battery-setup` downloads pinned repositories and runs their setup commands. A live run needs explicit approval and the same three `PALEPALE_SMOKE_*` variables as smoke tests. Use `make battery TASKS=calc-fix REPEATS=1` for one task.
+
+Runs save sessions, tool permissions, diffs, and check results under `bench/runs/`. Run `palepale battery report <run-directory>` to generate a report, or add `--against <earlier-run-directory>` to compare runs. Limits in `bench/battery.toml` stop tasks after observed usage; requests already in flight can exceed the threshold. Keep results and cached repositories out of Git.
 
 ## Configuration
 
