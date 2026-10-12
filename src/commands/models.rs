@@ -67,7 +67,7 @@ impl Command for Models {
             if cx.scope == Scope::Session {
                 return Ok(Outcome {
                     text: String::new(),
-                    effects: vec![Effect::PickModel { refresh }],
+                    effects: vec![Effect::PickModel],
                 });
             }
             let catalog = models::load(cx.app, refresh).await;

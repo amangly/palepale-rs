@@ -1,4 +1,4 @@
-//! Session commands, run as futures beside input so a slow one (`/models --refresh`) never
+//! Session commands, run as futures beside input so a slow one (`/models`) never
 //! freezes the screen.
 
 use futures_util::future::BoxFuture;

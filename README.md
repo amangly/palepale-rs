@@ -27,7 +27,7 @@ After installing, open a new terminal in your project folder and run `palepale`.
 | Enter | Send a message |
 | Shift+Enter or Ctrl+J | Insert a new line |
 | Shift+Tab | Switch MANUAL, PLAN, and AUTO modes |
-| `/models` | Pick a model |
+| `/models` | Refresh the list and pick a model |
 | `/effort` | Choose reasoning effort for the current model |
 | `/status` | Check your account and balance |
 | `/help` | List commands |
@@ -35,6 +35,8 @@ After installing, open a new terminal in your project folder and run `palepale`.
 | Ctrl+D | Quit with an empty composer |
 
 MANUAL follows permission rules. PLAN restricts writes while preparing a plan. AUTO accepts actions automatically, including actions denied by permission rules.
+
+Opening `/models` fetches the latest catalog. If the server is unavailable, it shows the cached list.
 
 `/effort` shows the levels reported by the model catalog. Choose `default` to reset it, or set a level directly with `/effort low`.
 

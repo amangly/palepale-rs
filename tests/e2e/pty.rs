@@ -1000,14 +1000,14 @@ async fn refreshing_models_updates_effort_choices_and_clears_an_unsupported_over
         serde_json::from_str(include_str!("../fixtures/api/models.json")).unwrap();
     let mut changed = first.clone();
     changed["data"][0]["reasoning_efforts"] = serde_json::json!(["low"]);
-    fake.model_lists([first, changed]);
+    fake.model_lists([first, changed, serde_json::json!({"data":[]})]);
     fake.script([Reply::sse("hello.sse")]);
     in_session(&fake, Sandbox::default(), Some(ENV_KEY), |s| {
         s.wait_for("MANUAL");
         s.type_text("/effort high");
         s.send("\r");
         s.wait_for("Effort: high for this session.");
-        s.type_text("/models --refresh");
+        s.type_text("/models");
         s.send("\r");
         s.wait_for("╭ Models");
         s.send("\x1b");
@@ -1015,6 +1015,14 @@ async fn refreshing_models_updates_effort_choices_and_clears_an_unsupported_over
         s.poll(WAIT, "the bar cleared the old effort", |s| {
             (!s.bottom_row().contains(" high")).then_some(())
         });
+        s.type_text("/models");
+        s.send("\r");
+        s.wait_for("╭ Models");
+        s.wait_for("Cached list");
+        s.wait_for("Could not reach palepale");
+        s.wait_for("demo-2");
+        s.send("\x1b");
+        s.wait_gone("╭ Models");
         s.type_text("/effort");
         s.send("\r");
         s.wait_for("╭ Reasoning effort");
@@ -1029,7 +1037,7 @@ async fn refreshing_models_updates_effort_choices_and_clears_an_unsupported_over
         s.wait_for("Hello there!");
     })
     .await;
-    assert_eq!(fake.hits("/v1/models"), 2);
+    assert_eq!(fake.hits("/v1/models"), 3);
     assert_eq!(fake.chat_bodies()[0]["reasoning_effort"], "low");
 }
 

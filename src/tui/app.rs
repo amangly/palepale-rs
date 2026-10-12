@@ -1012,18 +1012,8 @@ impl<'a> Tui<'a> {
                     self.login = Some(Login::checking());
                     return self.login_job(login::Job::Check(number));
                 }
-                Effect::PickModel { refresh: true } => {
+                Effect::PickModel => {
                     return Step::Work(command::refresh_catalog(self.app));
-                }
-                Effect::PickModel { refresh: false } => {
-                    if self.catalog.models.is_empty() {
-                        self.feed.notice(&models_note(&self.catalog), "warn");
-                        continue;
-                    }
-                    self.picker = Some(Picker::new(
-                        &self.catalog,
-                        self.model.as_ref().map_or("", |m| m.id.as_str()),
-                    ));
                 }
                 Effect::Forums { login } => match crate::forums::store::load(&self.app.paths) {
                     Ok(list) => self.forums = Some(Forums::new(list, login.as_deref())),
