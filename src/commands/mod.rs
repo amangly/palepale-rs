@@ -159,7 +159,9 @@ pub enum Effect {
     /// Start a fresh conversation with a new session file.
     NewConversation,
     /// Ask for this reasoning effort from the next turn on.
-    SetEffort(String),
+    SetEffort(Option<String>),
+    /// Choose from the selected model's supported reasoning levels.
+    PickEffort,
     /// Put the model's last reply on the clipboard.
     CopyLastReply,
     /// Send this to the model as the user's next message (the transcript shows the command).

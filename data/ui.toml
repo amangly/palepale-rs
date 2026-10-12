@@ -44,7 +44,9 @@ copied = "✓ Copied"
 nothing_to_copy = "Nothing to copy yet: palepale has not replied."
 busy = "Finish or interrupt the reply first (Esc)."
 effort_set = "Effort: {effort} for this session."
-effort_unsent = " {model} does not reason, so it sends none."
+effort_default = "the model's default"
+effort_unavailable = "{model} does not support adjustable reasoning effort."
+effort_unsupported = "{model} does not support effort {effort}. Choose default or: {levels}."
 new_conversation = "A new conversation."
 new_saved = "A new conversation. The last one is saved in {path}."
 
@@ -85,6 +87,12 @@ gutter = "│ "
 title = "Models"
 hint = "↑↓ move · → or enter select · esc close"
 switched = "Model: {model} for this session."
+
+[effort_picker]
+title = "Reasoning effort · {model}"
+hint = "↑↓ move · → or enter select · esc close"
+default_label = "default"
+default_summary = "Use the model's default"
 
 # The popup listing commands while a `/name` is typed.
 [palette]

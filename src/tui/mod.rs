@@ -7,6 +7,7 @@ mod cards;
 mod choice;
 mod command;
 mod editor;
+mod effort;
 mod feed;
 mod forums;
 mod frame;

@@ -36,6 +36,7 @@ use crate::tools::{self, Registry};
 use crate::tui::card::{self, Card};
 use crate::tui::command::{self, Work};
 use crate::tui::editor::Editor;
+use crate::tui::effort as effort_picker;
 use crate::tui::feed::{Block, Feed};
 use crate::tui::forums::{self, Forums};
 use crate::tui::keymap::{self, Action};
@@ -162,6 +163,7 @@ struct Tui<'a> {
     login: Option<Login>,
     /// The `/models` card, likewise.
     picker: Option<Picker>,
+    effort_picker: Option<effort_picker::Picker>,
     /// The `/forums` card, likewise.
     forums: Option<Forums>,
     /// The turn in flight, for the working line.
@@ -195,6 +197,11 @@ impl<'a> Tui<'a> {
         if let Some(text) = initial {
             editor.set_text(&text);
         }
+        let effort = app.settings.effort.clone().filter(|id| {
+            model
+                .as_ref()
+                .is_some_and(|model| model.supports_effort(id))
+        });
         let mut tui = Self {
             app,
             catalog,
@@ -203,7 +210,7 @@ impl<'a> Tui<'a> {
                 .map(|model| system_prompt::build(&app.paths, model))
                 .unwrap_or_default(),
             model,
-            effort: app.settings.effort.clone(),
+            effort,
             shared,
             screen: Screen::new(width, height, theme::get(), term::color_depth()),
             feed: Feed::new(),
@@ -216,6 +223,7 @@ impl<'a> Tui<'a> {
             cards: VecDeque::new(),
             login: None,
             picker: None,
+            effort_picker: None,
             forums: None,
             progress: None,
             last_verb: None,
@@ -501,7 +509,9 @@ impl<'a> Tui<'a> {
                 self.view.scroll(if up { -page } else { page });
                 Step::Continue
             }
-            Input::Paste(_) if self.picker.is_some() => Step::Continue,
+            Input::Paste(_) if self.picker.is_some() || self.effort_picker.is_some() => {
+                Step::Continue
+            }
             Input::Paste(text) => {
                 if let Some(card) = &mut self.login {
                     card.insert(&text);
@@ -518,6 +528,10 @@ impl<'a> Tui<'a> {
             Input::Key(key) if self.forums.is_some() => self.forums_key(&key),
             Input::Key(key) if self.picker.is_some() => {
                 self.picker_key(&key);
+                Step::Continue
+            }
+            Input::Key(key) if self.effort_picker.is_some() => {
+                self.effort_key(&key);
                 Step::Continue
             }
             Input::Key(key) if !self.cards.is_empty() => {
@@ -672,20 +686,72 @@ impl<'a> Tui<'a> {
         self.toast = Some(Toast::new(&ui::get().text.copied, clock::instant()));
     }
 
-    /// Asks for `effort` from the next turn on, for this session only.
-    fn set_effort(&mut self, effort: String) {
-        let text = &ui::get().text;
-        let mut note = template::fill(&text.effort_set, &[("effort", &effort)]);
-        if let Some(model) = &self.model
-            && model.effort(Some(&effort)).is_none()
-        {
-            note.push_str(&template::fill(
-                &text.effort_unsent,
-                &[("model", &model.id)],
-            ));
+    fn effort_key(&mut self, key: &crate::io::term::KeyEvent) {
+        let action = keymap::get().action(key);
+        if action == Some(Action::CycleMode) {
+            return self.cycle_mode();
         }
-        self.effort = Some(effort);
+        let Some(picker) = &mut self.effort_picker else {
+            return;
+        };
+        match picker.key(action) {
+            effort_picker::Step::Stay => {}
+            effort_picker::Step::Close => self.effort_picker = None,
+            effort_picker::Step::Pick(id) => {
+                self.effort_picker = None;
+                self.set_effort(id);
+            }
+        }
+    }
+
+    /// Asks for `effort` from the next turn on, for this session only.
+    fn set_effort(&mut self, effort: Option<String>) {
+        let text = &ui::get().text;
+        if let Some(id) = effort.as_deref() {
+            let Some(model) = &self.model else {
+                self.feed.notice(&models_note(&self.catalog), "warn");
+                return;
+            };
+            if !model.supports_effort(id) {
+                let levels = model.effort_levels();
+                let note = if levels.is_empty() {
+                    template::fill(&text.effort_unavailable, &[("model", &model.id)])
+                } else {
+                    template::fill(
+                        &text.effort_unsupported,
+                        &[
+                            ("model", &model.id),
+                            ("effort", id),
+                            ("levels", &levels.join(", ")),
+                        ],
+                    )
+                };
+                self.feed.notice(&note, "warn");
+                return;
+            }
+        }
+        self.effort = effort;
+        let resolved = self
+            .model
+            .as_ref()
+            .and_then(|model| model.effort(self.effort.as_deref()));
+        let note = template::fill(
+            &text.effort_set,
+            &[("effort", resolved.unwrap_or(&text.effort_default))],
+        );
         self.feed.notice(&note, "done");
+    }
+
+    fn replace_model(&mut self, model: Model) {
+        if self
+            .effort
+            .as_deref()
+            .is_some_and(|id| !model.supports_effort(id))
+        {
+            self.effort = None;
+        }
+        self.system = system_prompt::build(&self.app.paths, &model);
+        self.model = Some(model);
     }
 
     /// Uses `id` from the next turn on, for this session only.
@@ -693,8 +759,7 @@ impl<'a> Tui<'a> {
         let Some(model) = self.catalog.get(id).cloned() else {
             return;
         };
-        self.system = system_prompt::build(&self.app.paths, &model);
-        self.model = Some(model);
+        self.replace_model(model);
         let text = template::fill(&ui::get().picker.switched, &[("model", id)]);
         self.feed.notice(&text, "done");
         if self
@@ -893,6 +958,7 @@ impl<'a> Tui<'a> {
             }
             Work::Catalog(catalog) => {
                 self.catalog = catalog;
+                self.effort_picker = None;
                 if self.catalog.models.is_empty() {
                     self.feed.notice(&models_note(&self.catalog), "warn");
                     return Step::Continue;
@@ -906,6 +972,14 @@ impl<'a> Tui<'a> {
                         Err(error) => self.feed.notice(&error.to_string(), "warn"),
                     }
                     return Step::Continue;
+                }
+                if let Some(model) = self
+                    .model
+                    .as_ref()
+                    .and_then(|model| self.catalog.get(&model.id))
+                    .cloned()
+                {
+                    self.replace_model(model);
                 }
                 self.picker = Some(Picker::new(
                     &self.catalog,
@@ -957,6 +1031,20 @@ impl<'a> Tui<'a> {
                 },
                 Effect::NewConversation => return Step::NewConversation,
                 Effect::SetEffort(id) => self.set_effort(id),
+                Effect::PickEffort => match &self.model {
+                    Some(model) if !model.effort_levels().is_empty() => {
+                        self.effort_picker =
+                            Some(effort_picker::Picker::new(model, self.effort.as_deref()));
+                    }
+                    Some(model) => self.feed.notice(
+                        &template::fill(
+                            &ui::get().text.effort_unavailable,
+                            &[("model", &model.id)],
+                        ),
+                        "muted",
+                    ),
+                    None => self.feed.notice(&models_note(&self.catalog), "warn"),
+                },
                 Effect::Send(text) => return Step::Send(text),
                 Effect::CopyLastReply => match self.feed.last_reply() {
                     Some(text) => self.copy(&text),
@@ -1025,6 +1113,8 @@ impl<'a> Tui<'a> {
         } else if let Some(forums) = &self.forums {
             Some(forums.render(width))
         } else if let Some(picker) = &self.picker {
+            Some(picker.render(width))
+        } else if let Some(picker) = &self.effort_picker {
             Some(picker.render(width))
         } else {
             self.cards.front().map(|card| card.render(width))

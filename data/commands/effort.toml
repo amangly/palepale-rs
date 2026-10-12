@@ -1,9 +1,4 @@
 name = "effort"
-summary = "Set reasoning effort for this session"
-usage = "effort [low|medium|high|max]"
+summary = "Choose reasoning effort for the current model"
+usage = "effort [level|default]"
 scope = ["session"]
-
-# What /effort with no level says; {placeholders} are filled in.
-[text]
-current = "Effort: {effort}. Levels: {levels}."
-unset = "the model's default"

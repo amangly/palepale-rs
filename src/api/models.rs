@@ -21,6 +21,11 @@ pub struct Model {
     pub pricing: Pricing,
     #[serde(default)]
     pub capabilities: Capabilities,
+    /// Public request levels, not private provider tier mappings.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reasoning_efforts: Option<Vec<String>>,
+    #[serde(default)]
+    pub default_reasoning_effort: Option<String>,
 }
 
 /// USD per million tokens.
@@ -43,10 +48,37 @@ pub struct Capabilities {
 }
 
 impl Model {
-    /// The effort a request to this model carries: none for one that does not reason, which is
-    /// what gets sent, recorded and shown.
-    pub fn effort<'a>(&self, requested: Option<&'a str>) -> Option<&'a str> {
-        requested.filter(|_| self.capabilities.reasoning)
+    pub fn effort_levels(&self) -> Vec<&str> {
+        if !self.capabilities.reasoning {
+            return Vec::new();
+        }
+        crate::effort::levels()
+            .iter()
+            .filter(|level| match &self.reasoning_efforts {
+                Some(supported) => supported.contains(&level.id),
+                None => level.legacy,
+            })
+            .map(|level| level.id.as_str())
+            .collect()
+    }
+
+    pub fn supports_effort(&self, id: &str) -> bool {
+        let levels = self.effort_levels();
+        levels.contains(&id) || (id == "max" && !levels.is_empty())
+    }
+
+    /// Resolve a ceiling alias once for the request, transcript and status bar.
+    pub fn effort<'a>(&'a self, requested: Option<&'a str>) -> Option<&'a str> {
+        let levels = self.effort_levels();
+        requested.and_then(|id| {
+            if levels.contains(&id) {
+                Some(id)
+            } else if id == "max" {
+                levels.last().copied()
+            } else {
+                None
+            }
+        })
     }
 }
 
@@ -209,6 +241,45 @@ mod tests {
     #[test]
     fn snapshot_parses_and_is_not_empty() {
         assert!(!fixture().is_empty());
+    }
+
+    #[test]
+    fn effort_metadata_controls_choices_and_the_effective_request() {
+        let mut model = fixture().remove(0);
+        assert_eq!(model.effort_levels(), ["low", "high"]);
+        assert_eq!(model.effort(Some("max")), Some("high"));
+        assert_eq!(model.effort(Some("medium")), None);
+        assert_eq!(model.effort(None), None);
+        model.reasoning_efforts = Some(vec![
+            "xhigh".into(),
+            "minimal".into(),
+            "none".into(),
+            "unknown".into(),
+            "xhigh".into(),
+        ]);
+        assert_eq!(model.effort_levels(), ["none", "minimal", "xhigh"]);
+        assert_eq!(model.effort(Some("max")), Some("xhigh"));
+        model.reasoning_efforts = Some(vec![]);
+        assert!(model.effort_levels().is_empty());
+        assert!(!model.supports_effort("max"));
+        model.reasoning_efforts = None;
+        assert_eq!(model.effort_levels(), ["low", "medium", "high", "max"]);
+        model.capabilities.reasoning = false;
+        assert!(model.effort_levels().is_empty());
+        assert_eq!(model.effort(Some("high")), None);
+    }
+
+    #[test]
+    fn legacy_metadata_stays_absent_when_cached() {
+        let mut value: serde_json::Value = serde_json::from_str(FIXTURE).unwrap();
+        value["data"][0]
+            .as_object_mut()
+            .unwrap()
+            .remove("reasoning_efforts");
+        let legacy: Model = serde_json::from_value(value["data"][0].clone()).unwrap();
+        let cached: Model = serde_json::from_value(serde_json::to_value(&legacy).unwrap()).unwrap();
+        assert!(cached.reasoning_efforts.is_none());
+        assert_eq!(cached.effort_levels(), ["low", "medium", "high", "max"]);
     }
 
     #[test]

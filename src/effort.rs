@@ -21,6 +21,8 @@ pub struct Level {
     pub summary: String,
     /// A role in data/theme.toml.
     pub color: String,
+    #[serde(default)]
+    pub legacy: bool,
 }
 
 pub fn levels() -> &'static [Level] {

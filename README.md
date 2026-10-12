@@ -28,12 +28,15 @@ After installing, open a new terminal in your project folder and run `palepale`.
 | Shift+Enter or Ctrl+J | Insert a new line |
 | Shift+Tab | Switch MANUAL, PLAN, and AUTO modes |
 | `/models` | Pick a model |
+| `/effort` | Choose reasoning effort for the current model |
 | `/status` | Check your account and balance |
 | `/help` | List commands |
 | Escape | Interrupt the current turn |
 | Ctrl+D | Quit with an empty composer |
 
 MANUAL follows permission rules. PLAN restricts writes while preparing a plan. AUTO accepts actions automatically, including actions denied by permission rules.
+
+`/effort` shows the levels reported by the model catalog. Choose `default` to reset it, or set a level directly with `/effort low`.
 
 Use `/logout` then `/login` to connect another account. Changing the browser account does not switch an already paired CLI.
 

@@ -32,6 +32,7 @@ pub struct Ui {
     pub thinking: ThinkingText,
     pub status: StatusText,
     pub picker: PickerText,
+    pub effort_picker: EffortPickerText,
     pub login: LoginText,
     pub forums: ForumsText,
 }
@@ -141,6 +142,15 @@ pub struct PaletteText {
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
+pub struct EffortPickerText {
+    pub title: String,
+    pub hint: String,
+    pub default_label: String,
+    pub default_summary: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct CardText {
     pub hint: String,
     pub input_hint: String,
@@ -207,7 +217,9 @@ pub struct Text {
     pub nothing_to_copy: String,
     pub busy: String,
     pub effort_set: String,
-    pub effort_unsent: String,
+    pub effort_default: String,
+    pub effort_unavailable: String,
+    pub effort_unsupported: String,
     pub new_conversation: String,
     pub new_saved: String,
     pub unsaved: String,

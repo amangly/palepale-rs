@@ -268,6 +268,8 @@ mod tests {
                 reasoning,
                 ..Capabilities::default()
             },
+            reasoning_efforts: None,
+            default_reasoning_effort: None,
         }
     }
 

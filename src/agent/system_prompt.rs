@@ -153,6 +153,8 @@ mod tests {
                 output_per_1m_usd: 2.0,
             },
             capabilities: Capabilities::default(),
+            reasoning_efforts: None,
+            default_reasoning_effort: None,
         }
     }
 

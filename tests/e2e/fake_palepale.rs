@@ -45,6 +45,7 @@ struct Inner {
     home: String,
     paths: Vec<String>,
     chat_bodies: Vec<Value>,
+    model_lists: VecDeque<String>,
     script: VecDeque<Reply>,
     /// Answers to pairing polls before the approval, in order.
     pair_polls: VecDeque<PairPoll>,
@@ -107,6 +108,14 @@ impl Fake {
 
     pub fn script(&self, replies: impl IntoIterator<Item = Reply>) {
         self.inner.lock().unwrap().script.extend(replies);
+    }
+
+    pub fn model_lists(&self, lists: impl IntoIterator<Item = Value>) {
+        self.inner
+            .lock()
+            .unwrap()
+            .model_lists
+            .extend(lists.into_iter().map(|list| list.to_string()));
     }
 
     /// How many polls answer "pending" before the pairing is approved.
@@ -220,8 +229,14 @@ async fn web_blocked() -> Response {
         .into_response()
 }
 
-async fn models() -> impl IntoResponse {
-    ([(header::CONTENT_TYPE, "application/json")], MODELS)
+async fn models(State(inner): State<Shared>) -> impl IntoResponse {
+    let body = inner
+        .lock()
+        .unwrap()
+        .model_lists
+        .pop_front()
+        .unwrap_or_else(|| MODELS.to_owned());
+    ([(header::CONTENT_TYPE, "application/json")], body)
 }
 
 async fn chat(State(inner): State<Shared>, headers: HeaderMap, body: String) -> Response {

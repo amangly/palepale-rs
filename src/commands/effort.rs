@@ -1,31 +1,13 @@
 use std::sync::LazyLock;
 
 use futures_util::future::BoxFuture;
-use serde::Deserialize;
 
 use super::{Command, Ctx, Effect, Outcome, Spec};
 use crate::effort;
-use crate::text::template::fill;
 
 const SRC: &str = include_str!("../../data/commands/effort.toml");
 
 static SPEC: LazyLock<Spec> = LazyLock::new(|| Spec::parse(SRC));
-static TEXT: LazyLock<Text> = LazyLock::new(|| {
-    #[derive(Deserialize)]
-    struct File {
-        text: Text,
-    }
-    toml::from_str::<File>(SRC)
-        .expect("data/commands/effort.toml is checked by tests")
-        .text
-});
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct Text {
-    current: String,
-    unset: String,
-}
 
 pub struct Effort;
 
@@ -41,24 +23,20 @@ impl Command for Effort {
     ) -> BoxFuture<'a, anyhow::Result<Outcome>> {
         Box::pin(async move {
             match args {
-                [] => {
-                    let current = cx.session.as_ref().and_then(|s| s.effort.as_deref());
-                    let levels: Vec<&str> =
-                        effort::levels().iter().map(|l| l.id.as_str()).collect();
-                    Ok(fill(
-                        &TEXT.current,
-                        &[
-                            ("effort", current.unwrap_or(&TEXT.unset)),
-                            ("levels", &levels.join(", ")),
-                        ],
-                    )
-                    .into())
-                }
+                [] => Ok(Outcome {
+                    effects: vec![Effect::PickEffort],
+                    ..Outcome::default()
+                }),
                 [level] => {
-                    effort::validate(level)?;
+                    let level = if level == "default" {
+                        None
+                    } else {
+                        effort::validate(level)?;
+                        Some(level.clone())
+                    };
                     Ok(Outcome {
                         text: String::new(),
-                        effects: vec![Effect::SetEffort(level.clone())],
+                        effects: vec![Effect::SetEffort(level)],
                     })
                 }
                 _ => Err(cx.usage(&SPEC)),
@@ -71,14 +49,22 @@ impl Command for Effort {
 mod tests {
     use super::*;
 
-    #[test]
-    fn the_usage_offers_every_level() {
-        for level in effort::levels() {
-            assert!(
-                SPEC.usage.contains(&level.id),
-                "{} is not in the usage",
-                level.id
-            );
-        }
+    #[tokio::test]
+    async fn a_bare_command_opens_the_picker_and_default_clears_the_override() {
+        let dir = tempfile::tempdir().unwrap();
+        let app = crate::app::App::for_tests(dir.path());
+        let cx = Ctx {
+            app: &app,
+            scope: super::super::Scope::Session,
+            session: None,
+        };
+        assert_eq!(
+            Effort.run(&cx, &[]).await.unwrap().effects,
+            [Effect::PickEffort]
+        );
+        assert_eq!(
+            Effort.run(&cx, &["default".into()]).await.unwrap().effects,
+            [Effect::SetEffort(None)]
+        );
     }
 }

@@ -915,13 +915,22 @@ async fn slash_status_refreshes_account_balance_with_local_model_and_mode() {
 #[tokio::test(flavor = "multi_thread")]
 async fn slash_effort_sets_what_the_next_requests_carry() {
     let fake = Fake::start().await;
-    fake.script([Reply::sse("hello.sse")]);
+    fake.script([Reply::sse("hello.sse"), Reply::sse("hello.sse")]);
     in_session(&fake, Sandbox::default(), Some(ENV_KEY), |s| {
         s.wait_for("MANUAL");
         s.type_text("/effort ludicrous");
         s.send("\r");
         s.wait_for("unknown effort");
-        s.type_text("/effort high");
+        s.type_text("/effort medium");
+        s.send("\r");
+        s.wait_for("does not support effort medium");
+        s.type_text("/effort");
+        s.send("\r");
+        s.wait_for("╭ Reasoning effort");
+        s.send("\x1b[B");
+        s.wait_for("│ › low");
+        s.send("\x1b[B");
+        s.wait_for("│ › high");
         s.send("\r");
         s.wait_for("Effort: high for this session.");
         s.poll(WAIT, "the bar shows the effort", |s| {
@@ -930,9 +939,98 @@ async fn slash_effort_sets_what_the_next_requests_carry() {
         s.type_text("hi");
         s.send("\r");
         s.wait_for("Hello there!");
+        s.type_text("/effort default");
+        s.send("\r");
+        s.wait_for("Effort: the model's default for this session.");
+        s.type_text("/effort");
+        s.send("\r");
+        s.wait_for("╭ Reasoning effort");
+        s.send("\x1b");
+        s.wait_gone("╭ Reasoning effort");
+        s.type_text("hi again");
+        s.send("\r");
+        s.poll(WAIT, "a second reply", |s| {
+            (s.contents().matches("Hello there!").count() == 2).then_some(())
+        });
     })
     .await;
     assert_eq!(fake.chat_bodies()[0]["reasoning_effort"], "high");
+    assert!(fake.chat_bodies()[1].get("reasoning_effort").is_none());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn effort_clears_when_switching_to_a_model_without_reasoning() {
+    let fake = Fake::start().await;
+    fake.script([Reply::sse("hello.sse")]);
+    in_session(&fake, Sandbox::default(), Some(ENV_KEY), |s| {
+        s.wait_for("MANUAL");
+        s.type_text("/effort high");
+        s.send("\r");
+        s.wait_for("Effort: high for this session.");
+        s.type_text("/models");
+        s.send("\r");
+        s.wait_for("╭ Models");
+        s.send("\x1b[B");
+        s.send("\r");
+        s.wait_for("Model: fake-coder for this session.");
+        s.type_text("/effort");
+        s.send("\r");
+        s.wait_for("fake-coder does not support adjustable reasoning effort.");
+        s.type_text("/models");
+        s.send("\r");
+        s.wait_for("╭ Models");
+        s.send("\x1b[A");
+        s.send("\r");
+        s.wait_for("Model: demo-2 for this session.");
+        s.poll(WAIT, "the unsupported effort was cleared", |s| {
+            (!s.bottom_row().contains(" high")).then_some(())
+        });
+        s.type_text("hi");
+        s.send("\r");
+        s.wait_for("Hello there!");
+    })
+    .await;
+    assert!(fake.chat_bodies()[0].get("reasoning_effort").is_none());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn refreshing_models_updates_effort_choices_and_clears_an_unsupported_override() {
+    let fake = Fake::start().await;
+    let first: serde_json::Value =
+        serde_json::from_str(include_str!("../fixtures/api/models.json")).unwrap();
+    let mut changed = first.clone();
+    changed["data"][0]["reasoning_efforts"] = serde_json::json!(["low"]);
+    fake.model_lists([first, changed]);
+    fake.script([Reply::sse("hello.sse")]);
+    in_session(&fake, Sandbox::default(), Some(ENV_KEY), |s| {
+        s.wait_for("MANUAL");
+        s.type_text("/effort high");
+        s.send("\r");
+        s.wait_for("Effort: high for this session.");
+        s.type_text("/models --refresh");
+        s.send("\r");
+        s.wait_for("╭ Models");
+        s.send("\x1b");
+        s.wait_gone("╭ Models");
+        s.poll(WAIT, "the bar cleared the old effort", |s| {
+            (!s.bottom_row().contains(" high")).then_some(())
+        });
+        s.type_text("/effort");
+        s.send("\r");
+        s.wait_for("╭ Reasoning effort");
+        s.send("\x1b[B");
+        s.wait_for("│ › low");
+        s.send("\x1b[B");
+        s.wait_quiet();
+        s.send("\r");
+        s.wait_for("Effort: low for this session.");
+        s.type_text("hi");
+        s.send("\r");
+        s.wait_for("Hello there!");
+    })
+    .await;
+    assert_eq!(fake.hits("/v1/models"), 2);
+    assert_eq!(fake.chat_bodies()[0]["reasoning_effort"], "low");
 }
 
 #[tokio::test(flavor = "multi_thread")]

@@ -257,6 +257,8 @@ mod tests {
                     tool_calling: true,
                     ..Capabilities::default()
                 },
+                reasoning_efforts: None,
+                default_reasoning_effort: None,
             };
             Self {
                 _dir: dir,
