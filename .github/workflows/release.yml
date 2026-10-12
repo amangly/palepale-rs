@@ -1,0 +1,64 @@
+name: release
+
+# Every push to prod verifies the source and publishes download assets to the releases repository.
+on:
+  push:
+    branches: [prod]
+
+# Releases go out one at a time, in push order.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  # The tag is worked out once: the release builds carry it (`palepale --version`, the updater)
+  # and the release is published under it.
+  tag:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check public release publishing setup
+        env:
+          GH_TOKEN: ${{ secrets.PALEPALE_RELEASE_TOKEN }}
+        run: |
+          test -n "$GH_TOKEN" || { echo 'Set PALEPALE_RELEASE_TOKEN with Contents write access to the public releases repository.'; exit 1; }
+          repo=$(sed -n 's/^repository = "\([^"]*\)"$/\1/p' data/release.toml)
+          test -n "$repo"
+          test "$(gh api "repos/$repo" --jq .private)" = false || { echo 'The download repository must be public.'; exit 1; }
+      - id: tag
+        run: |
+          version=$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n 1)
+          echo "tag=v$version-$GITHUB_RUN_NUMBER" >> "$GITHUB_OUTPUT"
+
+  check:
+    needs: tag
+    uses: ./.github/workflows/ci.yml
+    with:
+      publish: true
+      release: ${{ needs.tag.outputs.tag }}
+
+  publish:
+    needs: [tag, check]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - run: cd dist && sha256sum palepale-* > SHA256SUMS
+      - run: cp LICENSE-APACHE NOTICE dist/
+      - env:
+          GH_TOKEN: ${{ secrets.PALEPALE_RELEASE_TOKEN }}
+          TAG: ${{ needs.tag.outputs.tag }}
+        run: |
+          repo=$(sed -n 's/^repository = "\([^"]*\)"$/\1/p' data/release.toml)
+          # Draft assets remain invisible until every platform and checksum has uploaded.
+          gh release create "$TAG" dist/* --repo "$repo" --draft --title "$TAG" \
+            --notes 'Palepale CLI for Windows, macOS and Linux. Verify downloads with SHA256SUMS. Restart the CLI after updating.'
+          gh release edit "$TAG" --repo "$repo" --draft=false --latest

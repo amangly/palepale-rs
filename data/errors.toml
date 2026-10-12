@@ -1,0 +1,128 @@
+# How the client treats each error. Keys are palepale's `error.type`, plus our own kinds for
+# failures that never reached palepale. `retry` says whether an error is worth trying again
+# automatically; without it the HTTP status decides (429 and 5xx are, other statuses are not).
+
+[unknown]
+title = "Request failed"
+
+# Any status: a body that is not palepale's envelope (a proxy's page, say).
+[http_error]
+title = "palepale answered with an error"
+
+[network]
+title = "Could not reach palepale"
+hint = "Check your connection and PALEPALE_API_URL."
+retry = true
+
+[timeout]
+title = "palepale took too long to answer"
+retry = true
+
+[idle_timeout]
+title = "The response stalled"
+retry = true
+
+[stream_ended]
+title = "The response ended early"
+retry = true
+
+[bad_stream]
+title = "palepale sent something unreadable"
+
+[not_logged_in]
+title = "Not logged in"
+hint = "Set PALEPALE_API_KEY for your configured backend. Server authentication will be added later."
+
+[bad_request]
+title = "palepale rejected the request"
+
+[invalid_api_key]
+title = "Your key was not accepted"
+hint = "Check PALEPALE_API_KEY for your configured backend."
+
+[account_disabled]
+title = "This account is frozen"
+hint = "Contact the operator of your configured backend."
+
+[insufficient_balance]
+title = "Out of funds"
+hint = "Contact your configured backend about account access."
+
+[plan_allowance_spent]
+title = "Your plan's allowance is used up for now"
+hint = "Check the allowance with your configured backend."
+
+[model_not_found]
+title = "That model is not being served"
+hint = "Pick a live one from `palepale models`."
+
+[body_too_large]
+title = "The request is over palepale's 16 MiB limit"
+hint = "Start a new session; this one has grown too long to send."
+
+[rate_limited]
+title = "Too many requests at once"
+retry = true
+
+[tool_error]
+title = "A palepale tool failed upstream"
+retry = false
+
+[no_model]
+title = "No models are live right now"
+retry = true
+
+[no_provider]
+title = "That model's upstream is not configured"
+hint = "Pick another model from `palepale models`."
+retry = false
+
+[no_price]
+title = "That model has no price quote yet"
+retry = true
+
+[price_fault]
+title = "That model is off sale while its price settles"
+hint = "Pick another model from `palepale models`."
+retry = false
+
+[upstream_unavailable]
+title = "The model's upstream is unavailable"
+hint = "palepale's side, not yours; try again or pick another model."
+retry = true
+
+# The vendor's own status passes through, so a 400 is final and a 429 or 5xx is not.
+[upstream_error]
+title = "The model's vendor refused the request"
+
+[content_filter]
+title = "The model's content filter stopped the reply"
+hint = "Rephrase, or try another model."
+
+[bad_response]
+title = "palepale sent a reply this version cannot read"
+hint = "Update palepale; the API may have moved on."
+
+[pair_expired]
+title = "The pairing code expired or was already used"
+hint = "Log in again for a fresh code."
+
+[pow_required]
+title = "The proof of work expired before it was used"
+
+[pow_too_hard]
+title = "palepale asked for more work than this machine will do"
+hint = "Many signups came from this address; try again later."
+
+[tool_unavailable]
+title = "That palepale tool is off right now"
+retry = true
+
+[unsupported_tool_call]
+title = "This model route has no tool support"
+retry = false
+
+[backend_unconfigured]
+title = "Backend not configured"
+hint = "Connect your Palepale server with PALEPALE_API_URL when it is ready."
+retry = false

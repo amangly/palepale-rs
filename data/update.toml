@@ -1,0 +1,14 @@
+# What the updater says; {placeholders} are filled in. These reach `palepale update` and the
+# notice at the start of a session after an update.
+[text]
+updated = "palepale updated to {to} (from {from}). Restart palepale to use it."
+up_to_date = "No newer release is available; running {tag}."
+development = "Updates are disabled in debug builds; build with --release or install an official release."
+unsupported_tag = "Cannot compare release {latest} with {current}; expected vMAJOR.MINOR.PATCH-BUILD. Nothing was changed."
+not_published = "No public Palepale release is available yet at {url}. The installed CLI was kept."
+listing = "The release list did not load: {error}"
+no_platform = "Releases have no build for this platform ({os} {arch})."
+missing = "Release {tag} has no {file}."
+not_writable = "palepale cannot write to {dir}, where it is installed (by an administrator or a package manager, perhaps); update it there."
+mismatch = "The download of {file} does not match its checksum; nothing was changed."
+http = "{url} answered {status}."

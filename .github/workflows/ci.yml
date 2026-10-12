@@ -1,0 +1,85 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  # release.yml runs these same checks on `prod`, then publishes the binaries they built.
+  workflow_call:
+    inputs:
+      publish:
+        description: Keep each release target's binary for the release job.
+        type: boolean
+        default: false
+      release:
+        description: The release tag the binaries are built as (`palepale --version`, the updater).
+        type: string
+        default: ""
+
+# Nothing here writes to the repository, so third-party actions get a read-only token.
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  check:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+          # A release target is built where it is the host, so the checks above it cover it.
+          - os: macos-latest
+            target: aarch64-apple-darwin
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            exe: .exe
+    runs-on: ${{ matrix.os }}
+    # A hung PTY test would otherwise hold three runners for six hours; cold BoringSSL builds
+    # set the bound.
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+        with:
+          target: ${{ matrix.target }}
+      - run: make lint
+      - run: make test
+      - run: make e2e
+      - run: make build TARGET=${{ matrix.target }}
+        env:
+          PALEPALE_RELEASE: ${{ inputs.release }}
+      - name: Verify packaged self-update with a local release fixture
+        env:
+          TARGET: ${{ matrix.target }}
+          EXE: ${{ matrix.exe }}
+        run: |
+          export PALEPALE_TEST_BINARY="$PWD/target/${TARGET:+$TARGET/}release/palepale$EXE"
+          cargo test --locked --test e2e github_update_keeps_credentials_and_installs_only_verified_newer_releases
+          cargo test --locked --test e2e a_session_welcomes_chats_switches_mode_and_quits
+      - if: inputs.publish && matrix.target
+        uses: ./.github/actions/asset
+        with:
+          target: ${{ matrix.target }}
+          exe: ${{ matrix.exe }}
+
+  # Fully static Linux, the Linux release target. BoringSSL needs a musl C++ cross toolchain,
+  # which this image carries.
+  release-musl:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    container: ghcr.io/rust-cross/rust-musl-cross:x86_64-musl
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+        with:
+          target: x86_64-unknown-linux-musl
+      - run: make build TARGET=x86_64-unknown-linux-musl
+        env:
+          PALEPALE_RELEASE: ${{ inputs.release }}
+      - if: inputs.publish
+        uses: ./.github/actions/asset
+        with:
+          target: x86_64-unknown-linux-musl

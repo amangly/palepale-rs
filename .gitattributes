@@ -1,0 +1,7 @@
+* text=auto eol=lf
+*.png binary
+# Edit goldens test line endings and BOMs byte for byte.
+tests/golden/** -text
+# Preserve the supplied artwork bytes and deliberate terminal column padding.
+data/palepale-ascii.txt -text -whitespace
+src/tui/snapshots/*welcome*.snap -whitespace

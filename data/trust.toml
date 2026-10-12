@@ -1,0 +1,6 @@
+# What palepale says when a project's .palepale/config.toml sets what only a trusted folder may.
+warning = "{file} changes what palepale may do without asking:"
+danger = "A malicious repository can use this to make palepale run commands without asking."
+question = "Trust this folder and use these settings? [y/N] "
+declined = "Not trusted; ignoring them."
+ignored = "ignoring {keys} from {file}: the folder isn't trusted. Start palepale here in a terminal to trust it."

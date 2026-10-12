@@ -1,0 +1,24 @@
+name = "login"
+hidden = false
+requires_backend = true
+summary = "Log in: pair this machine, or use an account number"
+usage = "login [--key <account number> | --status]"
+secret = ["--key"]
+
+# What login says; {placeholders} are filled in. The session shows the same results.
+[text]
+pair = """
+Pair this machine with your palepale account:
+  1. Open {url}
+  2. Approve the code shown in this terminal: {code}
+
+Waiting for approval (Ctrl+C to cancel)…"""
+logged_in = "Logged in with {what} {hint}. Balance {balance}."
+account_status = "Account …{hint}. Available balance {balance}."
+cannot_spend = " The account cannot spend yet; contact your configured backend."
+status = "Logged in with {what} {hint}."
+from_env = "Using PALEPALE_API_KEY from the environment."
+env_note = " PALEPALE_API_KEY is set in this environment; palepale uses it over any stored key until it is unset."
+logged_out = "Not logged in. Run `{login}`."
+account = "account number"
+device = "device key"

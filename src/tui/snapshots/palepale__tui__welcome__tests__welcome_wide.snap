@@ -1,0 +1,28 @@
+---
+source: src/tui/welcome.rs
+expression: "snapshot(&render(&info(true), 100))"
+---
+[accent]                  .. ..[/]                  
+[accent]               ::::: :::::[/]               
+[accent]            :::::::: ::::::::[/]            
+[accent]         ::::::::::: :::::::::::[/]         
+[accent]     ::::::::::::::: :::::::::::::::[/]     
+[accent]  ------------------ ------------------[/]     [accent+bold]palepale[/][muted] v0.2.0-1[/]
+[accent]-------------------- --------------------[/]   [text]Your terminal. Your workspace.[/]
+[accent]-------------- ----- ----- --------------[/]   [muted]~/src/project[/]
+[accent]-----------    ----- -----    -----------[/]   
+[accent]--------       ----- -----       --------[/]   [mode_manual+bold]MANUAL[/][muted] · backend not configured[/]
+[accent]=====          ===== =====          =====[/]   [muted]Backend not configured. Unset PALEPALE_OFFLINE or set[/]
+[accent]=====          ===== =====          =====[/]   [muted]PALEPALE_API_URL to connect.[/]
+[accent]=====        ======= =======        =====[/]   
+[accent]=====     ========== ==========     =====[/]   [muted]/help lists commands[/]
+[accent]=====  ============= =============  =====[/]   [muted]Shift+Tab cycles MANUAL → PLAN → AUTO[/]
+[accent]++++++++++++  ++++++ ++++++  =+++++++++++[/]   [muted]Enter sends · while working, Enter queues and Tab steers[/]
+[accent]+++++++++     ++++++ ++++++     +++++++++[/]   [muted]Shift+Enter or Ctrl+J starts a new line[/]
+[accent]++++++        ++++++ ++++++        ++++++[/]   [muted]Right-click copies a message[/]
+[accent]+++           ++++++ ++++++           +++[/]   
+[accent]              ++++++ ++++++[/]              
+[accent]              ****** ******[/]              
+[accent]              ****** ******[/]              
+[accent]              ****** ******[/]              
+[accent]                **** ****[/]

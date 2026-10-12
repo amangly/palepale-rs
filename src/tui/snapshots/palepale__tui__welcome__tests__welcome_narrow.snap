@@ -1,0 +1,19 @@
+---
+source: src/tui/welcome.rs
+expression: "snapshot(&render(&info(true), 40))"
+---
+[accent+bold]palepale[/][muted] v0.2.0-1[/]
+[text]Your terminal. Your workspace.[/]
+[muted]~/src/project[/]
+
+[mode_manual+bold]MANUAL[/][muted] · backend not configured[/]
+[muted]Backend not configured. Unset[/]
+[muted]PALEPALE_OFFLINE or set PALEPALE_API_URL[/]
+[muted]to connect.[/]
+
+[muted]/help lists commands[/]
+[muted]Shift+Tab cycles MANUAL → PLAN → AUTO[/]
+[muted]Enter sends · while working, Enter[/]
+[muted]queues and Tab steers[/]
+[muted]Shift+Enter or Ctrl+J starts a new line[/]
+[muted]Right-click copies a message[/]

@@ -1,0 +1,17 @@
+name = "status"
+summary = "Show account balance, project, backend, model, mode and context"
+usage = "status"
+scope = ["session"]
+
+# What /status shows; {placeholders} are filled in.
+[text]
+body = """
+- Backend: {backend}
+- Model: {model}
+- Mode: {mode}
+- Context: {context}
+- Session file: `{file}`
+- Project: `{project}`"""
+effort = "{model}, effort {effort}"
+context = "{pct}% of the window, as of the last request"
+no_context = "nothing sent yet"

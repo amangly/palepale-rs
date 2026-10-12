@@ -1,0 +1,68 @@
+# Where palepale lives. `env` names the variable that overrides an origin (tests point it at a fake).
+[origins.api]
+url = "https://api.palepale.tech"
+env = "PALEPALE_API_URL"
+
+[origins.chat]
+url = "https://palepale.tech"
+env = "PALEPALE_CHAT_URL"
+
+# Where palepale's own releases are listed, for the updater.
+[origins.releases]
+url = "https://api.github.com/repos"
+env = "PALEPALE_RELEASES_URL"
+
+[endpoints.models]
+origin = "api"
+method = "GET"
+path = "/v1/models"
+
+[endpoints.chat]
+origin = "api"
+method = "POST"
+path = "/v1/chat/completions"
+auth = true
+
+[endpoints.me]
+origin = "api"
+method = "GET"
+path = "/api/me"
+auth = true
+
+[endpoints.pair_start]
+origin = "api"
+method = "POST"
+path = "/api/pair/start"
+
+[endpoints.pair_poll]
+origin = "api"
+method = "GET"
+path = "/api/pair/{code}"
+
+# A web page, not an API: where a person approves a pairing code.
+[endpoints.pair_page]
+origin = "chat"
+method = "GET"
+path = "/pair"
+
+[endpoints.pow]
+origin = "chat"
+method = "GET"
+path = "/api/pow?kind={kind}"
+
+[endpoints.signup]
+origin = "chat"
+method = "POST"
+path = "/api/signup"
+
+[endpoints.codesearch]
+origin = "api"
+method = "POST"
+path = "/v1/tools/codesearch"
+auth = true
+
+# The newest release: its tag and its files.
+[endpoints.latest_release]
+origin = "releases"
+method = "GET"
+path = "/{repository}/releases/latest"

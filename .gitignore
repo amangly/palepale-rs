@@ -1,0 +1,12 @@
+/target/
+# Built when cffetch's own suite runs from its directory.
+/crates/cffetch/target/
+/crates/cffetch/Cargo.lock
+/reference/
+# Local research notes, never published.
+/THE_REFINATION/
+*.snap.new
+*.pending-snap
+
+# Local handoff notes for the forums work (names a dev machine; the facts live in data/forums.toml)
+/HANDOFF.md

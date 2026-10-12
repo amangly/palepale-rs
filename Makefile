@@ -1,0 +1,34 @@
+# GNU make. Windows: `winget install ezwinports.make`, then run from Git Bash.
+SHELL := bash
+.SHELLFLAGS := -eu -o pipefail -c
+CARGO ?= cargo
+
+.PHONY: lint test e2e smoke golden check build
+
+lint:
+	$(CARGO) fmt -- --check
+	$(CARGO) clippy --locked --all-targets -- -D warnings
+
+test:
+	$(CARGO) test --locked --bins
+
+e2e:
+	$(CARGO) test --locked --test e2e
+
+# Explicitly configured backend; never in CI.
+smoke:
+	@test -n "$${PALEPALE_SMOKE_URL:-}" || { echo "set PALEPALE_SMOKE_URL"; exit 1; }
+	@test -n "$${PALEPALE_SMOKE_MODEL:-}" || { echo "set PALEPALE_SMOKE_MODEL"; exit 1; }
+	@test -n "$${PALEPALE_SMOKE_KEY:-}" || { echo "set PALEPALE_SMOKE_KEY (smoke spends real money)"; exit 1; }
+	$(CARGO) test --locked --test smoke -- --ignored --test-threads=1
+
+# Rewrites golden files and insta snapshots from current output; only for a deliberate change.
+golden:
+	UPDATE_GOLDEN=1 INSTA_UPDATE=always $(CARGO) test --locked --bins
+	UPDATE_GOLDEN=1 $(CARGO) test --locked --test e2e
+
+check: lint test e2e
+
+# `make build TARGET=<triple>` builds for another target, e.g. static musl in CI.
+build:
+	$(CARGO) build --locked --release $(if $(TARGET),--target $(TARGET))

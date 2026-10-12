@@ -1,0 +1,5 @@
+name = "logout"
+hidden = false
+requires_backend = true
+summary = "Remove this machine's stored key"
+usage = "logout"

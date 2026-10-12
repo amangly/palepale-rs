@@ -1,0 +1,6 @@
+name = "signup"
+hidden = true
+requires_backend = true
+summary = "Create a palepale account on this machine (no email, no password)"
+usage = "signup [--force]"
+scope = ["cli"]

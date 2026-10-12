@@ -1,0 +1,44 @@
+# Shells tried in order for the bash tool; the first that exists wins. The `shell` key in
+# config.toml overrides the list. `{NAME}` in a candidate is that environment variable; a
+# candidate naming an unset one is skipped. `note` tells the model which shell it has.
+
+[[shell]]
+os = "windows"
+name = "Git Bash"
+candidates = ["C:/Program Files/Git/bin/bash.exe", "{LOCALAPPDATA}/Programs/Git/bin/bash.exe", "{ProgramFiles}/Git/bin/bash.exe"]
+args = ["-c"]
+note = "Commands run in Git Bash (POSIX syntax, Unix tools) on Windows."
+
+[[shell]]
+os = "windows"
+name = "PowerShell"
+candidates = ["pwsh.exe", "powershell.exe"]
+args = ["-NoProfile", "-NonInteractive", "-Command"]
+note = "Commands run in PowerShell on Windows; use PowerShell syntax, not bash."
+
+[[shell]]
+os = "unix"
+name = "bash"
+candidates = ["/bin/bash", "/usr/bin/bash", "bash"]
+args = ["-c"]
+note = "Commands run in bash."
+
+[[shell]]
+os = "unix"
+name = "sh"
+candidates = ["/bin/sh"]
+args = ["-c"]
+note = "Commands run in POSIX sh."
+
+# What the model is told when no entry above applies; `{shell}` is the configured one.
+[fallback]
+configured = "Commands run in {shell}."
+missing = "The configured shell {shell} was not found; commands cannot run."
+none = "No shell was found on this machine; commands cannot run."
+
+# Set for every command: nothing may stop to wait for input or page output.
+[env]
+GIT_TERMINAL_PROMPT = "0"
+GIT_PAGER = "cat"
+PAGER = "cat"
+GCM_INTERACTIVE = "never"
