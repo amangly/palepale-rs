@@ -23,7 +23,7 @@ async fn github_update_keeps_credentials_and_installs_only_verified_newer_releas
         return;
     };
     let current = tag.trim().trim_end_matches(')');
-    let (base, build) = current.rsplit_once('-').unwrap();
+    let (base, build) = current.rsplit_once('-').unwrap_or((current, "0"));
     let next = format!("{base}-{}", build.parse::<u64>().unwrap() + 1);
     let payload = b"verified executable fixture";
     let checksum: String = Sha256::digest(payload)
@@ -76,7 +76,7 @@ async fn github_update_keeps_credentials_and_installs_only_verified_newer_releas
         let (seen, fetched) = (leaked.clone(), downloads.clone());
         let router = Router::new()
             .route(
-                "/amangly/palepale-releases/releases/latest",
+                "/amangly/palepale-cli/releases/latest",
                 get(move |headers: HeaderMap| async move {
                     seen.store(headers.contains_key("authorization"), Ordering::Relaxed);
                     (

@@ -92,6 +92,9 @@ mod tests {
     #[test]
     fn update_versions_are_numeric_and_never_downgrade() {
         for (latest, current, expected) in [
+            ("v0.1.1", "v0.1.0", Some(true)),
+            ("v0.1.0", "v0.1.0", Some(false)),
+            ("v0.1.0", "v0.1.0-0", Some(false)),
             ("v0.2.0-10", "v0.2.0-9", Some(true)),
             ("v0.3.0-1", "v0.2.0-999", Some(true)),
             ("v1.0.0", "v0.9.9-999", Some(true)),
@@ -121,7 +124,7 @@ mod tests {
                 .as_str()
                 .unwrap()
                 .replace("{repository}", repository()),
-            "/amangly/palepale-releases/releases/latest"
+            "/amangly/palepale-cli/releases/latest"
         );
     }
 

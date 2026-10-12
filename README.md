@@ -4,7 +4,7 @@ A Rust coding agent for your terminal. Read code, edit files, run commands, and 
 
 ## Get started
 
-Download the binary for Windows x64, macOS ARM64, or Linux x64 from [Releases](https://github.com/amangly/palepale-releases/releases/latest). Rename it to `palepale.exe` on Windows or `palepale` on macOS/Linux.
+Download the binary for Windows x64, macOS ARM64, or Linux x64 from [Releases](https://github.com/amangly/palepale-cli/releases/latest). Rename it to `palepale.exe` on Windows or `palepale` on macOS/Linux.
 
 Run it from your project folder:
 
