@@ -40,7 +40,7 @@ pub async fn startup_feed(
     let payload = Arc::new(payload);
     let router = Router::new()
         .route(
-            "/amangly/palepale-cli/releases/latest",
+            "/amangly/palepale-rs/releases/latest",
             get(move |headers: HeaderMap| async move {
                 count.fetch_add(1, Ordering::Relaxed);
                 seen.store(headers.contains_key("authorization"), Ordering::Relaxed);
@@ -144,7 +144,7 @@ async fn github_update_keeps_credentials_and_installs_only_verified_newer_releas
         let (seen, fetched) = (leaked.clone(), downloads.clone());
         let router = Router::new()
             .route(
-                "/amangly/palepale-cli/releases/latest",
+                "/amangly/palepale-rs/releases/latest",
                 get(move |headers: HeaderMap| async move {
                     seen.store(headers.contains_key("authorization"), Ordering::Relaxed);
                     (

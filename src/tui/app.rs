@@ -42,6 +42,7 @@ use crate::tui::feed::{Block, Feed};
 use crate::tui::forums::{self, Forums};
 use crate::tui::keymap::{self, Action};
 use crate::tui::login::{self, Login};
+use crate::tui::matrix;
 use crate::tui::palette::{self, Palette};
 use crate::tui::paste::Burst;
 use crate::tui::picker::{self, Picker};
@@ -143,6 +144,7 @@ struct Tui<'a> {
     shared: &'a Shared,
     screen: Screen,
     feed: Feed,
+    intro: Option<matrix::Intro>,
     view: View,
     /// The transcript block on each screen row of the last frame, for clicks.
     blocks: Vec<Option<usize>>,
@@ -211,6 +213,7 @@ impl<'a> Tui<'a> {
             shared,
             screen: Screen::new(width, height, theme::get(), term::color_depth()),
             feed: Feed::new(),
+            intro: None,
             view: View::default(),
             blocks: Vec::new(),
             editor,
@@ -239,7 +242,23 @@ impl<'a> Tui<'a> {
         };
         let welcome = tui.welcome();
         tui.feed.push(Block::Welcome(welcome));
+        if term::color_depth() != theme::Depth::None
+            && settings::env("PALEPALE_NO_ANIMATION").is_none()
+        {
+            tui.intro = matrix::Intro::new(layout::margins(width).1, height, tui.rng.u64(..));
+            tui.advance_intro();
+        }
         tui
+    }
+
+    fn advance_intro(&mut self) {
+        if let Some(intro) = &mut self.intro {
+            let art = intro.advance();
+            if art.is_none() {
+                self.intro = None;
+            }
+            self.feed.welcome_art(art);
+        }
     }
 
     /// Share of the current model's window the last request used.
@@ -298,6 +317,7 @@ impl<'a> Tui<'a> {
                 .as_ref()
                 .is_some_and(|m| m.capabilities.tool_calling),
             braille: term::braille(),
+            art: None,
         }
     }
 
@@ -398,8 +418,11 @@ impl<'a> Tui<'a> {
                     self.job_done(done)
                 }
                 Some(done) = work.next(), if !work.is_empty() => self.finish(done),
-                // Frames tick while something moves: a turn, or a toast that has to go away.
-                _ = tick.tick(), if turn.is_some() || self.toast.is_some() => Step::Continue,
+                // Frames tick while the intro, a turn, or a toast moves.
+                _ = tick.tick(), if turn.is_some() || self.toast.is_some() || self.intro.is_some() => {
+                    self.advance_intro();
+                    Step::Continue
+                },
             };
             match step {
                 Step::Continue => {}
@@ -453,6 +476,9 @@ impl<'a> Tui<'a> {
     }
 
     fn input(&mut self, input: Input, running: bool) -> Step<'a> {
+        if self.intro.take().is_some() {
+            self.feed.welcome_art(None);
+        }
         // Inside a burst of keys (a paste where the terminal sends one as keystrokes), Enter
         // and Tab are text for whatever field has the keys, never commands.
         let input = match input {

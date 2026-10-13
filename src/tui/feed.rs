@@ -110,6 +110,15 @@ impl Feed {
         });
     }
 
+    pub fn welcome_art(&mut self, art: Option<Vec<Line>>) {
+        if let Some(entry) = self.entries.first_mut()
+            && let Block::Welcome(info) = &mut entry.block
+        {
+            info.art = art;
+            entry.drawn = None;
+        }
+    }
+
     pub fn user(&mut self, text: &str) {
         self.push(Block::User(text.to_owned()));
     }

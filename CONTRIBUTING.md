@@ -63,6 +63,7 @@ User settings live in `~/.palepale/config.toml`; a project can add `.palepale/co
 | `PALEPALE_NO_BROWSER=1` | Show the pairing link without opening it |
 | `PALEPALE_OFFLINE=1` | Disable network access |
 | `PALEPALE_NO_UPDATE=1` | Disable automatic update checks |
+| `PALEPALE_NO_ANIMATION=1` | Skip the Matrix opening animation |
 
 Stored device keys are bound to their API origin. Windows protects them with DPAPI; other platforms use owner-only file permissions. Headless `--print` and `--json` runs require an existing key and do not open the browser. Keep credentials in local state or environment variables.
 

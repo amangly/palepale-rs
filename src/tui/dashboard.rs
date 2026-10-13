@@ -6,7 +6,7 @@ use crate::commands::Session;
 use crate::io::term::{KeyCode, KeyEvent};
 use crate::text::styled::{Line, Style};
 use crate::text::{template::fill, units};
-use crate::tui::{boxed::boxed, keymap::Action};
+use crate::tui::{boxed::boxed, chart, keymap::Action};
 use serde::Deserialize;
 use std::sync::LazyLock;
 
@@ -163,21 +163,12 @@ impl Dashboard {
                 None => row(5, &words.no_context),
             });
             body.push(row(6, &info.requests.to_string()));
-            body.push(row(
-                7,
-                &format!(
-                    "{} / {}",
-                    units::tokens(info.usage.input),
-                    units::tokens(info.usage.output)
-                ),
-            ));
-            body.push(row(
-                8,
-                &format!(
-                    "{} / {}",
-                    units::tokens(info.usage.cached),
-                    units::tokens(info.usage.reasoning)
-                ),
+            body.extend(token_chart(
+                info.usage.input,
+                info.usage.output,
+                info.usage.cached,
+                info.usage.reasoning,
+                width.saturating_sub(4),
             ));
             body.push(label(
                 &words.session_cost,
@@ -218,18 +209,13 @@ impl Dashboard {
                     body.push(row(14, &units::usd_micros(usage.spent_microdollars)));
                     body.push(row(15, &usage.confirmed_requests.to_string()));
                     body.push(row(16, &usage.unknown_requests.to_string()));
-                    body.push(row(17, &units::tokens(usage.prompt_tokens)));
-                    body.push(row(18, &units::tokens(usage.completion_tokens)));
-                    body.push(meter(
-                        19,
-                        usage
-                            .cached_tokens
-                            .saturating_mul(100)
-                            .checked_div(usage.prompt_tokens)
-                            .unwrap_or(0),
-                        width,
+                    body.extend(token_chart(
+                        usage.prompt_tokens,
+                        usage.completion_tokens,
+                        usage.cached_tokens,
+                        usage.reasoning_tokens,
+                        width.saturating_sub(4),
                     ));
-                    body.push(row(20, &units::tokens(usage.reasoning_tokens)));
                 }
                 if let Some(error) = &self.usage_error {
                     body.push(Line::styled(
@@ -279,6 +265,27 @@ fn label(name: &str, value: &str) -> Line {
 }
 fn row(index: usize, value: &str) -> Line {
     label(&WORDS.labels[index], value)
+}
+fn token_chart(input: u64, output: u64, cached: u64, reasoning: u64, width: usize) -> Vec<Line> {
+    let mut rows = chart::render(
+        &[
+            chart::Bar {
+                label: &WORDS.labels[17],
+                value: input,
+                color: &chart::CONFIG.input_color,
+            },
+            chart::Bar {
+                label: &WORDS.labels[18],
+                value: output,
+                color: &chart::CONFIG.output_color,
+            },
+        ],
+        width,
+    );
+    let pct = u128::from(cached) * 100 / u128::from(input.max(1));
+    rows.push(row(19, &format!("{} ({pct}%)", units::tokens(cached))).truncate(width));
+    rows.push(row(20, &units::tokens(reasoning)).truncate(width));
+    rows
 }
 fn meter(index: usize, pct: u64, width: usize) -> Line {
     let cells = width

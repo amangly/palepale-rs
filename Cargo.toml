@@ -6,7 +6,7 @@ exclude = ["crates/cffetch", "bench/cache"]
 
 [package]
 name = "palepale"
-version = "0.1.5"
+version = "0.1.6"
 edition = "2024"
 rust-version = "1.98"
 description = "Palepale native terminal coding agent"
@@ -44,6 +44,7 @@ thiserror = "2.0.21"
 tokio = { version = "1.53.1", features = ["rt-multi-thread", "macros", "sync", "time", "io-util", "signal", "process"] }
 tokio-util = "0.7.19"
 toml = "1.1.6"
+ttfx = { git = "https://github.com/omacom/ttfx", rev = "921bd551c308c235e01c5867f0199efe0691c271" }
 unicode-segmentation = "1.13.3"
 unicode-width = "0.2.2"
 url = "2.5.8"

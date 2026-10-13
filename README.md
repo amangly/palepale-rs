@@ -4,7 +4,7 @@ Use your [palepale.tech](https://palepale.tech) account to run a coding agent in
 
 ## Get started
 
-Download the CLI for Windows x64, macOS Apple Silicon, or Linux x64 from the [Palepale download page](https://palepale.tech/docs/cli) or [GitHub Releases](https://github.com/amangly/palepale-cli/releases/latest). Rename it to `palepale.exe` on Windows or `palepale` on macOS/Linux.
+Download the CLI for Windows x64, macOS Apple Silicon, or Linux x64 from the [Palepale download page](https://palepale.tech/docs/cli) or [GitHub Releases](https://github.com/amangly/palepale-rs/releases/latest). Rename it to `palepale.exe` on Windows or `palepale` on macOS/Linux.
 
 Run it from your project folder:
 
@@ -38,6 +38,8 @@ MANUAL follows permission rules. PLAN restricts writes while preparing a plan. A
 
 Opening `/models` fetches the latest catalog. If the server is unavailable, it shows the cached list.
 
+The opening screen uses a three-line ASCII logo with a brief Matrix rain effect from [ttfx](https://github.com/omacom/ttfx). Typing skips the animation and keeps your input. `NO_COLOR` or `PALEPALE_NO_ANIMATION=1` skips it too.
+
 `/effort` shows the levels reported by the model catalog. Choose `default` to reset it, or set a level directly with `/effort low`.
 
 Use `/logout` then `/login` to connect another account. Changing the browser account does not switch an already paired CLI.
@@ -46,7 +48,7 @@ Use `/logout` then `/login` to connect another account. Changing the browser acc
 
 Run `palepale` to check for updates before opening the session. When a newer release is available, Palepale shows download progress, verifies `SHA256SUMS`, installs it, and opens the updated CLI in the same terminal. Rapid restarts share a check for one minute. An unavailable update service or failed checksum leaves the installed version usable. Press Ctrl+C during the check or download to continue with it.
 
-`/status` opens a card with Session and Usage tabs. View context and token usage, session cost at listed rates, available and reserved balances, and confirmed account charges. Left/right or Tab switch tabs, up/down scroll, `r` refreshes account data, and Escape returns to the composer. Account data loads in the background; missing usage data is shown as unavailable.
+`/status` opens a card with Session and Usage tabs. Input and output token bars share a scale, with cached input and reasoning totals below. View context usage, session cost at listed rates, available and reserved balances, and confirmed account charges. Left/right or Tab switch tabs, up/down scroll, `r` refreshes account data, and Escape returns to the composer. Account data loads in the background; missing usage data is shown as unavailable.
 
 Settings live in `~/.palepale/config.toml`. Set `auto_update = false` to disable automatic updates.
 

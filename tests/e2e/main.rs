@@ -145,6 +145,7 @@ pub const WITH_KEY: Option<&str> = Some(fake_palepale::ENV_KEY);
 /// desktop's clipboard (io/clipboard.rs).
 pub const CLEARED: &[&str] = &[
     "PALEPALE_NO_UPDATE",
+    "PALEPALE_NO_ANIMATION",
     "PALEPALE_OFFLINE",
     "PALEPALE_NO_AUTO_LOGIN",
     "PALEPALE_API_KEY",

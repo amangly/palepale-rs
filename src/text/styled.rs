@@ -404,11 +404,11 @@ mod tests {
     fn ansi_resets_after_every_styled_span() {
         let line = Line::styled("ok", Style::fg("accent").bold());
         let ansi = line.to_ansi(theme::get(), Depth::TrueColor);
-        assert_eq!(ansi, "\x1b[1;38;2;0;220;130mok\x1b[0m");
+        assert_eq!(ansi, "\x1b[1;38;2;0;255;65mok\x1b[0m");
         assert_eq!(line.to_ansi(theme::get(), Depth::None), "\x1b[1mok\x1b[0m");
         assert_eq!(
             line.to_ansi(theme::get(), Depth::Ansi256),
-            "\x1b[1;38;5;42mok\x1b[0m"
+            "\x1b[1;38;5;47mok\x1b[0m"
         );
     }
 }

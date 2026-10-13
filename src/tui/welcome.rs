@@ -1,8 +1,6 @@
 //! The session welcome: identity, workspace, connection state, and useful keys.
 
-use crate::mode;
-use crate::text::styled::{Line, Style, width as text_width};
-use crate::text::template::fill;
+use crate::text::styled::{Line, Style};
 use crate::tui::ui;
 
 #[derive(Clone)]
@@ -16,20 +14,21 @@ pub struct Info {
     pub backend_configured: bool,
     pub tools_supported: bool,
     pub braille: bool,
+    pub art: Option<Vec<Line>>,
 }
 
-const ART: &str = include_str!("../../data/palepale-ascii.txt");
+pub const ART: &str = include_str!("../../data/palepale-ascii.txt");
+
+pub fn logo() -> Vec<Line> {
+    ART.lines()
+        .map(|row| Line::styled(row.trim_end(), Style::fg("accent")))
+        .collect()
+}
 
 pub fn render(info: &Info, width: usize) -> Vec<Line> {
     let width = width.max(1);
-    let rows: Vec<&str> = ART.lines().filter(|row| !row.trim().is_empty()).collect();
-    let indent = rows
-        .iter()
-        .map(|row| row.len() - row.trim_start().len())
-        .min()
-        .unwrap_or(0);
-    let rows: Vec<&str> = rows.iter().map(|row| row[indent..].trim_end()).collect();
-    let art_width = rows.iter().map(|row| text_width(row)).max().unwrap_or(0);
+    let rows = info.art.clone().unwrap_or_else(logo);
+    let art_width = rows.iter().map(Line::width).max().unwrap_or(0);
     let words = text(info);
     let beside = width >= art_width + 3 + 28;
     let text_width = if beside { width - art_width - 3 } else { width };
@@ -44,9 +43,11 @@ pub fn render(info: &Info, width: usize) -> Vec<Line> {
     if beside {
         let top = rows.len().saturating_sub(words.len()) / 2;
         for index in 0..rows.len().max(top + words.len()) {
-            let mut line =
-                Line::styled(rows.get(index).copied().unwrap_or(""), Style::fg("accent"))
-                    .padded(art_width, &Style::default());
+            let mut line = rows
+                .get(index)
+                .cloned()
+                .unwrap_or_default()
+                .padded(art_width, &Style::default());
             if let Some(word) = index.checked_sub(top).and_then(|i| words.get(i)) {
                 line.push("   ", Style::default());
                 line.extend(word.clone());
@@ -54,10 +55,7 @@ pub fn render(info: &Info, width: usize) -> Vec<Line> {
             out.push(line);
         }
     } else {
-        out.extend(
-            rows.iter()
-                .map(|row| Line::styled(*row, Style::fg("accent"))),
-        );
+        out.extend(rows);
         out.push(Line::default());
         out.extend(words);
     }
@@ -76,13 +74,7 @@ fn text(info: &Info) -> Vec<Line> {
     if let Some(effort) = &info.effort {
         state.push(format!(" {effort}"), Style::fg("muted"));
     }
-    let mut lines = vec![
-        name,
-        Line::styled(&words.text.welcome, Style::fg("text")),
-        Line::styled(&info.cwd, Style::fg("muted")),
-        Line::default(),
-        state,
-    ];
+    let mut lines = vec![name, state, Line::styled(&info.cwd, Style::fg("muted"))];
     if !info.backend_configured {
         lines.push(Line::styled(
             &crate::backend::text().unavailable,
@@ -91,19 +83,12 @@ fn text(info: &Info) -> Vec<Line> {
     } else if !info.tools_supported {
         lines.push(Line::styled(&words.text.chat_only, Style::fg("muted")));
     }
-    lines.push(Line::default());
-    let modes = mode::all()
-        .iter()
-        .map(|m| m.label.as_str())
-        .collect::<Vec<_>>()
-        .join(if info.braille { " → " } else { " -> " });
     lines.extend(
         words
             .tips
             .iter()
-            .map(|tip| Line::styled(fill(tip, &[("modes", &modes)]), Style::fg("muted"))),
+            .map(|tip| Line::styled(tip, Style::fg("muted"))),
     );
-    lines.push(Line::default());
     lines
 }
 
@@ -122,6 +107,7 @@ mod tests {
             backend_configured: false,
             tools_supported: true,
             braille,
+            art: None,
         }
     }
 
@@ -141,8 +127,10 @@ mod tests {
     }
 
     #[test]
-    fn supplied_art_uses_the_original_green_accent() {
+    fn compact_logo_uses_the_matrix_accent() {
         assert!(ART.is_ascii());
+        assert_eq!(logo().len(), 3);
+        assert!(logo().iter().all(|row| row.width() <= 35));
         assert!(
             render(&info(true), 100)
                 .iter()
@@ -150,7 +138,7 @@ mod tests {
         );
         assert_eq!(
             crate::text::theme::get().color("accent"),
-            Some(crate::text::theme::Rgb(0, 220, 130))
+            Some(crate::text::theme::Rgb(0, 255, 65))
         );
     }
 

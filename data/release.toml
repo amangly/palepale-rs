@@ -1,7 +1,7 @@
 # Which file of a release each platform runs, by Rust's names for the OS and CPU
 # (std::env::consts). The release workflow names its assets `palepale-<target>`; a test holds
 # these to the targets .github/workflows/ci.yml builds.
-repository = "amangly/palepale-cli"
+repository = "amangly/palepale-rs"
 sums = "SHA256SUMS"
 
 [[asset]]

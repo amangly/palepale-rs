@@ -57,6 +57,66 @@ pub fn size() -> (usize, usize) {
     crossterm::terminal::size().map_or((80, 24), |(w, h)| (w as usize, h as usize))
 }
 
+/// ttfx probes terminal dimensions during construction; frame stepping uses a virtual clock.
+pub fn effect_engine(
+    text: &str,
+    width: usize,
+    height: usize,
+    seed: u64,
+    frame_rate: i64,
+) -> Result<ttfx::fx::Engine, ttfx::engine::error::EngineError> {
+    ttfx::fx::Engine::new(
+        text,
+        ttfx::engine::terminal::TerminalConfig {
+            canvas_width: width as i64,
+            canvas_height: height as i64,
+            frame_rate: 0,
+            ignore_terminal_dimensions: true,
+            ..Default::default()
+        },
+        ttfx::utils::rng::Rng::seeded(seed),
+        ttfx::engine::ctx::Clock::virtual_with_frame_rate(frame_rate),
+    )
+}
+
+// ttfx links its Unix output adapter even when we use only its frame engine.
+#[cfg(windows)]
+#[unsafe(export_name = "writev")]
+unsafe extern "C" fn ttfx_writev(fd: i32, parts: *const io::IoSlice<'_>, count: i32) -> isize {
+    use windows_sys::Win32::Foundation::{
+        ERROR_INVALID_PARAMETER, ERROR_WRITE_FAULT, SetLastError,
+    };
+    if count < 0 || (count > 0 && parts.is_null()) || !matches!(fd, 1 | 2) {
+        // SAFETY: sets this thread's error code.
+        unsafe { SetLastError(ERROR_INVALID_PARAMETER) };
+        return -1;
+    }
+    if count == 0 {
+        return 0;
+    }
+    // SAFETY: ttfx passes a live slice of std::io::IoSlice, compiled for this same target.
+    let parts = unsafe { std::slice::from_raw_parts(parts, count as usize) };
+    let result = if fd == 1 {
+        io::stdout().lock().write_vectored(parts)
+    } else {
+        io::stderr().lock().write_vectored(parts)
+    };
+    match result {
+        Ok(written) => written as isize,
+        Err(error) => {
+            // SAFETY: preserves the Windows error used by ttfx's last_os_error().
+            unsafe {
+                SetLastError(
+                    error
+                        .raw_os_error()
+                        .map_or(ERROR_WRITE_FAULT, |code| code as u32),
+                )
+            };
+            -1
+        }
+    }
+}
+
 /// What the terminal can colour, from the conventions terminals advertise themselves by.
 pub fn color_depth() -> Depth {
     if settings::env("NO_COLOR").is_some() {

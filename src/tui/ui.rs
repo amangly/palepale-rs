@@ -195,7 +195,6 @@ pub struct Footer {
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Text {
-    pub welcome: String,
     pub chat_only: String,
     pub tool_expand: String,
     pub interrupt: String,

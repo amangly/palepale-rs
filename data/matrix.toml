@@ -1,0 +1,14 @@
+max_frames = 100
+virtual_frame_rate = 30
+rain_time = 1
+rain_symbols = "0123456789Z*:.=+-|_"
+highlight_color = "dbffdb"
+rain_colors = ["00ff41", "003b00"]
+final_colors = ["00ff41"]
+fall_delay = [1, 2]
+column_delay = [1, 1]
+symbol_swap_chance = 0.05
+color_swap_chance = 0.01
+resolve_delay = 1
+gradient_steps = [3]
+gradient_frames = 1

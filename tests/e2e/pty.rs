@@ -542,6 +542,25 @@ async fn a_session_welcomes_chats_switches_mode_and_quits() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn typing_during_the_matrix_intro_keeps_the_draft_and_reveals_the_logo() {
+    let fake = Fake::start().await;
+    in_session(&fake, Sandbox::default(), Some(ENV_KEY), |s| {
+        s.type_text("keep this draft");
+        s.wait_for("keep this draft");
+        s.wait_for("|__) |__|");
+        let screen = s.contents();
+        assert!(screen.contains("/help commands"), "{screen}");
+        assert!(
+            !screen.contains("Your terminal. Your workspace."),
+            "{screen}"
+        );
+        s.send("\x15");
+    })
+    .await;
+    assert_eq!(fake.hits("/v1/chat/completions"), 0);
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn keytest_reads_the_terminal_and_leaves_it_as_it_found_it() {
     let fake = Fake::start().await;
     let url = fake.url.clone();
@@ -698,7 +717,9 @@ async fn a_slash_opens_the_command_popup_which_completes_and_runs() {
         // The bar never leaves the bottom row, whatever opened and closed above it.
         assert!(s.bottom_row().contains("demo-2"), "{}", s.contents());
         s.send("\r");
-        s.wait_for("AUTO");
+        s.poll(WAIT, "/mode did not switch to PLAN", |s| {
+            s.bottom_row().contains("PLAN").then_some(())
+        });
         // Down picks the second match and Enter runs it.
         s.type_text("/mo");
         s.wait_for("╭ commands");
@@ -723,7 +744,7 @@ async fn slash_login_pairs_this_device_and_the_session_chats_at_once() {
     fake.pair_after(1);
     fake.script([Reply::sse("hello.sse")]);
     let ended = in_session(&fake, Sandbox::default(), None, |s| {
-        s.wait_for("Your terminal. Your workspace.");
+        s.wait_for("/help commands");
         s.type_text("/login");
         s.send("\r");
         s.wait_for("Log in to palepale");
@@ -744,7 +765,7 @@ async fn slash_login_pairs_this_device_and_the_session_chats_at_once() {
 async fn slash_login_takes_a_masked_account_number_and_retries_a_wrong_one() {
     let fake = Fake::start().await;
     let ended = in_session(&fake, Sandbox::default(), None, |s| {
-        s.wait_for("Your terminal. Your workspace.");
+        s.wait_for("/help commands");
         s.type_text("/login");
         s.send("\r");
         s.wait_for("Log in to palepale");
@@ -768,7 +789,7 @@ async fn slash_login_takes_a_masked_account_number_and_retries_a_wrong_one() {
 async fn slash_login_takes_the_same_arguments_as_the_command_line() {
     let fake = Fake::start().await;
     let ended = in_session(&fake, Sandbox::default(), None, |s| {
-        s.wait_for("Your terminal. Your workspace.");
+        s.wait_for("/help commands");
         s.type_text("/login --status");
         s.send("\r");
         s.wait_for("Not logged in. Run /login");
@@ -928,7 +949,7 @@ async fn right_click_copies_the_pairing_code_from_its_card() {
     let fake = Fake::start().await;
     fake.pair_after(100);
     in_session(&fake, Sandbox::default(), None, |s| {
-        s.wait_for("Your terminal. Your workspace.");
+        s.wait_for("/help commands");
         s.type_text("/login");
         s.send("\r");
         s.wait_for("Log in to palepale");
@@ -1048,6 +1069,20 @@ async fn slash_status_refreshes_account_balance_with_local_model_and_mode() {
         s.wait_for("Charged: $3.00");
         s.wait_for("Confirmed requests: 42");
         s.wait_for("50%");
+        let screen = s.contents();
+        let input = screen
+            .lines()
+            .find(|row| row.contains("Input tokens"))
+            .unwrap();
+        let output = screen
+            .lines()
+            .find(|row| row.contains("Output tokens"))
+            .unwrap();
+        assert!(input.contains("12K") && output.contains("3K"), "{screen}");
+        assert_eq!(input.matches('━').count(), 24, "{screen}");
+        assert_eq!(output.matches('━').count(), 6, "{screen}");
+        assert!(screen.contains("Cached input: 6K (50%)"), "{screen}");
+        assert!(screen.contains("Reasoning tokens: 1K"), "{screen}");
         s.send("r");
         s.wait_for("Refreshing account and usage");
         s.wait_gone("Refreshing account and usage");
@@ -1390,11 +1425,11 @@ async fn disconnected_session_keeps_local_commands_and_restores_the_terminal() {
     tokio::task::spawn_blocking(move || {
         let sandbox = Sandbox::default();
         let mut s = Session::start_sized(&sandbox, "", None, &[], 40, 100, false);
-        s.wait_for("Your terminal. Your workspace.");
+        s.wait_for("/help commands");
         s.wait_for("Backend not configured");
         s.wait_quiet();
         assert!(s.row(0).contains("palepale"));
-        assert!(s.contents().contains(":::::::: ::::::::"));
+        assert!(s.contents().contains("|__) |__|"));
         if let Ok(path) = std::env::var("PALEPALE_CAPTURE_PATH") {
             std::fs::write(&path, s.contents()).unwrap();
             std::fs::write(
@@ -1415,7 +1450,7 @@ async fn disconnected_session_keeps_local_commands_and_restores_the_terminal() {
         assert!(sandbox.sessions().is_empty());
         s.type_text("/new");
         s.send("\r");
-        s.wait_for("Your terminal. Your workspace.");
+        s.wait_for("/help commands");
         s.send("\x04");
         assert!(s.wait_exit());
         let screen = s.screen.screen();

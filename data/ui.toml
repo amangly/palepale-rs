@@ -8,11 +8,7 @@ user_mark = "│ "
 reply_mark = "› "
 placeholder = "Write a message…  / for commands"
 tips = [
-  "/help lists commands",
-  "Shift+Tab cycles {modes}",
-  "Enter sends · while working, Enter queues and Tab steers",
-  "Shift+Enter or Ctrl+J starts a new line",
-  "Right-click copies a message",
+  "/help commands · /status usage · /models model",
 ]
 
 [footer]
@@ -22,7 +18,6 @@ items = ["mode", "model", "context"]
 separator = " · "
 
 [text]
-welcome = "Your terminal. Your workspace."
 chat_only = "Chat only · this model route has no tools. /models switches models."
 tool_expand = "click to expand"
 interrupt = "esc to interrupt"

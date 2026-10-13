@@ -124,7 +124,7 @@ mod tests {
                 .as_str()
                 .unwrap()
                 .replace("{repository}", repository()),
-            "/amangly/palepale-cli/releases/latest"
+            "/amangly/palepale-rs/releases/latest"
         );
     }
 

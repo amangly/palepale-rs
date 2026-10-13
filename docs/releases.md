@@ -1,6 +1,6 @@
 # Releases
 
-Source, binaries, checksums, `LICENSE-APACHE`, and `NOTICE` live in `amangly/palepale-cli`.
+Source, binaries, checksums, `LICENSE-APACHE`, and `NOTICE` live in `amangly/palepale-rs`.
 
 ## Publishing
 

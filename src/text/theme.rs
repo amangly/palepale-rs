@@ -69,11 +69,14 @@ impl Theme {
         }
     }
 
-    /// The colour of `role`; tests fail on an unknown role, a release build falls back to default.
+    /// A theme role or literal #rrggbb for frames supplied by a text effect.
     pub fn color(&self, role: &str) -> Option<Rgb> {
         match self.roles.get(role) {
             Some(color) => *color,
             None => {
+                if let Some(color) = hex_to_rgb(role) {
+                    return Some(color);
+                }
                 debug_assert!(false, "no role `{role}` in data/theme.toml");
                 None
             }
@@ -137,8 +140,9 @@ mod tests {
     fn every_role_and_syntax_rule_resolves() {
         let theme = get();
         assert!(theme.has("accent"));
-        assert_eq!(theme.color("accent"), Some(Rgb(0x00, 0xDC, 0x82)));
+        assert_eq!(theme.color("accent"), Some(Rgb(0x00, 0xFF, 0x41)));
         assert_eq!(theme.color("text"), None);
+        assert_eq!(theme.color("#dbffdb"), Some(Rgb(0xDB, 0xFF, 0xDB)));
         for rule in &theme.syntax {
             assert!(
                 theme.has(&rule.role),
