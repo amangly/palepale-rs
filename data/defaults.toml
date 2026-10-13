@@ -2,8 +2,8 @@
 # order. `[[permission]]` rules are appended instead, and the last matching rule wins.
 model = ""
 mode = "manual"
-# Published releases update on interactive startup, at most once a day.
-# PALEPALE_NO_UPDATE also disables background checks.
+# Published releases check before interactive startup and reopen after a verified update.
+# PALEPALE_NO_UPDATE also disables automatic checks.
 auto_update = true
 
 [[permission]]

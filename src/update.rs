@@ -1,11 +1,10 @@
-//! palepale replaces itself with the newest release: on demand (`palepale update`), and once a day
-//! in the background of an interactive session for a release build. What happened is kept in
-//! `~/.palepale/update.json`, so the next start can say so.
+//! Verified release replacement, with progress for the interactive startup screen.
 
 use std::path::Path;
 use std::sync::LazyLock;
 
 use anyhow::{Context, anyhow, bail};
+use futures_util::StreamExt;
 use jiff::{SignedDuration, Timestamp};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -32,6 +31,7 @@ static TEXT: LazyLock<Text> = LazyLock::new(|| {
 #[serde(deny_unknown_fields)]
 struct Text {
     updated: String,
+    opened: String,
     up_to_date: String,
     development: String,
     unsupported_tag: String,
@@ -42,12 +42,21 @@ struct Text {
     not_writable: String,
     mismatch: String,
     http: String,
+    too_large: String,
 }
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Outcome {
     UpToDate(String),
     Updated(Change),
+}
+
+#[derive(Clone, Debug)]
+pub enum Progress {
+    Checking,
+    Downloading { received: u64, total: Option<u64> },
+    Verifying,
+    Installing,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -66,6 +75,9 @@ impl Outcome {
 }
 
 impl Change {
+    pub fn opened(&self) -> String {
+        fill(&TEXT.opened, &[("from", &self.from), ("to", &self.to)])
+    }
     pub fn say(&self) -> String {
         fill(&TEXT.updated, &[("from", &self.from), ("to", &self.to)])
     }
@@ -106,8 +118,7 @@ pub fn take_news(paths: &Paths) -> Option<Change> {
     Some(news)
 }
 
-/// Whether an interactive session should look now: updates on, a release build, and a day since
-/// the last look.
+/// Short restart bursts share a recent check instead of exhausting the release feed's limit.
 pub fn due(state: &State, now: Timestamp, enabled: bool) -> bool {
     let interval = SignedDuration::try_from(limits::get().update.check_interval_secs.secs())
         .unwrap_or(SignedDuration::MAX);
@@ -121,6 +132,13 @@ pub fn due(state: &State, now: Timestamp, enabled: bool) -> bool {
 
 /// Checks and updates this binary now, recording the look and its result.
 pub async fn now(paths: &Paths) -> anyhow::Result<Outcome> {
+    with_progress(paths, &|_| {}).await
+}
+
+pub async fn with_progress(
+    paths: &Paths,
+    progress: &(dyn Fn(Progress) + Sync),
+) -> anyhow::Result<Outcome> {
     let current = release::tag().ok_or_else(|| anyhow!(TEXT.development.clone()))?;
     if endpoints::origin("releases").is_empty() {
         anyhow::bail!(crate::backend::text().releases_unconfigured.clone());
@@ -133,8 +151,9 @@ pub async fn now(paths: &Paths) -> anyhow::Result<Outcome> {
         &[("repository", release::repository())],
     );
     let mut state = load(paths);
+    let result = run_with_progress(&http, &latest, current, &exe, progress).await;
+    // The reopened process shares this check even after a slow download.
     state.checked_at = Some(io::clock::now());
-    let result = run(&http, &latest, current, &exe).await;
     match &result {
         Ok(Outcome::Updated(change)) => {
             state.updated = Some(change.clone());
@@ -157,17 +176,30 @@ struct Latest {
 struct Remote {
     name: String,
     browser_download_url: String,
+    size: Option<u64>,
 }
 
 /// Replaces `exe`, built as release `current`, with the release `latest_url` names, after
 /// checking the download against the release's checksums.
 /// CEILING: the checksums come from the same release, so they catch a damaged download, not a
 /// hostile upload. Upgrade: a minisign signature checked against a key built into palepale.
+#[cfg(test)]
 async fn run(http: &Http, latest_url: &str, current: &str, exe: &Path) -> anyhow::Result<Outcome> {
+    run_with_progress(http, latest_url, current, exe, &|_| {}).await
+}
+
+async fn run_with_progress(
+    http: &Http,
+    latest_url: &str,
+    current: &str,
+    exe: &Path,
+    progress: &(dyn Fn(Progress) + Sync),
+) -> anyhow::Result<Outcome> {
+    progress(Progress::Checking);
     let listing = get(
         http,
         latest_url,
-        limits::get().http.request_timeout_ms.ms(),
+        limits::get().update.check_timeout_secs.secs(),
         true,
     )
     .await;
@@ -212,16 +244,23 @@ async fn run(http: &Http, latest_url: &str, current: &str, exe: &Path) -> anyhow
             &[("dir", &dir.display().to_string())]
         ));
     }
-    let download = limits::get().update.download_timeout_secs.secs();
-    let bytes = get(http, &file.browser_download_url, download, false).await?;
-    let sums = get(http, &sums.browser_download_url, download, false).await?;
+    let bytes = download_binary(http, file, progress).await?;
+    progress(Progress::Verifying);
+    let sums = get(
+        http,
+        &sums.browser_download_url,
+        limits::get().update.check_timeout_secs.secs(),
+        false,
+    )
+    .await?;
     if !matches(&bytes, &String::from_utf8_lossy(&sums), &ours.file) {
         bail!(fill(&TEXT.mismatch, &[("file", &ours.file)]));
     }
+    progress(Progress::Installing);
     let name = exe
         .file_name()
         .map_or_else(|| "palepale".into(), |n| n.to_string_lossy());
-    let staged = dir.join(format!(".{name}.new"));
+    let staged = io::fs::executable_stage(dir, &name);
     io::fs::write_executable(&staged, &bytes)?;
     if let Err(e) = io::fs::replace_executable(&staged, exe) {
         let _ = io::fs::remove(&staged);
@@ -233,32 +272,96 @@ async fn run(http: &Http, latest_url: &str, current: &str, exe: &Path) -> anyhow
     }))
 }
 
+async fn download_binary(
+    http: &Http,
+    file: &Remote,
+    progress: &(dyn Fn(Progress) + Sync),
+) -> anyhow::Result<Vec<u8>> {
+    let bounds = &limits::get().update;
+    let read = async {
+        let mut response = http
+            .open(Request {
+                method: Method::Get,
+                url: file.browser_download_url.clone(),
+                bearer: None,
+                headers: &[],
+                json: None,
+                timeout: bounds.check_timeout_secs.secs(),
+            })
+            .await?;
+        if response.head.status >= 400 {
+            bail!(fill(
+                &TEXT.http,
+                &[
+                    ("url", &file.browser_download_url),
+                    ("status", &response.head.status.to_string())
+                ]
+            ));
+        }
+        let mut bytes = Vec::new();
+        progress(Progress::Downloading {
+            received: 0,
+            total: file.size,
+        });
+        while let Some(chunk) = response.body.next().await {
+            let chunk = chunk?;
+            if chunk.len() > bounds.download_max_bytes.value.saturating_sub(bytes.len()) {
+                bail!("{}", TEXT.too_large);
+            }
+            bytes.extend(chunk);
+            progress(Progress::Downloading {
+                received: bytes.len() as u64,
+                total: file.size,
+            });
+        }
+        Ok(bytes)
+    };
+    tokio::time::timeout(bounds.download_timeout_secs.secs(), read).await?
+}
+
 async fn get(
     http: &Http,
     url: &str,
     timeout: std::time::Duration,
     listing: bool,
 ) -> anyhow::Result<Vec<u8>> {
-    let resp = http
-        .send(Request {
-            method: Method::Get,
-            url: url.to_owned(),
-            bearer: None,
-            headers: &[("Accept", "application/vnd.github+json")],
-            json: None,
-            timeout,
-        })
-        .await?;
-    if listing && resp.head.status == 404 {
-        bail!(fill(&TEXT.not_published, &[("url", url)]));
-    }
-    if resp.head.status >= 400 {
-        bail!(fill(
-            &TEXT.http,
-            &[("url", url), ("status", &resp.head.status.to_string())]
-        ));
-    }
-    Ok(resp.body)
+    let read = async {
+        let mut resp = http
+            .open(Request {
+                method: Method::Get,
+                url: url.to_owned(),
+                bearer: None,
+                headers: &[("Accept", "application/vnd.github+json")],
+                json: None,
+                timeout,
+            })
+            .await?;
+        if listing && resp.head.status == 404 {
+            bail!(fill(&TEXT.not_published, &[("url", url)]));
+        }
+        if resp.head.status >= 400 {
+            bail!(fill(
+                &TEXT.http,
+                &[("url", url), ("status", &resp.head.status.to_string())]
+            ));
+        }
+        let mut bytes = Vec::new();
+        while let Some(chunk) = resp.body.next().await {
+            let chunk = chunk?;
+            if chunk.len()
+                > limits::get()
+                    .update
+                    .metadata_max_bytes
+                    .value
+                    .saturating_sub(bytes.len())
+            {
+                bail!("{}", TEXT.too_large);
+            }
+            bytes.extend(chunk);
+        }
+        Ok(bytes)
+    };
+    tokio::time::timeout(timeout, read).await?
 }
 
 /// Whether `bytes` hash to what `sums` (sha256sum's `<hex>  <name>` lines) says `name` is.
@@ -301,20 +404,64 @@ mod tests {
     }
 
     #[test]
-    fn a_look_is_due_once_a_day_for_a_release_build_with_updates_on() {
+    fn restart_bursts_share_a_check_and_later_starts_check_again() {
         let now: Timestamp = "2026-10-03T12:00:00Z".parse().unwrap();
         let recent = State {
-            checked_at: Some(now - SignedDuration::from_hours(2)),
+            checked_at: Some(now - SignedDuration::from_secs(10)),
             ..State::default()
         };
         let stale = State {
-            checked_at: Some(now - SignedDuration::from_hours(25)),
+            checked_at: Some(now - SignedDuration::from_secs(61)),
             ..State::default()
         };
         assert!(!due(&recent, now, true));
         assert!(!due(&stale, now, false));
         // A test binary is a development build, which never updates itself.
         assert_eq!(due(&stale, now, true), release::tag().is_some());
+    }
+
+    #[tokio::test]
+    async fn oversized_metadata_and_stalled_bodies_fail_before_installing() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let router = Router::new()
+            .route(
+                "/large",
+                get(|| async { vec![b' '; limits::get().update.metadata_max_bytes.value + 1] }),
+            )
+            .route(
+                "/slow",
+                get(|| async {
+                    axum::body::Body::from_stream(futures_util::stream::once(async {
+                        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+                        Ok::<_, std::convert::Infallible>(b"{}".to_vec())
+                    }))
+                }),
+            );
+        tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
+        let http = Http::new(std::time::Duration::from_secs(1)).unwrap();
+        assert!(
+            super::get(
+                &http,
+                &format!("{base}/large"),
+                std::time::Duration::from_secs(1),
+                true
+            )
+            .await
+            .unwrap_err()
+            .to_string()
+            .contains(&TEXT.too_large)
+        );
+        assert!(
+            super::get(
+                &http,
+                &format!("{base}/slow"),
+                std::time::Duration::from_millis(50),
+                false
+            )
+            .await
+            .is_err()
+        );
     }
 
     /// A stand-in for GitHub: the newest release `tag`, its file for this platform, and sums.

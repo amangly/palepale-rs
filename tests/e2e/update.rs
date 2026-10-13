@@ -9,6 +9,69 @@ use sha2::{Digest, Sha256};
 
 use crate::{CLEARED, Sandbox, binary, launch_env};
 
+pub async fn startup_feed(
+    payload: Vec<u8>,
+    tag: &str,
+    bad_checksum: bool,
+) -> (String, Arc<AtomicUsize>, Arc<AtomicBool>) {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let origin = format!("http://{}", listener.local_addr().unwrap());
+    let asset = if cfg!(windows) {
+        "palepale-x86_64-pc-windows-msvc.exe"
+    } else if cfg!(target_os = "macos") {
+        "palepale-aarch64-apple-darwin"
+    } else {
+        "palepale-x86_64-unknown-linux-musl"
+    };
+    let checksum = if bad_checksum {
+        "0".repeat(64)
+    } else {
+        Sha256::digest(&payload)
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect::<String>()
+    };
+    let sums = format!("{checksum}  {asset}\n");
+    let latest = json!({"tag_name":tag,"assets":[{"name":asset,"size":payload.len(),"browser_download_url":format!("{origin}/binary")},{"name":"SHA256SUMS","browser_download_url":format!("{origin}/checksums")}]});
+    let hits = Arc::new(AtomicUsize::new(0));
+    let leaked = Arc::new(AtomicBool::new(false));
+    let (seen, count) = (leaked.clone(), hits.clone());
+    let payload = Arc::new(payload);
+    let router = Router::new()
+        .route(
+            "/amangly/palepale-cli/releases/latest",
+            get(move |headers: HeaderMap| async move {
+                count.fetch_add(1, Ordering::Relaxed);
+                seen.store(headers.contains_key("authorization"), Ordering::Relaxed);
+                axum::Json(latest)
+            }),
+        )
+        .route(
+            "/binary",
+            get(move || async move {
+                let chunk_size = payload.len().div_ceil(8);
+                let chunks = futures_util::stream::unfold(
+                    (payload, 0usize),
+                    move |(payload, offset)| async move {
+                        if offset >= payload.len() {
+                            return None;
+                        }
+                        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                        let end = (offset + chunk_size).min(payload.len());
+                        let chunk = payload[offset..end].to_vec();
+                        Some((Ok::<_, std::convert::Infallible>(chunk), (payload, end)))
+                    },
+                );
+                axum::body::Body::from_stream(chunks)
+            }),
+        )
+        .route("/checksums", get(move || async move { sums }));
+    tokio::spawn(async move {
+        axum::serve(listener, router).await.unwrap();
+    });
+    (origin, hits, leaked)
+}
+
 /// Run with PALEPALE_TEST_BINARY pointing at the optimized build to check real self-replacement.
 #[tokio::test(flavor = "multi_thread")]
 async fn github_update_keeps_credentials_and_installs_only_verified_newer_releases() {

@@ -23,6 +23,116 @@ const POLL: Duration = Duration::from_millis(50);
 const KEY_GAP: Duration = Duration::from_millis(30);
 
 #[tokio::test(flavor = "multi_thread")]
+async fn startup_update_shows_progress_reopens_and_preserves_state_or_keeps_the_old_copy() {
+    use std::sync::atomic::Ordering;
+    let source = crate::binary();
+    let version = tokio::process::Command::new(&source)
+        .arg("--version")
+        .output()
+        .await
+        .unwrap();
+    let version = String::from_utf8(version.stdout).unwrap();
+    let Some((_, tag)) = version.split_once('(') else {
+        return;
+    };
+    let current = tag.trim().trim_end_matches(')');
+    let (base, build) = current.rsplit_once('-').unwrap_or((current, "0"));
+    let next = format!("{base}-{}", build.parse::<u64>().unwrap() + 1);
+    let payload = std::fs::read(&source).unwrap();
+    for scenario in [
+        "new",
+        "checksum",
+        "disabled",
+        "no_update",
+        "offline",
+        "cancelled",
+    ] {
+        let fake = Fake::start().await;
+        let (feed, hits, leaked) =
+            crate::update::startup_feed(payload.clone(), &next, scenario == "checksum").await;
+        let sandbox = Sandbox::default();
+        let install = tempfile::tempdir().unwrap();
+        let exe = install.path().join(source.file_name().unwrap());
+        std::fs::copy(&source, &exe).unwrap();
+        // An executable can carry an unused overlay; replacement must remove this marker.
+        let mut original = payload.clone();
+        original.extend_from_slice(b"old test copy marker");
+        std::fs::write(&exe, &original).unwrap();
+        let config = format!("auto_update = {}\n", scenario != "disabled");
+        std::fs::write(sandbox.home().join("config.toml"), &config).unwrap();
+        std::fs::write(
+            sandbox.home().join("auth.json"),
+            "synthetic credential marker",
+        )
+        .unwrap();
+        #[cfg(windows)]
+        std::fs::write(sandbox.home().join("install.json"), r#"{"declined":true}"#).unwrap();
+        let api = fake.url.clone();
+        let next_tag = next.clone();
+        let installed_payload = payload.clone();
+        tokio::task::spawn_blocking(move || {
+            let mut cmd = CommandBuilder::new(&exe);
+            cmd.args(["--model", "fake-coder", "startup prompt"]);
+            cmd.cwd(sandbox.project.path());
+            for name in CLEARED {
+                cmd.env_remove(name);
+            }
+            for (name, value) in launch_env(sandbox.home(), &api, Some(ENV_KEY)) {
+                cmd.env(name, value);
+            }
+            cmd.env("PALEPALE_RELEASES_URL", &feed);
+            cmd.env("TERM", "xterm-256color");
+            if scenario == "no_update" {
+                cmd.env("PALEPALE_NO_UPDATE", "1");
+            }
+            if scenario == "offline" {
+                cmd.env("PALEPALE_OFFLINE", "1");
+            }
+            let mut session = Session::spawn(cmd, ROWS, COLS);
+            let checks = !matches!(scenario, "disabled" | "no_update" | "offline");
+            if checks {
+                session.wait_for("Downloading update");
+                assert!(session.contents().contains('%'), "{}", session.contents());
+                if scenario == "cancelled" {
+                    session.send("\x03");
+                }
+            }
+            session.wait_for("palepale v");
+            session.wait_for("startup prompt");
+            if scenario != "offline" {
+                assert!(
+                    session.bottom_row().contains("fake-coder"),
+                    "{}",
+                    session.contents()
+                );
+            }
+            if scenario == "new" {
+                assert_eq!(std::fs::read(&exe).unwrap(), installed_payload);
+                session.wait_for(&format!("Updated to {next_tag}"));
+            } else {
+                assert_eq!(std::fs::read(&exe).unwrap(), original);
+            }
+            assert_eq!(
+                std::fs::read_to_string(sandbox.home().join("auth.json")).unwrap(),
+                "synthetic credential marker"
+            );
+            assert_eq!(
+                std::fs::read_to_string(sandbox.home().join("config.toml")).unwrap(),
+                config
+            );
+            assert!(sandbox.sessions().is_empty());
+            assert_eq!(hits.load(Ordering::Relaxed), usize::from(checks));
+            assert!(!leaked.load(Ordering::Relaxed));
+            session.send("\x15");
+            session.send("\x04");
+            assert!(session.wait_exit());
+        })
+        .await
+        .unwrap();
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn automatic_login_pairs_on_first_open_and_reuses_the_key_on_next_open() {
     let fake = Fake::start().await;
     fake.pair_after(1);
@@ -162,14 +272,6 @@ impl Session {
         // Packaged Windows tests stay portable instead of installing into the runner profile.
         #[cfg(windows)]
         std::fs::write(sandbox.home().join("install.json"), r#"{"declined":true}"#).unwrap();
-        let pty = native_pty_system()
-            .openpty(PtySize {
-                rows,
-                cols,
-                pixel_width: 0,
-                pixel_height: 0,
-            })
-            .expect("a pseudo-terminal");
         let mut cmd = CommandBuilder::new(crate::binary());
         cmd.args(args);
         cmd.cwd(sandbox.project.path());
@@ -183,6 +285,19 @@ impl Session {
             cmd.env(name, value);
         }
         cmd.env("TERM", "xterm-256color");
+        cmd.env("PALEPALE_NO_UPDATE", "1");
+        Self::spawn(cmd, rows, cols)
+    }
+
+    fn spawn(cmd: CommandBuilder, rows: u16, cols: u16) -> Self {
+        let pty = native_pty_system()
+            .openpty(PtySize {
+                rows,
+                cols,
+                pixel_width: 0,
+                pixel_height: 0,
+            })
+            .expect("a pseudo-terminal");
         let child = pty.slave.spawn_command(cmd).expect("palepale starts");
         drop(pty.slave);
         let mut reader = pty.master.try_clone_reader().unwrap();
@@ -897,19 +1012,73 @@ async fn slash_clear_starts_a_fresh_conversation_in_a_new_file() {
 #[tokio::test(flavor = "multi_thread")]
 async fn slash_status_refreshes_account_balance_with_local_model_and_mode() {
     let fake = Fake::start().await;
+    fake.overview_delays([Duration::ZERO, Duration::from_millis(500)]);
     in_session(&fake, Sandbox::default(), Some(ENV_KEY), |s| {
         s.wait_for("MANUAL");
         s.type_text("/status");
         s.send("\r");
         s.wait_for("Backend: backend configured");
-        s.wait_for("Account …3456. Available balance $12.30.");
+        s.wait_for("╭ Status");
+        s.wait_for("Account: …3456");
+        s.wait_for("Available balance: $12.30");
         let screen = s.contents();
         assert!(screen.contains("Model: demo-2"), "{screen}");
         assert!(screen.contains("Mode: MANUAL"), "{screen}");
         assert!(screen.contains("nothing sent yet"), "{screen}");
+        s.send("\t");
+        s.wait_for("All-time confirmed account usage");
+        s.wait_for("Charged: $3.00");
+        s.wait_for("Confirmed requests: 42");
+        s.wait_for("50%");
+        s.send("r");
+        s.wait_for("Refreshing account and usage");
+        s.wait_gone("Refreshing account and usage");
+        s.send("\x1b");
+        s.wait_gone("╭ Status");
     })
     .await;
-    assert_eq!(fake.hits("/api/me"), 1);
+    assert_eq!(fake.hits("/api/me"), 2);
+    assert_eq!(fake.hits("/api/me/overview"), 2);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn status_loads_without_blocking_input_and_does_not_reopen_after_dismissal() {
+    let fake = Fake::start().await;
+    fake.overview_delays([Duration::from_millis(600)]);
+    in_session(&fake, Sandbox::default(), Some(ENV_KEY), |s| {
+        s.type_text("/status");
+        s.send("\r");
+        s.wait_for("╭ Status");
+        s.wait_for("Refreshing account and usage");
+        s.send("\x1b[Z");
+        s.wait_for("Mode: PLAN");
+        s.send("\x1b");
+        s.wait_gone("╭ Status");
+        s.type_text("still typing");
+        s.wait_for("still typing");
+        std::thread::sleep(Duration::from_millis(700));
+        s.pump();
+        assert!(!s.contents().contains("╭ Status"), "{}", s.contents());
+        s.send("\x15");
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn unavailable_account_usage_keeps_the_balance_without_inventing_zero_usage() {
+    let fake = Fake::start().await;
+    fake.overview_errors([503]);
+    in_session(&fake, Sandbox::default(), Some(ENV_KEY), |s| {
+        s.type_text("/status");
+        s.send("\r");
+        s.wait_for("Available balance: $12.30");
+        s.send("\t");
+        s.wait_for("Usage unavailable:");
+        assert!(!s.contents().contains("Charged: $0.00"));
+        s.send("\x1b");
+        s.wait_gone("╭ Status");
+    })
+    .await;
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -1220,6 +1389,8 @@ async fn disconnected_session_keeps_local_commands_and_restores_the_terminal() {
         s.send("\r");
         s.wait_for("Backend: backend not configured");
         assert!(!s.contents().contains("Balance"));
+        s.send("\x1b");
+        s.wait_gone("╭ Status");
         s.type_text("hello");
         s.send("\r");
         s.wait_for("PALEPALE_API_URL to connect");

@@ -2,6 +2,7 @@
 # notice at the start of a session after an update.
 [text]
 updated = "palepale updated to {to} (from {from}). Restart palepale to use it."
+opened = "Updated to {to} (from {from})."
 up_to_date = "No newer release is available; running {tag}."
 development = "Updates are disabled in debug builds; build with --release or install an official release."
 unsupported_tag = "Cannot compare release {latest} with {current}; expected vMAJOR.MINOR.PATCH-BUILD. Nothing was changed."
@@ -12,3 +13,15 @@ missing = "Release {tag} has no {file}."
 not_writable = "palepale cannot write to {dir}, where it is installed (by an administrator or a package manager, perhaps); update it there."
 mismatch = "The download of {file} does not match its checksum; nothing was changed."
 http = "{url} answered {status}."
+too_large = "The release response exceeds the supported size; the installed CLI was kept."
+
+[startup]
+checking = "Checking for updates"
+downloading = "Downloading update"
+verifying = "Verifying checksum"
+installing = "Installing update"
+current = "{tag} is up to date"
+opening = "Opening {tag}"
+failed = "Update unavailable; opening the installed version. {error}"
+cancelled = "Update cancelled; opening the installed version."
+hint = "ctrl+c skip update"

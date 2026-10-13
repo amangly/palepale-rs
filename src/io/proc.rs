@@ -75,6 +75,26 @@ pub fn current_exe() -> io::Result<PathBuf> {
     std::env::current_exe()
 }
 
+/// Reopens in this terminal with the same arguments, environment and working directory.
+pub async fn relaunch(exe: &Path) -> io::Result<std::process::ExitCode> {
+    let args = std::env::args_os().skip(1);
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        Err(std::process::Command::new(exe).args(args).exec())
+    }
+    #[cfg(not(unix))]
+    {
+        let status = tokio::process::Command::new(exe)
+            .args(args)
+            .status()
+            .await?;
+        Ok(std::process::ExitCode::from(
+            status.code().unwrap_or(1).clamp(0, 255) as u8,
+        ))
+    }
+}
+
 /// The first `name` on PATH (trying PATHEXT extensions on Windows), or `name` itself when it is
 /// already a path to a program.
 pub fn which(name: &str) -> Option<PathBuf> {

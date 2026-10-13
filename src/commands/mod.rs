@@ -168,6 +168,8 @@ pub enum Effect {
     Send(String),
     /// Refresh the catalog and open the session's model picker.
     PickModel,
+    /// Open the session and account usage card; fetch its data beside terminal input.
+    ShowStatus,
     /// Open the session's forums card, at the login for the forum with this base URL when one
     /// was named.
     Forums {

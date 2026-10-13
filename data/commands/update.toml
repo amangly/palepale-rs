@@ -1,4 +1,4 @@
 name = "update"
-summary = "Install a newer verified release now (automatic checks run on startup, at most once a day)"
+summary = "Install a newer verified release now (interactive startup updates automatically)"
 usage = "update"
 scope = ["cli"]

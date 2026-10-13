@@ -138,6 +138,9 @@ pub struct ToolLimits {
 pub struct UpdateLimits {
     pub check_interval_secs: Limit<u64>,
     pub download_timeout_secs: Limit<u64>,
+    pub check_timeout_secs: Limit<u64>,
+    pub download_max_bytes: Limit<usize>,
+    pub metadata_max_bytes: Limit<usize>,
 }
 
 #[derive(Debug, Deserialize)]

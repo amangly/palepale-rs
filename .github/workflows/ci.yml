@@ -58,6 +58,7 @@ jobs:
         run: |
           export PALEPALE_TEST_BINARY="$PWD/target/${TARGET:+$TARGET/}release/palepale$EXE"
           cargo test --locked --test e2e github_update_keeps_credentials_and_installs_only_verified_newer_releases
+          cargo test --locked --test e2e startup_update
           cargo test --locked --test e2e a_session_welcomes_chats_switches_mode_and_quits
       - if: inputs.publish && matrix.target
         uses: ./.github/actions/asset

@@ -124,6 +124,11 @@ async fn dispatch(cli: Cli) -> anyhow::Result<ExitCode> {
     let session =
         command.is_none() && !headless && term::stdin_is_terminal() && term::stdout_is_terminal();
     if session {
+        let enabled =
+            app.settings.auto_update && crate::settings::env("PALEPALE_NO_UPDATE").is_none();
+        if let Some(code) = tui::startup::update(&app.paths, enabled).await {
+            return Ok(code);
+        }
         install::offer(&app.paths)?;
     }
     if let Some(untrusted) = app.settings.untrusted.take() {

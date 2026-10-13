@@ -11,12 +11,34 @@ use crate::tui::ui;
 
 /// What finished in the background.
 pub enum Work {
+    Status {
+        id: u64,
+        revision: u64,
+        me: Result<crate::api::account::Me, crate::api::error::ApiError>,
+        usage: Result<crate::api::account::Overview, crate::api::error::ApiError>,
+    },
     Account {
         revision: u64,
         result: Result<crate::api::account::Me, crate::api::error::ApiError>,
     },
     Command(anyhow::Result<Outcome>),
     Catalog(Catalog),
+}
+
+pub fn refresh_status(app: &App, id: u64) -> BoxFuture<'_, Work> {
+    let revision = app.api.key_revision();
+    Box::pin(async move {
+        let (me, usage) = tokio::join!(
+            crate::api::account::me(&app.api),
+            crate::api::account::overview(&app.api)
+        );
+        Work::Status {
+            id,
+            revision,
+            me,
+            usage,
+        }
+    })
 }
 
 pub struct Started<'a> {

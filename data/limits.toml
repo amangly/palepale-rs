@@ -121,8 +121,20 @@ value = 500
 reason = "a match line is context, not content; read the file for the rest"
 
 [update.check_interval_secs]
-value = 86400
-reason = "a day: releases come a few times a week, and a check costs a request to GitHub, which allows 60 an hour per address"
+value = 60
+reason = "check on launch while sharing rapid restarts to limit release-feed requests"
+
+[update.check_timeout_secs]
+value = 5
+reason = "startup must reach the session promptly when the release service cannot answer"
+
+[update.download_max_bytes]
+value = 134217728
+reason = "bound the memory used by a release download before verifying its checksum"
+
+[update.metadata_max_bytes]
+value = 1048576
+reason = "release listings and checksum manifests need a separate bounded response size"
 
 [update.download_timeout_secs]
 value = 300

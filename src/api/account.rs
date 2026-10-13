@@ -16,6 +16,37 @@ pub struct Me {
     pub balance_microdollars: i64,
     #[serde(default)]
     pub can_spend: bool,
+    #[serde(default)]
+    pub reserved_microdollars: Option<i64>,
+    #[serde(default)]
+    pub token_budget: Option<u64>,
+    #[serde(default)]
+    pub used_tokens: Option<u64>,
+    #[serde(default)]
+    pub reserved_tokens: Option<u64>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+pub struct Overview {
+    pub confirmed_requests: u64,
+    pub unknown_requests: u64,
+    pub spent_microdollars: i64,
+    pub prompt_tokens: u64,
+    pub completion_tokens: u64,
+    pub cached_tokens: u64,
+    pub reasoning_tokens: u64,
+}
+
+pub async fn overview(api: &Api) -> Result<Overview, ApiError> {
+    let response = api
+        .call(
+            "overview",
+            Call::default(),
+            limits::get().http.request_timeout_ms.ms(),
+        )
+        .await?;
+    serde_json::from_slice(&response.body)
+        .map_err(|e| ErrorInfo::local("bad_response", e.to_string()).into())
 }
 
 impl Me {

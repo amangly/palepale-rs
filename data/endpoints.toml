@@ -29,6 +29,12 @@ method = "GET"
 path = "/api/me"
 auth = true
 
+[endpoints.overview]
+origin = "api"
+method = "GET"
+path = "/api/me/overview?days=0"
+auth = true
+
 [endpoints.pair_start]
 origin = "api"
 method = "POST"

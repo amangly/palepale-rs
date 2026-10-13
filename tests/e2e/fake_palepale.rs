@@ -47,6 +47,8 @@ struct Inner {
     chat_bodies: Vec<Value>,
     model_lists: VecDeque<String>,
     model_delays: VecDeque<std::time::Duration>,
+    overview_errors: VecDeque<u16>,
+    overview_delays: VecDeque<std::time::Duration>,
     script: VecDeque<Reply>,
     /// Answers to pairing polls before the approval, in order.
     pair_polls: VecDeque<PairPoll>,
@@ -87,6 +89,7 @@ impl Fake {
             .route("/v1/models", get(models))
             .route("/v1/chat/completions", post(chat))
             .route("/api/me", get(me))
+            .route("/api/me/overview", get(overview))
             .route("/api/pair/start", post(pair_start))
             .route("/api/pair/{code}", get(pair_poll))
             .route("/api/pow", get(pow))
@@ -122,6 +125,14 @@ impl Fake {
 
     pub fn model_delays(&self, delays: impl IntoIterator<Item = std::time::Duration>) {
         self.inner.lock().unwrap().model_delays.extend(delays);
+    }
+
+    pub fn overview_errors(&self, errors: impl IntoIterator<Item = u16>) {
+        self.inner.lock().unwrap().overview_errors.extend(errors);
+    }
+
+    pub fn overview_delays(&self, delays: impl IntoIterator<Item = std::time::Duration>) {
+        self.inner.lock().unwrap().overview_delays.extend(delays);
     }
 
     /// How many polls answer "pending" before the pairing is approved.
@@ -316,7 +327,25 @@ async fn me(State(inner): State<Shared>, headers: HeaderMap) -> Response {
     if !authorized(&headers) {
         return error(401, "invalid_api_key", None);
     }
-    axum::Json(json!({"account_hint": "3456", "balance_microdollars": 12_300_000, "available_microdollars": 12_300_000, "can_spend": true})).into_response()
+    axum::Json(json!({"account_hint": "3456", "balance_microdollars": 12_300_000, "available_microdollars": 12_300_000, "reserved_microdollars":0,"token_budget":100000,"used_tokens":25000,"reserved_tokens":0,"can_spend": true})).into_response()
+}
+
+async fn overview(State(inner): State<Shared>, headers: HeaderMap) -> Response {
+    if !authorized(&headers) {
+        return error(401, "invalid_api_key", None);
+    }
+    let (delay, failure) = {
+        let mut inner = inner.lock().unwrap();
+        (
+            inner.overview_delays.pop_front().unwrap_or_default(),
+            inner.overview_errors.pop_front(),
+        )
+    };
+    tokio::time::sleep(delay).await;
+    if let Some(status) = failure {
+        return error(status, "usage_unavailable", None);
+    }
+    axum::Json(json!({"confirmed_requests":42,"unknown_requests":2,"spent_microdollars":3_000_000,"prompt_tokens":12000,"completion_tokens":3000,"cached_tokens":6000,"reasoning_tokens":1000})).into_response()
 }
 
 async fn pair_start() -> impl IntoResponse {

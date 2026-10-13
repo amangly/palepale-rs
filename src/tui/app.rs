@@ -15,7 +15,7 @@ use futures_util::{FutureExt, StreamExt};
 use tokio::sync::mpsc;
 
 use crate::agent::event::{AgentEvent, Outcome};
-use crate::agent::message::Part;
+use crate::agent::message::{Part, Usage};
 use crate::agent::run::{self, RunCtx};
 use crate::agent::state::Shared;
 use crate::agent::system_prompt;
@@ -35,6 +35,7 @@ use crate::text::theme;
 use crate::tools::{self, Registry};
 use crate::tui::card::{self, Card};
 use crate::tui::command::{self, Work};
+use crate::tui::dashboard::{self, Dashboard};
 use crate::tui::editor::Editor;
 use crate::tui::effort as effort_picker;
 use crate::tui::feed::{Block, Feed};
@@ -105,20 +106,12 @@ pub async fn run(app: &App, initial: Option<String>) -> anyhow::Result<ExitCode>
 
     let raw = term::Raw::fullscreen()?;
     let mut tui = Tui::new(app, catalog, model, &shared, initial, session_file);
-    // An update an earlier run installed is news once; the next look is due once a day, beside
-    // the session, and only records what it did.
+    // Startup already finished updating; consume its saved notice once.
     if let Ok(exe) = crate::io::proc::current_exe() {
         crate::io::fs::sweep_replaced(&exe);
     }
     if let Some(change) = update::take_news(&app.paths) {
-        tui.feed.notice(&change.say(), "done");
-    }
-    let enabled = app.settings.auto_update && settings::env("PALEPALE_NO_UPDATE").is_none();
-    if update::due(&update::load(&app.paths), clock::now(), enabled) {
-        let paths = app.paths.clone();
-        tokio::spawn(async move {
-            let _ = update::now(&paths).await;
-        });
+        tui.feed.notice(&change.opened(), "done");
     }
     let (_spent, transcript) = tui.run(turns, transcript, rx).await;
     drop(raw);
@@ -164,6 +157,10 @@ struct Tui<'a> {
     /// The `/models` card, likewise.
     picker: Option<Picker>,
     effort_picker: Option<effort_picker::Picker>,
+    dashboard: Option<Dashboard>,
+    dashboard_id: u64,
+    session_usage: Usage,
+    session_requests: u64,
     /// The `/forums` card, likewise.
     forums: Option<Forums>,
     /// The turn in flight, for the working line.
@@ -224,6 +221,10 @@ impl<'a> Tui<'a> {
             login: None,
             picker: None,
             effort_picker: None,
+            dashboard: None,
+            dashboard_id: 0,
+            session_usage: Usage::default(),
+            session_requests: 0,
             forums: None,
             progress: None,
             last_verb: None,
@@ -317,6 +318,8 @@ impl<'a> Tui<'a> {
         self.view = View::default();
         self.queue.clear();
         self.context_tokens = None;
+        self.session_usage = Usage::default();
+        self.session_requests = 0;
         let text = &ui::get().text;
         match old.path() {
             Some(_) => {
@@ -509,7 +512,11 @@ impl<'a> Tui<'a> {
                 self.view.scroll(if up { -page } else { page });
                 Step::Continue
             }
-            Input::Paste(_) if self.picker.is_some() || self.effort_picker.is_some() => {
+            Input::Paste(_)
+                if self.picker.is_some()
+                    || self.effort_picker.is_some()
+                    || self.dashboard.is_some() =>
+            {
                 Step::Continue
             }
             Input::Paste(text) => {
@@ -534,6 +541,7 @@ impl<'a> Tui<'a> {
                 self.effort_key(&key);
                 Step::Continue
             }
+            Input::Key(key) if self.dashboard.is_some() => self.dashboard_key(&key),
             Input::Key(key) if !self.cards.is_empty() => {
                 self.card_key(&key, running);
                 Step::Continue
@@ -703,6 +711,39 @@ impl<'a> Tui<'a> {
                 self.set_effort(id);
             }
         }
+    }
+
+    fn refresh_status(&mut self) -> Step<'a> {
+        self.dashboard_id += 1;
+        let loading = self.app.api.is_configured() && self.app.api.has_key();
+        let revision = self.app.api.key_revision();
+        if let Some(card) = &mut self.dashboard {
+            card.refreshing(self.dashboard_id, revision, loading);
+        } else {
+            self.dashboard = Some(Dashboard::new(self.dashboard_id, revision, loading));
+        }
+        if loading {
+            Step::Work(command::refresh_status(self.app, self.dashboard_id))
+        } else {
+            Step::Continue
+        }
+    }
+
+    fn dashboard_key(&mut self, key: &crate::io::term::KeyEvent) -> Step<'a> {
+        let action = keymap::get().action(key);
+        if action == Some(Action::Quit) {
+            return Step::Quit;
+        }
+        if action == Some(Action::CycleMode) {
+            self.cycle_mode();
+            return Step::Continue;
+        }
+        match self.dashboard.as_mut().map(|card| card.key(action, key)) {
+            Some(dashboard::Step::Close) => self.dashboard = None,
+            Some(dashboard::Step::Refresh) => return self.refresh_status(),
+            _ => {}
+        }
+        Step::Continue
     }
 
     /// Asks for `effort` from the next turn on, for this session only.
@@ -941,6 +982,20 @@ impl<'a> Tui<'a> {
     /// Applies what a command finished with.
     fn finish(&mut self, done: Work) -> Step<'a> {
         let outcome: CommandOutcome = match done {
+            Work::Status {
+                id,
+                revision,
+                me,
+                usage,
+            } => {
+                if revision == self.app.api.key_revision()
+                    && let Some(card) = &mut self.dashboard
+                    && card.id == id
+                {
+                    card.finished(me, usage);
+                }
+                return Step::Continue;
+            }
             Work::Account { revision, .. } if revision != self.app.api.key_revision() => {
                 return Step::Continue;
             }
@@ -1023,6 +1078,7 @@ impl<'a> Tui<'a> {
                 Effect::PickModel => {
                     return Step::Work(command::refresh_catalog(self.app));
                 }
+                Effect::ShowStatus => return self.refresh_status(),
                 Effect::Forums { login } => match crate::forums::store::load(&self.app.paths) {
                     Ok(list) => self.forums = Some(Forums::new(list, login.as_deref())),
                     Err(e) => self.feed.notice(&format!("{e:#}"), "error"),
@@ -1059,6 +1115,18 @@ impl<'a> Tui<'a> {
                 if let Some(usage) = message.usage {
                     self.cost_micros += usage.cost_micros;
                     self.context_tokens = Some(usage.input);
+                    self.session_requests += 1;
+                    self.session_usage.input = self.session_usage.input.saturating_add(usage.input);
+                    self.session_usage.output =
+                        self.session_usage.output.saturating_add(usage.output);
+                    self.session_usage.cached =
+                        self.session_usage.cached.saturating_add(usage.cached);
+                    self.session_usage.reasoning =
+                        self.session_usage.reasoning.saturating_add(usage.reasoning);
+                    self.session_usage.cost_micros = self
+                        .session_usage
+                        .cost_micros
+                        .saturating_add(usage.cost_micros);
                 }
             }
             AgentEvent::Delivered { text } => {
@@ -1105,6 +1173,7 @@ impl<'a> Tui<'a> {
         self.cards.retain(|card| shared.waiting(card.id()));
         // The command popup floats over the conversation instead of growing the bar.
         let mut floating = Vec::new();
+        let session_info = self.session();
         let card = if let Some(login) = &self.login {
             Some(login.render(width))
         } else if let Some(forums) = &self.forums {
@@ -1113,6 +1182,20 @@ impl<'a> Tui<'a> {
             Some(picker.render(width))
         } else if let Some(picker) = &self.effort_picker {
             Some(picker.render(width))
+        } else if let Some(card) = &mut self.dashboard {
+            Some(card.render(
+                &dashboard::Info {
+                    session: &session_info,
+                    usage: self.session_usage,
+                    requests: self.session_requests,
+                    project: &self.app.paths.project.display().to_string(),
+                    configured: self.app.api.is_configured(),
+                    logged_in: self.app.api.has_key()
+                        && card.revision == self.app.api.key_revision(),
+                },
+                width,
+                height.saturating_sub(live.len() + 3).max(5),
+            ))
         } else {
             self.cards.front().map(|card| card.render(width))
         };
@@ -1217,6 +1300,50 @@ fn text_of(parts: &[Part]) -> String {
 mod account_tests {
     use super::*;
     use crate::api::error::ErrorInfo;
+
+    #[test]
+    fn late_dashboard_results_cannot_replace_a_newer_card_or_account() {
+        let home = tempfile::tempdir().unwrap();
+        let app = App::for_tests(home.path());
+        app.api.set_key(Some("synthetic-old-key".into()));
+        let revision = app.api.key_revision();
+        let shared = Shared::new(mode::get(&app.settings.mode).unwrap());
+        let catalog = Catalog {
+            models: Vec::new(),
+            source: models::Source::Unavailable,
+            fetched_at: None,
+            note: None,
+        };
+        let mut tui = Tui::new(&app, catalog, None, &shared, None, String::new());
+        tui.dashboard = Some(Dashboard::new(2, revision, true));
+        let done = |id| Work::Status {
+            id,
+            revision,
+            me: Ok(account::Me {
+                account_hint: "old-account".into(),
+                ..Default::default()
+            }),
+            usage: Ok(account::Overview::default()),
+        };
+        tui.finish(done(1));
+        app.api.set_key(Some("synthetic-new-key".into()));
+        tui.finish(done(2));
+        let session = tui.session();
+        let card = tui.dashboard.as_mut().unwrap();
+        let rows = card.render(
+            &dashboard::Info {
+                session: &session,
+                usage: Usage::default(),
+                requests: 0,
+                project: "/project",
+                configured: true,
+                logged_in: true,
+            },
+            100,
+            30,
+        );
+        assert!(!rows.iter().any(|line| line.text().contains("old-account")));
+    }
 
     #[test]
     fn late_account_checks_cannot_replace_a_newer_login_or_logout() {

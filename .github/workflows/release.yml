@@ -69,5 +69,5 @@ jobs:
           repo=$(sed -n 's/^repository = "\([^"]*\)"$/\1/p' data/release.toml)
           # Draft assets remain invisible until every platform and checksum has uploaded.
           gh release create "$TAG" dist/* --repo "$repo" --target "$GITHUB_SHA" --draft --title "$TAG" \
-            --notes 'Palepale CLI for Windows, macOS and Linux. Verify downloads with SHA256SUMS. Restart the CLI after updating.'
+            --notes 'Palepale CLI for Windows, macOS and Linux. Run palepale to check for updates automatically. Use /status for session details and account usage. Verify downloads with SHA256SUMS.'
           gh release edit "$TAG" --repo "$repo" --draft=false --latest

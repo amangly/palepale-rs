@@ -17,11 +17,11 @@ The repository is configured in `data/release.toml`; the API feed is in `data/en
 
 ## Updating
 
-Release builds check at interactive startup, at most once every 24 hours. `palepale update` checks immediately. Only a newer numeric version is installed; missing assets, invalid tags, or checksum failures keep the existing executable.
+Release builds check before interactive startup and share a recent check for one minute. Download progress appears in the terminal. A successful checksum verification and replacement automatically reopen the CLI with the original arguments, environment, and working directory. Only a newer numeric version is installed; missing assets, invalid tags, or checksum failures keep the existing executable. Release-feed checks time out after five seconds, and Ctrl+C skips a pending check or download.
 
 Earlier `0.2.0-*` builds use a separate release repository and will not install `0.1.0` automatically. Download the new binary from this repository and replace the executable once. Keep the CLI home folder to retain account state, settings, and sessions. Later updates use this repository.
 
-The current session continues after an update; the next launch uses the new binary. Account state, configuration, and sessions remain in the CLI home. The installation folder must be writable. Results are saved in `~/.palepale/update.json`.
+Startup updates finish before a conversation begins. The optional `palepale update` command still installs an update without starting a session; its next launch uses the new binary. Account state, configuration, and sessions remain in the CLI home. The installation folder must be writable. Results are saved in `~/.palepale/update.json`.
 
 `auto_update = false`, `PALEPALE_NO_UPDATE=1`, and offline mode disable automatic checks. Manual updates remain available outside offline mode. `PALEPALE_RELEASES_URL` overrides the feed for local testing.
 

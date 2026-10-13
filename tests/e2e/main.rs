@@ -144,6 +144,7 @@ pub const WITH_KEY: Option<&str> = Some(fake_palepale::ENV_KEY);
 /// glyphs or the clock (io/term.rs, io/clock.rs), so local and CI runs see the same, and their
 /// desktop's clipboard (io/clipboard.rs).
 pub const CLEARED: &[&str] = &[
+    "PALEPALE_NO_UPDATE",
     "PALEPALE_OFFLINE",
     "PALEPALE_NO_AUTO_LOGIN",
     "PALEPALE_API_KEY",

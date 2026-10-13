@@ -188,6 +188,11 @@ pub fn append_line(path: &Path, line: &str) -> io::Result<()> {
     file.write_all(format!("{line}\n").as_bytes())
 }
 
+/// Separate downloads from simultaneous startups never overwrite each other's staging file.
+pub fn executable_stage(dir: &Path, name: &str) -> PathBuf {
+    dir.join(format!(".{name}.new-{}", std::process::id()))
+}
+
 /// Writes `bytes` as a program (mode 0755 on Unix), over any file already there.
 pub fn write_executable(path: &Path, bytes: &[u8]) -> io::Result<()> {
     std::fs::write(path, bytes)?;

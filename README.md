@@ -29,7 +29,7 @@ After installing, open a new terminal in your project folder and run `palepale`.
 | Shift+Tab | Switch MANUAL, PLAN, and AUTO modes |
 | `/models` | Refresh the list and pick a model |
 | `/effort` | Choose reasoning effort for the current model |
-| `/status` | Check your account and balance |
+| `/status` | Open session details, balance, and account usage |
 | `/help` | List commands |
 | Escape | Interrupt the current turn |
 | Ctrl+D | Quit with an empty composer |
@@ -44,7 +44,9 @@ Use `/logout` then `/login` to connect another account. Changing the browser acc
 
 ## Updates and settings
 
-Release builds check for updates at startup, at most once a day. Run `palepale update` to check now, then restart. Downloads are checked against `SHA256SUMS`; updates preserve your saved account, settings, and conversations.
+Run `palepale` to check for updates before opening the session. When a newer release is available, Palepale shows download progress, verifies `SHA256SUMS`, installs it, and opens the updated CLI in the same terminal. Rapid restarts share a check for one minute. An unavailable update service or failed checksum leaves the installed version usable. Press Ctrl+C during the check or download to continue with it.
+
+`/status` opens a card with Session and Usage tabs. View context and token usage, session cost at listed rates, available and reserved balances, and confirmed account charges. Left/right or Tab switch tabs, up/down scroll, `r` refreshes account data, and Escape returns to the composer. Account data loads in the background; missing usage data is shown as unavailable.
 
 Settings live in `~/.palepale/config.toml`. Set `auto_update = false` to disable automatic updates.
 
