@@ -107,10 +107,20 @@ async fn startup_update_shows_progress_reopens_and_preserves_state_or_keeps_the_
                 );
             }
             if scenario == "new" {
-                assert_eq!(std::fs::read(&exe).unwrap(), installed_payload);
+                assert!(
+                    std::fs::read(&exe).unwrap() == installed_payload,
+                    "{scenario}: installed bytes differ; updater state: {:?}; screen:\n{}",
+                    std::fs::read_to_string(sandbox.home().join("update.json")),
+                    session.contents()
+                );
                 session.wait_for(&format!("Updated to {next_tag}"));
             } else {
-                assert_eq!(std::fs::read(&exe).unwrap(), original);
+                assert!(
+                    std::fs::read(&exe).unwrap() == original,
+                    "{scenario}: the original copy changed; updater state: {:?}; screen:\n{}",
+                    std::fs::read_to_string(sandbox.home().join("update.json")),
+                    session.contents()
+                );
             }
             assert_eq!(
                 std::fs::read_to_string(sandbox.home().join("auth.json")).unwrap(),
