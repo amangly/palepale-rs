@@ -676,6 +676,7 @@ impl<'a> Tui<'a> {
             picker::Step::Pick(id) => {
                 self.picker = None;
                 self.switch_model(&id);
+                self.open_effort_picker();
             }
         }
     }
@@ -740,6 +741,13 @@ impl<'a> Tui<'a> {
             &[("effort", resolved.unwrap_or(&text.effort_default))],
         );
         self.feed.notice(&note, "done");
+    }
+
+    fn open_effort_picker(&mut self) {
+        self.effort_picker = self.model.as_ref().and_then(|model| {
+            (!model.effort_levels().is_empty())
+                .then(|| effort_picker::Picker::new(model, self.effort.as_deref()))
+        });
     }
 
     fn replace_model(&mut self, model: Model) {
@@ -1023,8 +1031,7 @@ impl<'a> Tui<'a> {
                 Effect::SetEffort(id) => self.set_effort(id),
                 Effect::PickEffort => match &self.model {
                     Some(model) if !model.effort_levels().is_empty() => {
-                        self.effort_picker =
-                            Some(effort_picker::Picker::new(model, self.effort.as_deref()));
+                        self.open_effort_picker();
                     }
                     Some(model) => self.feed.notice(
                         &template::fill(

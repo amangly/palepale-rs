@@ -46,6 +46,7 @@ struct Inner {
     paths: Vec<String>,
     chat_bodies: Vec<Value>,
     model_lists: VecDeque<String>,
+    model_delays: VecDeque<std::time::Duration>,
     script: VecDeque<Reply>,
     /// Answers to pairing polls before the approval, in order.
     pair_polls: VecDeque<PairPoll>,
@@ -64,6 +65,7 @@ pub enum PairPoll {
 }
 
 /// A local stand-in for palepale: serves fixtures, follows a script, records what it was asked.
+#[derive(Clone)]
 pub struct Fake {
     pub url: String,
     inner: Shared,
@@ -116,6 +118,10 @@ impl Fake {
             .unwrap()
             .model_lists
             .extend(lists.into_iter().map(|list| list.to_string()));
+    }
+
+    pub fn model_delays(&self, delays: impl IntoIterator<Item = std::time::Duration>) {
+        self.inner.lock().unwrap().model_delays.extend(delays);
     }
 
     /// How many polls answer "pending" before the pairing is approved.
@@ -230,12 +236,17 @@ async fn web_blocked() -> Response {
 }
 
 async fn models(State(inner): State<Shared>) -> impl IntoResponse {
-    let body = inner
-        .lock()
-        .unwrap()
-        .model_lists
-        .pop_front()
-        .unwrap_or_else(|| MODELS.to_owned());
+    let (body, delay) = {
+        let mut inner = inner.lock().unwrap();
+        (
+            inner
+                .model_lists
+                .pop_front()
+                .unwrap_or_else(|| MODELS.to_owned()),
+            inner.model_delays.pop_front().unwrap_or_default(),
+        )
+    };
+    tokio::time::sleep(delay).await;
     ([(header::CONTENT_TYPE, "application/json")], body)
 }
 

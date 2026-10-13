@@ -344,6 +344,8 @@ mod tests {
 
     #[test]
     fn an_alias_finds_its_command() {
+        assert_eq!(find("model").unwrap().spec().name, "models");
+        assert!(lookup("model", Scope::Session).is_ok());
         assert_eq!(find("clear").unwrap().spec().name, "new");
         assert_eq!(find("exit").unwrap().spec().name, "quit");
         assert!(lookup("clear", Scope::Session).is_ok());

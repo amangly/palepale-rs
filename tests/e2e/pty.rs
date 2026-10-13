@@ -959,6 +959,42 @@ async fn slash_effort_sets_what_the_next_requests_carry() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn choosing_a_model_then_effort_keeps_refresh_responsive_and_forwards_the_choice() {
+    let fake = Fake::start().await;
+    fake.model_delays([Duration::ZERO, Duration::from_secs(2)]);
+    fake.script([Reply::sse("hello.sse")]);
+    let requests = fake.clone();
+    in_session(&fake, Sandbox::default(), Some(ENV_KEY), move |s| {
+        s.wait_for("MANUAL");
+        s.type_text("/model");
+        s.send("\r");
+        s.poll(WAIT, "catalog refresh started", |_| {
+            (requests.hits("/v1/models") == 2).then_some(())
+        });
+        s.send("\x1b[Z");
+        s.wait_for("PLAN");
+        assert!(!s.contents().contains("╭ Models"), "{}", s.contents());
+        s.wait_for("╭ Models");
+        s.send("\r");
+        s.wait_gone("╭ Models");
+        s.wait_for("╭ Reasoning effort");
+        s.send("\x1b[B");
+        s.wait_for("│ › low");
+        s.send("\x1b[B");
+        s.wait_for("│ › high");
+        s.send("\r");
+        s.wait_gone("╭ Reasoning effort");
+        s.wait_for("Effort: high for this session.");
+        s.type_text("hi");
+        s.send("\r");
+        s.wait_for("Hello there!");
+    })
+    .await;
+    assert_eq!(fake.chat_bodies()[0]["model"], "demo-2");
+    assert_eq!(fake.chat_bodies()[0]["reasoning_effort"], "high");
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn effort_clears_when_switching_to_a_model_without_reasoning() {
     let fake = Fake::start().await;
     fake.script([Reply::sse("hello.sse")]);
@@ -982,6 +1018,9 @@ async fn effort_clears_when_switching_to_a_model_without_reasoning() {
         s.send("\x1b[A");
         s.send("\r");
         s.wait_for("Model: demo-2 for this session.");
+        s.wait_for("╭ Reasoning effort");
+        s.send("\r");
+        s.wait_gone("╭ Reasoning effort");
         s.poll(WAIT, "the unsupported effort was cleared", |s| {
             (!s.bottom_row().contains(" high")).then_some(())
         });
