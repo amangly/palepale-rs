@@ -43,6 +43,8 @@ For changes to auth, API behavior, tools, or terminal interaction, run `make e2e
 
 Markdown in `data/` is runtime input compiled into the CLI. Keep those files with their tool schemas and prompt configuration.
 
+The opening logo comes from `data/palepale-logo.svg`. After changing it, run `node scripts/render-logo.cjs` with `sharp` available to Node to regenerate the RGBA pixels and terminal cell fixture. Dimensions and block glyphs live in `data/logo.toml`. The CLI embeds the pixels; it does not need an SVG renderer at runtime.
+
 ## Benchmarks
 
 `make e2e` also checks the benchmark runner against local fixtures. `make battery-setup` downloads pinned repositories and runs their setup commands. A live run needs explicit approval and the same three `PALEPALE_SMOKE_*` variables as smoke tests. Use `make battery TASKS=calc-fix REPEATS=1` for one task.

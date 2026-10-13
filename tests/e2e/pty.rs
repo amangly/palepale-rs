@@ -429,7 +429,7 @@ impl Session {
     }
 
     fn wait_for_logo(&mut self) {
-        for row in include_str!("../../data/palepale-ascii.txt").lines() {
+        for row in include_str!("../../data/palepale-logo-cells.txt").lines() {
             if !row.trim().is_empty() {
                 self.wait_for(row.trim_end());
             }
@@ -600,9 +600,9 @@ async fn the_matrix_intro_animates_through_resize_with_and_without_color() {
                 WAIT,
                 &format!("Matrix rain did not animate after resize (NO_COLOR={no_color})"),
                 |s| {
-                    let columns = include_str!("../../data/palepale-ascii.txt")
+                    let columns = include_str!("../../data/palepale-logo-cells.txt")
                         .lines()
-                        .map(|row| row.trim_end().len())
+                        .map(|row| row.chars().count())
                         .max()
                         .unwrap();
                     let logo: String = (0..usize::from(ROWS + 1))
@@ -614,8 +614,14 @@ async fn the_matrix_intro_animates_through_resize_with_and_without_color() {
                     (rain.len() >= 3).then_some(())
                 },
             );
+            if !no_color {
+                s.capture("matrix-rain");
+            }
             s.wait_for_logo();
             s.wait_quiet();
+            if !no_color {
+                s.capture("matrix-logo");
+            }
             s.send("\x04");
             assert!(s.wait_exit());
             assert!(sandbox.sessions().is_empty());

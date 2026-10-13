@@ -17,6 +17,7 @@ mod header;
 mod keymap;
 mod layout;
 mod login;
+mod logo;
 mod matrix;
 mod palette;
 mod paste;

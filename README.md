@@ -38,7 +38,7 @@ MANUAL follows permission rules. PLAN restricts writes while preparing a plan. A
 
 Opening `/models` fetches the latest catalog. If the server is unavailable, it shows the cached list.
 
-The opening screen reveals the supplied ASCII artwork with a brief Matrix rain effect from [ttfx](https://github.com/omacom/ttfx). Typing skips the animation and keeps your input. `PALEPALE_NO_ANIMATION=1` skips it too. `NO_COLOR` keeps the animation in plain text.
+The opening screen reveals the Palepale logo with a brief Matrix effect from [ttfx](https://github.com/omacom/ttfx). The SVG becomes colored block pixels, keeping its shape and green gradient in Windows Terminal and other terminals. Typing skips the animation and keeps your input. `PALEPALE_NO_ANIMATION=1` skips it too. `NO_COLOR` shows the same shape without color.
 
 `/effort` shows the levels reported by the model catalog. Choose `default` to reset it, or set a level directly with `/effort low`.
 

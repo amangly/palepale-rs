@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">
+  <defs>
+    <linearGradient id="pp-green" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#B6FFD2"/>
+      <stop offset="0.35" stop-color="#2BFF6B"/>
+      <stop offset="0.7" stop-color="#00D63A"/>
+      <stop offset="1" stop-color="#009422"/>
+    </linearGradient>
+  </defs>
+  <!-- left half -->
+  <path fill="url(#pp-green)" fill-rule="evenodd" d="M96 12 L18 58 L18 152 L74 119 L74 180 L96 193 L96 12 Z M79 60 L79 102 L36 127 L36 86 Z"/>
+  <!-- right half (mirrored) -->
+  <path fill="url(#pp-green)" fill-rule="evenodd" d="M104 12 L182 58 L182 152 L126 119 L126 180 L104 193 L104 12 Z M121 60 L121 102 L164 127 L164 86 Z"/>
+</svg>

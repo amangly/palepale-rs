@@ -11,6 +11,7 @@ use ttfx::utils::graphics::{Color, GradientDirection};
 
 use crate::io::term;
 use crate::text::styled::{Line, Style};
+use crate::text::theme::{self, Depth};
 use crate::tui::welcome;
 
 #[derive(Deserialize)]
@@ -80,7 +81,11 @@ impl Intro {
             final_gradient_direction: GradientDirection::Vertical,
         });
         let mut engine = term::effect_engine(
-            &logo.iter().map(Line::text).collect::<Vec<_>>().join("\n"),
+            &logo
+                .iter()
+                .map(|row| row.to_ansi(theme::get(), Depth::TrueColor))
+                .collect::<Vec<_>>()
+                .join("\n"),
             columns,
             logo.len(),
             seed,
@@ -136,6 +141,13 @@ impl Intro {
                                     Style::fg(&format!("#{red:02x}{green:02x}{blue:02x}"))
                                 },
                             );
+                            let style = match visual.bg {
+                                Some(color) => {
+                                    let (red, green, blue) = color.rgb_ints();
+                                    style.on(&format!("#{red:02x}{green:02x}{blue:02x}"))
+                                }
+                                None => style,
+                            };
                             line.push(self.engine.symbol(visual.sym), style);
                         } else {
                             line.push(" ", Style::default());
@@ -170,18 +182,36 @@ mod tests {
                     );
                 }
                 changed |= rows.iter().any(|row| row.text().contains('Z'));
-                last = rows
-                    .iter()
-                    .map(|row| row.text().trim_end().to_owned())
-                    .collect();
+                last = rows;
             }
             assert!(changed, "Matrix rain never appeared");
             assert!(intro.frames <= CONFIG.max_frames);
             assert_eq!(
-                last,
-                welcome::logo().iter().map(Line::text).collect::<Vec<_>>(),
+                visible_pixels(&last),
+                visible_pixels(&welcome::logo()),
                 "Matrix did not settle to the logo"
             );
         }
+    }
+
+    fn visible_pixels(rows: &[Line]) -> Vec<(usize, usize, char, Option<String>)> {
+        let mut pixels = Vec::new();
+        for (row, line) in rows.iter().enumerate() {
+            for (column, (glyph, color)) in line
+                .spans
+                .iter()
+                .flat_map(|span| {
+                    span.text
+                        .chars()
+                        .map(|glyph| (glyph, span.style.fg.clone()))
+                })
+                .enumerate()
+            {
+                if glyph != ' ' {
+                    pixels.push((row, column, glyph, color));
+                }
+            }
+        }
+        pixels
     }
 }

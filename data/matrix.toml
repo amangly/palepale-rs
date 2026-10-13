@@ -9,6 +9,6 @@ fall_delay = [1, 2]
 column_delay = [1, 1]
 symbol_swap_chance = 0.05
 color_swap_chance = 0.01
-resolve_delay = 1
+resolve_delay = 0
 gradient_steps = [3]
 gradient_frames = 1

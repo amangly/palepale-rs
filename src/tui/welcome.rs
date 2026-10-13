@@ -1,7 +1,7 @@
 //! The session welcome: identity, workspace, connection state, and useful keys.
 
 use crate::text::styled::{Line, Style};
-use crate::tui::ui;
+use crate::tui::{logo, ui};
 
 #[derive(Clone)]
 pub struct Info {
@@ -17,13 +17,8 @@ pub struct Info {
     pub art: Option<Vec<Line>>,
 }
 
-pub const ART: &str = include_str!("../../data/palepale-ascii.txt");
-
 pub fn logo() -> Vec<Line> {
-    ART.lines()
-        .skip_while(|row| row.trim().is_empty())
-        .map(|row| Line::styled(row.trim_end(), Style::fg("accent")))
-        .collect()
+    logo::rows()
 }
 
 pub fn render(info: &Info, width: usize) -> Vec<Line> {
@@ -128,14 +123,13 @@ mod tests {
     }
 
     #[test]
-    fn supplied_ascii_art_uses_the_matrix_accent() {
-        assert!(ART.is_ascii());
-        assert_eq!(logo().len(), 13);
-        assert!(logo().iter().all(|row| row.width() <= 25));
+    fn supplied_svg_logo_keeps_its_colors_in_the_welcome() {
+        assert_eq!(logo().len(), 14);
+        assert!(logo().iter().all(|row| row.width() == 32));
         assert!(
             render(&info(true), 100)
                 .iter()
-                .any(|line| line.to_tagged().contains("[accent]"))
+                .any(|line| line.to_tagged().contains("[#"))
         );
         assert_eq!(
             crate::text::theme::get().color("accent"),

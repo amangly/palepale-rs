@@ -72,6 +72,7 @@ pub fn effect_engine(
             canvas_height: height as i64,
             frame_rate: 0,
             ignore_terminal_dimensions: true,
+            existing_color_handling: ttfx::engine::animation::ExistingColorHandling::Dynamic,
             ..Default::default()
         },
         ttfx::utils::rng::Rng::seeded(seed),
