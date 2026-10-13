@@ -13,6 +13,7 @@ pub async fn startup_feed(
     payload: Vec<u8>,
     tag: &str,
     bad_checksum: bool,
+    hold_download: bool,
 ) -> (String, Arc<AtomicUsize>, Arc<AtomicBool>) {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let origin = format!("http://{}", listener.local_addr().unwrap());
@@ -55,6 +56,10 @@ pub async fn startup_feed(
                     move |(payload, offset)| async move {
                         if offset >= payload.len() {
                             return None;
+                        }
+                        if hold_download && offset > 0 {
+                            // Delayed PTY output must not let a cancellation test finish downloading.
+                            std::future::pending::<()>().await;
                         }
                         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
                         let end = (offset + chunk_size).min(payload.len());

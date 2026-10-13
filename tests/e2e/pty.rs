@@ -48,8 +48,13 @@ async fn startup_update_shows_progress_reopens_and_preserves_state_or_keeps_the_
         "cancelled",
     ] {
         let fake = Fake::start().await;
-        let (feed, hits, leaked) =
-            crate::update::startup_feed(payload.clone(), &next, scenario == "checksum").await;
+        let (feed, hits, leaked) = crate::update::startup_feed(
+            payload.clone(),
+            &next,
+            scenario == "checksum",
+            scenario == "cancelled",
+        )
+        .await;
         let sandbox = Sandbox::default();
         let install = tempfile::tempdir().unwrap();
         let exe = install.path().join(source.file_name().unwrap());
@@ -133,6 +138,9 @@ async fn startup_update_shows_progress_reopens_and_preserves_state_or_keeps_the_
             assert!(sandbox.sessions().is_empty());
             assert_eq!(hits.load(Ordering::Relaxed), usize::from(checks));
             assert!(!leaked.load(Ordering::Relaxed));
+            if scenario == "cancelled" {
+                assert!(!sandbox.home().join("update.json").exists());
+            }
             session.send("\x15");
             session.send("\x04");
             assert!(session.wait_exit());
