@@ -6,6 +6,187 @@ use serde_json::json;
 use crate::fake_palepale::{Fake, Reply};
 use crate::{Sandbox, WITH_KEY};
 
+#[tokio::test(flavor = "multi_thread")]
+async fn mcp_cli_registers_checks_and_removes_only_palepales_selected_config() {
+    let sandbox = Sandbox::default();
+    let home = sandbox.home();
+    std::fs::write(
+        home.join("config.toml"),
+        "# keep my settings\nmodel = \"demo-2\"\n",
+    )
+    .unwrap();
+    let codex = home.join(".codex/config.toml");
+    std::fs::create_dir_all(codex.parent().unwrap()).unwrap();
+    std::fs::write(&codex, "# another client\n").unwrap();
+    std::fs::write(home.join(".claude.json"), "{}\n").unwrap();
+    let program = fixture().to_str().unwrap();
+    let log = sandbox.project.path().join("native-rpc.log");
+    let log = log.to_str().unwrap();
+    let added = sandbox
+        .run(
+            crate::DEAD_URL,
+            &["mcp", "add", "fixture", "--", program, "--modern", log],
+            None,
+        )
+        .await;
+    assert!(
+        added
+            .success()
+            .stdout()
+            .contains("Added fixture to Palepale (user)")
+    );
+    let source = std::fs::read_to_string(home.join("config.toml")).unwrap();
+    assert!(source.starts_with("# keep my settings\n"));
+    assert_eq!(
+        toml::from_str::<toml::Value>(&source).unwrap()["mcp_servers"]["fixture"]["command"]
+            .as_str(),
+        Some(program)
+    );
+    let duplicate = sandbox
+        .run(
+            crate::DEAD_URL,
+            &["mcp", "add", "fixture", "--url", "https://example.com/mcp"],
+            None,
+        )
+        .await;
+    assert!(!duplicate.0.status.success() && duplicate.stderr().contains("already configured"));
+    assert_eq!(
+        std::fs::read_to_string(home.join("config.toml")).unwrap(),
+        source
+    );
+    let list = sandbox.run(crate::DEAD_URL, &["mcp", "list"], None).await;
+    assert!(
+        list.success()
+            .stdout()
+            .contains("fixture  ready  0 tools  user")
+    );
+    let check = sandbox
+        .run(crate::DEAD_URL, &["mcp", "check", "fixture"], None)
+        .await;
+    assert!(check.success().stdout().contains("fixture: connected"));
+    assert!(check.stdout().contains("echo"));
+    sandbox
+        .run(crate::DEAD_URL, &["mcp", "remove", "fixture"], None)
+        .await
+        .success();
+    let source = std::fs::read_to_string(home.join("config.toml")).unwrap();
+    assert!(source.contains("# keep my settings") && source.contains("demo-2"));
+    assert!(!source.contains("[mcp_servers.fixture]"));
+    assert_eq!(
+        std::fs::read_to_string(&codex).unwrap(),
+        "# another client\n"
+    );
+    assert_eq!(
+        std::fs::read_to_string(home.join(".claude.json")).unwrap(),
+        "{}\n"
+    );
+    assert!(sandbox.sessions().is_empty());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn mcp_cli_keeps_project_review_and_accepts_literal_server_arguments() {
+    let sandbox = Sandbox::default();
+    let added = sandbox
+        .run(
+            crate::DEAD_URL,
+            &[
+                "mcp",
+                "add",
+                "project-server",
+                "--scope",
+                "project",
+                "--",
+                "server with spaces",
+                "--model",
+                "a b",
+            ],
+            None,
+        )
+        .await;
+    assert!(added.success().stdout().contains("Palepale (project)"));
+    assert!(!sandbox.home().join("config.toml").exists());
+    let config = sandbox.project.path().join(".palepale/config.toml");
+    let config: toml::Value = toml::from_str(&std::fs::read_to_string(config).unwrap()).unwrap();
+    assert_eq!(
+        config["mcp_servers"]["project-server"]["args"][1].as_str(),
+        Some("a b")
+    );
+    let check = sandbox
+        .run(crate::DEAD_URL, &["mcp", "check", "project-server"], None)
+        .await;
+    assert!(!check.0.status.success() && check.stderr().contains("Trust this project"));
+    sandbox.trust_project();
+    let check = sandbox
+        .run(crate::DEAD_URL, &["mcp", "check", "project-server"], None)
+        .await;
+    assert!(!check.0.status.success() && check.stderr().contains("Review and connect"));
+    assert!(!sandbox.home().join("mcp/reviewed.json").exists());
+    for arguments in [
+        vec![
+            "mcp",
+            "add",
+            "both",
+            "--url",
+            "https://example.com/mcp",
+            "--",
+            "program",
+        ],
+        vec!["mcp", "add", "missing"],
+        vec!["mcp", "add", "insecure", "--url", "http://example.com/mcp"],
+    ] {
+        let invalid = sandbox.run(crate::DEAD_URL, &arguments, None).await;
+        assert!(!invalid.0.status.success());
+    }
+    assert!(!sandbox.home().join("config.toml").exists());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_server_added_during_a_conversation_is_available_on_the_next_model_request() {
+    let sandbox = Sandbox::default();
+    std::fs::copy(fixture(), sandbox.home().join("native fixture.exe")).unwrap();
+    let fake = Fake::start().await;
+    fake.set_home(sandbox.home());
+    fake.script([
+        Reply::sse("extensions/mcp-install.sse"),
+        Reply::sse("extensions/mcp-echo.sse"),
+        Reply::sse("extensions/mcp-uninstall.sse"),
+        Reply::sse("hello.sse"),
+    ]);
+    sandbox
+        .run(
+            &fake.url,
+            &[
+                "--print",
+                "Set up a server in Palepale, verify it, then remove it",
+            ],
+            WITH_KEY,
+        )
+        .await
+        .success();
+    let requests = fake.chat_bodies();
+    assert_eq!(requests.len(), 4);
+    let tools = |i: usize| {
+        requests[i]["tools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|t| t["function"]["name"].as_str())
+            .collect::<Vec<_>>()
+    };
+    assert!(!tools(0).contains(&"mcp__fixture__echo"));
+    assert!(tools(1).contains(&"mcp__fixture__echo"));
+    assert!(!tools(3).contains(&"mcp__fixture__echo"));
+    let system = requests[0]["messages"][0]["content"].as_str().unwrap();
+    assert!(
+        system.contains("<palepale_setup>")
+            && system.contains(&sandbox.home().join("config.toml").display().to_string())
+    );
+    let log = std::fs::read_to_string(sandbox.home().join("native-rpc.log")).unwrap();
+    assert_eq!(log.lines().filter(|line| *line == "echo").count(), 1);
+    assert!(!sandbox.home().join(".codex").exists());
+    assert!(!sandbox.home().join(".claude.json").exists());
+}
+
 fn fixture() -> &'static Path {
     static FIXTURE: OnceLock<(tempfile::TempDir, PathBuf)> = OnceLock::new();
     &FIXTURE

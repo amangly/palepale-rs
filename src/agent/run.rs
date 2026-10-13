@@ -46,13 +46,6 @@ pub async fn run(
     )
     .await;
     record(cx, transcript, Message::User { parts });
-    tokio::select! {
-        () = cx.app.mcp.start_enabled(cx.app) => {},
-        () = cancel.cancelled() => {
-            (cx.emit)(AgentEvent::RunEnd { outcome: Outcome::Aborted });
-            return Outcome::Aborted;
-        }
-    }
     let max_turns = limits::get().agent.max_turns.value;
     let mut turns = 0;
 
@@ -64,7 +57,10 @@ pub async fn run(
             turns += 1;
 
             tokio::select! {
-                () = cx.app.mcp.refresh_changed(cx.app) => {},
+                () = async {
+                    cx.app.mcp.start_enabled(cx.app).await;
+                    cx.app.mcp.refresh_changed(cx.app).await;
+                } => {},
                 () = cancel.cancelled() => break 'run Outcome::Aborted,
             }
             let mut mcp_context = cx.app.mcp.context();

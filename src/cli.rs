@@ -215,7 +215,11 @@ fn misplaced_flag(words: &[String]) -> Option<&str> {
             false
         }
     };
-    words.iter().map(String::as_str).find(|w| ours(w))
+    words
+        .iter()
+        .map(String::as_str)
+        .take_while(|w| *w != "--")
+        .find(|w| ours(w))
 }
 
 #[cfg(test)]
@@ -250,5 +254,9 @@ mod tests {
         assert_eq!(found(&["login", "--key", "1"]), None);
         assert_eq!(found(&["login", "--help"]), None);
         assert_eq!(found(&["explain --json"]), None);
+        assert_eq!(
+            found(&["mcp", "add", "local", "--", "server", "--model", "x"]),
+            None
+        );
     }
 }

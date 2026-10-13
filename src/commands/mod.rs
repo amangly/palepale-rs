@@ -12,6 +12,7 @@ mod install;
 mod keytest;
 pub mod login;
 mod logout;
+mod mcp;
 mod mode;
 pub mod models;
 mod new;
@@ -214,7 +215,7 @@ pub static COMMANDS: &[&dyn Command] = &[
     &logout::Logout,
     &signup::Signup,
     &status::Status,
-    &extensions::Mcp,
+    &mcp::Mcp,
     &extensions::Skills,
     &update::Update,
     &install::Install,

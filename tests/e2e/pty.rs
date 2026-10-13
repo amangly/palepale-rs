@@ -621,12 +621,16 @@ async fn a_session_welcomes_chats_switches_mode_and_quits() {
     fake.script([Reply::sse("hello.sse")]);
     let ended = in_session(&fake, Sandbox::default(), Some(ENV_KEY), move |s| {
         s.wait_for(&format!("palepale {expected}"));
-        s.wait_for("MANUAL");
+        s.wait_for("AUTO");
         // The message bar and the rule under it, with the model, sit at the bottom from the start.
         assert!(s.bottom_row().contains("demo-2"), "{}", s.contents());
         s.type_text("hi");
         s.send("\r");
         s.wait_for("Hello there!");
+        s.send("\x1b[Z");
+        s.poll(WAIT, "Shift+Tab never reached MANUAL", |s| {
+            s.bottom_row().contains("MANUAL").then_some(())
+        });
         s.send("\x1b[Z");
         s.poll(WAIT, "Shift+Tab never reached PLAN", |s| {
             s.bottom_row().contains("PLAN").then_some(())
@@ -735,6 +739,7 @@ async fn keytest_reads_the_terminal_and_leaves_it_as_it_found_it() {
 async fn an_untrusted_folder_is_asked_about_once_before_its_config_loosens_anything() {
     let fake = Fake::start().await;
     let sandbox = Sandbox::default();
+    std::fs::write(sandbox.home().join("config.toml"), "mode = 'manual'\n").unwrap();
     sandbox.copy_project("untrusted_auto");
     let url = fake.url.clone();
     let (screens, trusted) = tokio::task::spawn_blocking(move || {
@@ -820,7 +825,7 @@ async fn a_doubled_slash_sends_a_message_that_starts_with_a_slash() {
     let fake = Fake::start().await;
     fake.script([Reply::sse("hello.sse")]);
     in_session(&fake, Sandbox::default(), Some(ENV_KEY), |s| {
-        s.wait_for("MANUAL");
+        s.wait_for("AUTO");
         s.type_text("//etc/hosts is odd");
         s.send("\r");
         s.wait_for("Hello there!");
@@ -839,6 +844,7 @@ async fn manual_mode_shows_the_edit_and_applies_it_once_approved() {
         Reply::sse("scenarios/auto_fix/4.sse"),
     ]);
     let sandbox = Sandbox::default();
+    std::fs::write(sandbox.home().join("config.toml"), "mode = 'manual'\n").unwrap();
     sandbox.copy_project("calc");
     let ended = in_session(&fake, sandbox, Some(ENV_KEY), |s| {
         s.wait_for("MANUAL");
@@ -859,7 +865,7 @@ async fn manual_mode_shows_the_edit_and_applies_it_once_approved() {
 async fn a_slash_opens_the_command_popup_which_completes_and_runs() {
     let fake = Fake::start().await;
     let ended = in_session(&fake, Sandbox::default(), Some(ENV_KEY), |s| {
-        s.wait_for("MANUAL");
+        s.wait_for("AUTO");
         s.type_text("/mo");
         s.wait_for("╭ commands");
         s.wait_for("/models");
@@ -869,8 +875,8 @@ async fn a_slash_opens_the_command_popup_which_completes_and_runs() {
         // The bar never leaves the bottom row, whatever opened and closed above it.
         assert!(s.bottom_row().contains("demo-2"), "{}", s.contents());
         s.send("\r");
-        s.poll(WAIT, "/mode did not switch to PLAN", |s| {
-            s.bottom_row().contains("PLAN").then_some(())
+        s.poll(WAIT, "/mode did not switch to MANUAL", |s| {
+            s.bottom_row().contains("MANUAL").then_some(())
         });
         // Down picks the second match and Enter runs it.
         s.type_text("/mo");
@@ -989,7 +995,7 @@ async fn slash_forums_logs_in_with_a_hidden_password_and_retries_a_wrong_one() {
     let sandbox = Sandbox::default();
     seed_forum(&sandbox, &fake.url);
     let ended = in_session(&fake, sandbox, Some(ENV_KEY), |s| {
-        s.wait_for("MANUAL");
+        s.wait_for("AUTO");
         s.type_text("/forums");
         s.send("\r");
         s.wait_for("╭ Forums");
@@ -1049,7 +1055,7 @@ async fn right_click_copies_a_reply_and_says_so_at_the_top_right() {
     let fake = Fake::start().await;
     fake.script([Reply::sse("hello.sse")]);
     in_session(&fake, Sandbox::default(), Some(ENV_KEY), |s| {
-        s.wait_for("MANUAL");
+        s.wait_for("AUTO");
         s.type_text("hi");
         s.send("\r");
         s.wait_for("Hello there!");
@@ -1075,7 +1081,7 @@ async fn slash_copy_copies_the_last_reply() {
     let fake = Fake::start().await;
     fake.script([Reply::sse("hello.sse")]);
     in_session(&fake, Sandbox::default(), Some(ENV_KEY), |s| {
-        s.wait_for("MANUAL");
+        s.wait_for("AUTO");
         s.type_text("/copy");
         s.send("\r");
         s.wait_for("Nothing to copy yet");
@@ -1125,7 +1131,7 @@ async fn thinking_collapses_opens_on_click_and_ctrl_t_toggles_it_all() {
     let fake = Fake::start().await;
     fake.script([Reply::sse("hello.sse")]);
     in_session(&fake, Sandbox::default(), Some(ENV_KEY), |s| {
-        s.wait_for("MANUAL");
+        s.wait_for("AUTO");
         s.type_text("hi");
         s.send("\r");
         s.wait_for("Hello there!");
@@ -1149,7 +1155,7 @@ async fn the_context_share_follows_a_switch_of_model_at_once() {
     let fake = Fake::start().await;
     fake.script([Reply::sse("pty/long_context.sse")]);
     in_session(&fake, Sandbox::default(), Some(ENV_KEY), |s| {
-        s.wait_for("MANUAL");
+        s.wait_for("AUTO");
         s.type_text("hi");
         s.send("\r");
         s.wait_for("Read it all.");
@@ -1175,7 +1181,7 @@ async fn slash_clear_starts_a_fresh_conversation_in_a_new_file() {
     let fake = Fake::start().await;
     fake.script([Reply::sse("hello.sse"), Reply::sse("hello.sse")]);
     let ended = in_session(&fake, Sandbox::default(), Some(ENV_KEY), |s| {
-        s.wait_for("MANUAL");
+        s.wait_for("AUTO");
         s.type_text("first question");
         s.send("\r");
         s.wait_for("Hello there!");
@@ -1205,14 +1211,14 @@ async fn slash_status_refreshes_account_balance_with_local_model_and_mode() {
     let fake = Fake::start().await;
     fake.overview_delays([Duration::ZERO, Duration::from_millis(500)]);
     in_session(&fake, Sandbox::default(), Some(ENV_KEY), |s| {
-        s.wait_for("MANUAL");
+        s.wait_for("AUTO");
         s.type_text("/status");
         s.send("\r");
         s.wait_for("╭ Status");
         s.wait_for("Available: $12.30");
         let screen = s.contents();
         assert!(screen.contains("Model: demo-2"), "{screen}");
-        assert!(screen.contains("Mode: MANUAL"), "{screen}");
+        assert!(screen.contains("Mode: AUTO"), "{screen}");
         assert!(screen.contains("not used yet"), "{screen}");
         assert!(
             !screen.contains("Session file:")
@@ -1260,7 +1266,7 @@ async fn status_loads_without_blocking_input_and_does_not_reopen_after_dismissal
         s.wait_for("╭ Status");
         s.wait_for("Refreshing…");
         s.send("\x1b[Z");
-        s.wait_for("Mode: PLAN");
+        s.wait_for("Mode: MANUAL");
         s.send("\x1b");
         s.wait_gone("╭ Status");
         s.type_text("still typing");
@@ -1295,7 +1301,7 @@ async fn slash_effort_sets_what_the_next_requests_carry() {
     let fake = Fake::start().await;
     fake.script([Reply::sse("hello.sse"), Reply::sse("hello.sse")]);
     in_session(&fake, Sandbox::default(), Some(ENV_KEY), |s| {
-        s.wait_for("MANUAL");
+        s.wait_for("AUTO");
         s.type_text("/effort ludicrous");
         s.send("\r");
         s.wait_for("unknown effort");
@@ -1343,14 +1349,14 @@ async fn choosing_a_model_then_effort_keeps_refresh_responsive_and_forwards_the_
     fake.script([Reply::sse("hello.sse")]);
     let requests = fake.clone();
     in_session(&fake, Sandbox::default(), Some(ENV_KEY), move |s| {
-        s.wait_for("MANUAL");
+        s.wait_for("AUTO");
         s.type_text("/model");
         s.send("\r");
         s.poll(WAIT, "catalog refresh started", |_| {
             (requests.hits("/v1/models") == 2).then_some(())
         });
         s.send("\x1b[Z");
-        s.wait_for("PLAN");
+        s.wait_for("MANUAL");
         assert!(!s.contents().contains("╭ Models"), "{}", s.contents());
         s.wait_for("╭ Models");
         s.send("\r");
@@ -1377,7 +1383,7 @@ async fn effort_clears_when_switching_to_a_model_without_reasoning() {
     let fake = Fake::start().await;
     fake.script([Reply::sse("hello.sse")]);
     in_session(&fake, Sandbox::default(), Some(ENV_KEY), |s| {
-        s.wait_for("MANUAL");
+        s.wait_for("AUTO");
         s.type_text("/effort high");
         s.send("\r");
         s.wait_for("Effort: high for this session.");
@@ -1420,7 +1426,7 @@ async fn refreshing_models_updates_effort_choices_and_clears_an_unsupported_over
     fake.model_lists([first, changed, serde_json::json!({"data":[]})]);
     fake.script([Reply::sse("hello.sse")]);
     in_session(&fake, Sandbox::default(), Some(ENV_KEY), |s| {
-        s.wait_for("MANUAL");
+        s.wait_for("AUTO");
         s.type_text("/effort high");
         s.send("\r");
         s.wait_for("Effort: high for this session.");
@@ -1465,7 +1471,7 @@ async fn slash_init_asks_for_an_agents_md_that_the_next_conversation_reads() {
     let sandbox = Sandbox::default();
     let agents = sandbox.project.path().join("AGENTS.md");
     in_session(&fake, sandbox, Some(ENV_KEY), move |s| {
-        s.wait_for("MANUAL");
+        s.wait_for("AUTO");
         s.type_text("/init");
         s.send("\r");
         s.wait_for("Hello there!");
@@ -1496,7 +1502,7 @@ async fn the_models_questions_are_answered_on_one_card() {
     let fake = Fake::start().await;
     fake.script([Reply::sse("pty/questions.sse"), Reply::sse("hello.sse")]);
     in_session(&fake, Sandbox::default(), Some(ENV_KEY), |s| {
-        s.wait_for("MANUAL");
+        s.wait_for("AUTO");
         s.type_text("set it up");
         s.send("\r");
         s.wait_for("Which database should the app use?");
@@ -1524,7 +1530,7 @@ async fn slash_models_picks_the_model_for_the_rest_of_the_session() {
     let fake = Fake::start().await;
     fake.script([Reply::sse("hello.sse")]);
     in_session(&fake, Sandbox::default(), Some(ENV_KEY), |s| {
-        s.wait_for("MANUAL");
+        s.wait_for("AUTO");
         s.type_text("/models");
         s.send("\r");
         s.wait_for("╭ Models");
@@ -1545,7 +1551,7 @@ async fn slash_models_picks_the_model_for_the_rest_of_the_session() {
 async fn the_command_popup_floats_over_the_conversation_without_moving_it() {
     let fake = Fake::start().await;
     in_session(&fake, Sandbox::default(), Some(ENV_KEY), |s| {
-        s.wait_for("MANUAL");
+        s.wait_for("AUTO");
         // More output than the screen holds, so the conversation fills every row above the bar.
         for _ in 0..3 {
             s.type_text("/help");

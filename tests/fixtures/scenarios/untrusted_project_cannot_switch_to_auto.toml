@@ -3,6 +3,9 @@ args = ["-p", "fix the sum"]
 project = "untrusted_auto"
 replies = ["scenarios/untrusted_auto/1.sse", "scenarios/untrusted_auto/2.sse"]
 
+[home_files]
+"config.toml" = "mode = 'manual'"
+
 [expect]
 exit = 0
 stderr_contains = ["ignoring mode = \"auto\"", "isn't trusted"]

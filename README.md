@@ -36,7 +36,7 @@ After installing, open a new terminal in your project folder and run `palepale`.
 | Escape | Interrupt the current turn |
 | Ctrl+D | Quit with an empty composer |
 
-MANUAL follows permission rules. PLAN restricts writes while preparing a plan. AUTO accepts actions automatically, including actions denied by permission rules.
+New sessions start in AUTO, which accepts actions automatically, including actions denied by permission rules. Use `/mode`, Shift+Tab, or `--mode` to choose MANUAL or PLAN. MANUAL follows permission rules. PLAN restricts writes while preparing a plan. An explicit mode in your configuration overrides the startup default.
 
 Opening `/models` fetches the latest catalog. If the server is unavailable, it shows the cached list.
 
@@ -49,6 +49,10 @@ Use `/logout` then `/login` to connect another account. Changing the browser acc
 ## MCP and skills
 
 `/mcp` opens a compact server list. Press `a` to add an HTTPS URL or local program, enter its name and connection details, then connect. Local arguments use a JSON array, so paths with spaces stay intact. Tab switches user/project scope in the form. In server details, `e` enables or disables, `r` reconnects, `l` starts OAuth sign-in, `o` signs out, and `d` removes the definition. The sign-in card shows a clickable browser link; press `c` to copy it if the browser did not open.
+
+Setup requests in a Palepale conversation target Palepale. For a local server, run `palepale mcp add docs -- /path/to/mcp-server --stdio`; for a remote server, run `palepale mcp add docs --url https://example.com/mcp`. Definitions go in `~/.palepale/config.toml` (or `PALEPALE_HOME/config.toml` when set). Add `--scope project` before `--` to use `.palepale/config.toml` in the current folder. Existing entries are preserved; duplicate names in the selected scope are refused.
+
+Run `palepale mcp check docs` to connect and list the tools, or `palepale mcp remove docs` to remove that user entry. Project checks keep the trust and definition-review requirements from `/mcp`. Definitions reload between model requests, so a server added during a conversation becomes available there. Other coding clients keep their own settings.
 
 Server definitions use the existing user or project configuration:
 

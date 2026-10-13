@@ -1,0 +1,5 @@
+data: {"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"uninstall-mcp","type":"function","function":{"name":"write","arguments":"{\"path\":\"{home}/config.toml\",\"content\":\"\"}"}}]}}]}
+
+data: {"choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}
+
+data: [DONE]

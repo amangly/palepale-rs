@@ -1,3 +1,11 @@
 name = "mcp"
 summary = "Manage MCP servers and their tools"
-usage = "mcp [list]"
+usage = "mcp [list | add <name> [--scope user|project] (--url <url> | -- <program> [args...]) | check <name> | remove <name> [--scope user|project]]"
+
+[text]
+added = "Added {name} to Palepale ({scope}).\nConfig: {file}\nRun `palepale mcp check {name}` to verify the connection, or open /mcp."
+checked = "{name}: connected · {count} tools"
+removed = "Removed {name} from Palepale ({scope}).\nConfig: {file}"
+exists = "{name} is already configured in {file}. Use /mcp to change it, or remove that entry first."
+missing = "No server named {name} in {file}."
+invalid_endpoint = "Provide either --url <url> or -- <program> [args...]."

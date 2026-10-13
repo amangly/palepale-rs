@@ -1,5 +1,5 @@
 description = "MANUAL asks before editing; a headless run cannot answer, so the edit is declined"
-args = ["-p", "fix the sum"]
+args = ["--mode", "manual", "-p", "fix the sum"]
 project = "calc"
 replies = ["scenarios/manual_edit/1.sse", "scenarios/manual_edit/2.sse", "scenarios/manual_edit/3.sse"]
 

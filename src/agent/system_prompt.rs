@@ -12,6 +12,7 @@ use crate::{io, limits};
 const BASE: &str = include_str!("../../data/prompts/system.md");
 const CHAT_ONLY: &str = include_str!("../../data/prompts/chat_only.md");
 const ENV: &str = include_str!("../../data/prompts/env.md");
+const EXTENSIONS: &str = include_str!("../../data/prompts/extensions.md");
 
 static PROJECT: LazyLock<Project> = LazyLock::new(|| {
     toml::from_str(include_str!("../../data/prompts/project.toml"))
@@ -65,6 +66,27 @@ pub fn build(paths: &Paths, model: &Model) -> String {
             .trim_end()
             .to_owned(),
         ),
+        model.capabilities.tool_calling.then(|| {
+            template::fill(
+                EXTENSIONS,
+                &[
+                    (
+                        "executable",
+                        &io::proc::current_exe()
+                            .unwrap_or_else(|_| "palepale".into())
+                            .display()
+                            .to_string(),
+                    ),
+                    ("user_config", &paths.user_config().display().to_string()),
+                    (
+                        "project_config",
+                        &paths.project_config().display().to_string(),
+                    ),
+                ],
+            )
+            .trim_end()
+            .to_owned()
+        }),
         forums(paths),
         project(paths),
         Some(env.trim_end().to_owned()),
@@ -156,6 +178,22 @@ mod tests {
             reasoning_efforts: None,
             default_reasoning_effort: None,
         }
+    }
+
+    #[test]
+    fn setup_targets_palepale_even_with_an_empty_catalog_and_a_custom_home() {
+        let root = tempfile::tempdir().unwrap();
+        let paths = Paths::at(root.path().join("custom-home"), root.path().join("project"));
+        let mut model = model();
+        model.capabilities.tool_calling = true;
+        let prompt = build(&paths, &model);
+        assert!(prompt.contains(&paths.user_config().display().to_string()));
+        assert!(prompt.contains(&paths.project_config().display().to_string()));
+        assert!(prompt.contains("target Palepale unless the user explicitly names another client"));
+        assert!(prompt.contains("palepale mcp add") && prompt.contains("palepale mcp check"));
+        assert!(prompt.contains(".agents/skills") && prompt.contains("startup_timeout_secs"));
+        model.capabilities.tool_calling = false;
+        assert!(!build(&paths, &model).contains("<palepale_setup>"));
     }
 
     #[test]

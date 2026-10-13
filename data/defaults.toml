@@ -1,7 +1,7 @@
 # Built-in settings; ~/.palepale/config.toml, .palepale/config.toml and flags override them in that
 # order. `[[permission]]` rules are appended instead, and the last matching rule wins.
 model = ""
-mode = "manual"
+mode = "auto"
 # Published releases check before interactive startup and reopen after a verified update.
 # PALEPALE_NO_UPDATE also disables automatic checks.
 auto_update = true

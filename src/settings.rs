@@ -258,7 +258,7 @@ mod tests {
     fn defaults_parse() {
         let settings: Settings = toml::Value::Table(defaults().unwrap()).try_into().unwrap();
         assert!(settings.model.is_empty());
-        assert!(mode::get(&settings.mode).is_some());
+        assert_eq!(settings.mode, "auto");
         assert!(!settings.permission.is_empty());
     }
 
@@ -325,6 +325,12 @@ mod tests {
             ("shell = '.palepale/sh'", "shell = \".palepale/sh\""),
         ] {
             let (_root, paths) = project_with(config);
+            io::fs::write_atomic(
+                &paths.user_config(),
+                b"mode = 'manual'",
+                io::fs::Access::Private,
+            )
+            .unwrap();
             let settings = load(&paths, &Overrides::default()).unwrap();
             assert_eq!(settings.mode, "manual", "{config}");
             assert!(settings.shell.is_none(), "{config}");
