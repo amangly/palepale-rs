@@ -80,7 +80,7 @@ impl Intro {
             final_gradient_direction: GradientDirection::Vertical,
         });
         let mut engine = term::effect_engine(
-            welcome::ART,
+            &logo.iter().map(Line::text).collect::<Vec<_>>().join("\n"),
             columns,
             logo.len(),
             seed,

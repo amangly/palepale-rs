@@ -242,9 +242,7 @@ impl<'a> Tui<'a> {
         };
         let welcome = tui.welcome();
         tui.feed.push(Block::Welcome(welcome));
-        if term::color_depth() != theme::Depth::None
-            && settings::env("PALEPALE_NO_ANIMATION").is_none()
-        {
+        if settings::env("PALEPALE_NO_ANIMATION").is_none() {
             tui.intro = matrix::Intro::new(layout::margins(width).1, height, tui.rng.u64(..));
             tui.advance_intro();
         }
@@ -290,7 +288,6 @@ impl<'a> Tui<'a> {
                 .map(str::to_owned),
             mode: self.shared.mode().label.clone(),
             context_pct: self.context_pct(),
-            file: self.session_file.clone(),
         }
     }
 
@@ -476,7 +473,8 @@ impl<'a> Tui<'a> {
     }
 
     fn input(&mut self, input: Input, running: bool) -> Step<'a> {
-        if self.intro.take().is_some() {
+        // Terminal startup can report a resize before any key is pressed.
+        if !matches!(&input, Input::Resize(..)) && self.intro.take().is_some() {
             self.feed.welcome_art(None);
         }
         // Inside a burst of keys (a paste where the terminal sends one as keystrokes), Enter
@@ -1214,7 +1212,6 @@ impl<'a> Tui<'a> {
                     session: &session_info,
                     usage: self.session_usage,
                     requests: self.session_requests,
-                    project: &self.app.paths.project.display().to_string(),
                     configured: self.app.api.is_configured(),
                     logged_in: self.app.api.has_key()
                         && card.revision == self.app.api.key_revision(),
@@ -1361,7 +1358,6 @@ mod account_tests {
                 session: &session,
                 usage: Usage::default(),
                 requests: 0,
-                project: "/project",
                 configured: true,
                 logged_in: true,
             },

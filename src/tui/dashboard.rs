@@ -13,6 +13,8 @@ use std::sync::LazyLock;
 #[derive(Deserialize)]
 struct Words {
     title: String,
+    max_width: usize,
+    separator: String,
     tabs: Vec<String>,
     hint: String,
     loading: String,
@@ -21,12 +23,29 @@ struct Words {
     unavailable: String,
     no_context: String,
     default_effort: String,
-    ready: String,
     paused: String,
     session_cost: String,
     usage_scope: String,
     usage_failed: String,
-    labels: Vec<String>,
+    labels: Labels,
+}
+
+#[derive(Deserialize)]
+struct Labels {
+    model: String,
+    mode: String,
+    context: String,
+    requests: String,
+    account: String,
+    available: String,
+    reserved: String,
+    charged: String,
+    unresolved: String,
+    input: String,
+    output: String,
+    cached: String,
+    reasoning: String,
+    budget: String,
 }
 static WORDS: LazyLock<Words> = LazyLock::new(|| {
     toml::from_str(include_str!("../../data/dashboard.toml")).expect("dashboard text")
@@ -54,7 +73,6 @@ pub struct Info<'a> {
     pub session: &'a Session,
     pub usage: Usage,
     pub requests: u64,
-    pub project: &'a str,
     pub configured: bool,
     pub logged_in: bool,
 }
@@ -125,6 +143,9 @@ impl Dashboard {
 
     pub fn render(&mut self, info: &Info<'_>, width: usize, max_rows: usize) -> Vec<Line> {
         let words = &*WORDS;
+        let labels = &words.labels;
+        let width = width.min(words.max_width);
+        let inner = width.saturating_sub(4);
         let mut rows = Vec::new();
         let mut tabs = Line::default();
         for (index, tab) in words.tabs.iter().enumerate() {
@@ -140,81 +161,88 @@ impl Dashboard {
         rows.push(tabs);
         let mut body = Vec::new();
         if self.tab == 0 {
-            body.push(row(0, crate::release::version()));
-            body.push(row(
-                1,
-                if info.configured {
-                    &crate::backend::text().connected
-                } else {
-                    &crate::backend::text().disconnected
-                },
+            body.push(joined(
+                label(&labels.model, &info.session.model),
+                Line::styled(
+                    info.session
+                        .effort
+                        .as_deref()
+                        .unwrap_or(&words.default_effort),
+                    Style::fg("muted"),
+                ),
             ));
-            body.push(row(2, &info.session.model));
-            body.push(row(
-                3,
-                info.session
-                    .effort
-                    .as_deref()
-                    .unwrap_or(&words.default_effort),
+            body.push(joined(
+                label(&labels.mode, &info.session.mode),
+                label(&labels.requests, &info.requests.to_string()),
             ));
-            body.push(row(4, &info.session.mode));
             body.push(match info.session.context_pct {
-                Some(pct) => meter(5, pct, width),
-                None => row(5, &words.no_context),
+                Some(pct) => chart::meter(&labels.context, pct, 100, inner),
+                None => label(&labels.context, &words.no_context),
             });
-            body.push(row(6, &info.requests.to_string()));
             body.extend(token_chart(
                 info.usage.input,
                 info.usage.output,
                 info.usage.cached,
                 info.usage.reasoning,
-                width.saturating_sub(4),
+                inner,
             ));
             body.push(label(
                 &words.session_cost,
                 &units::usd_micros(info.usage.cost_micros),
             ));
-        } else {
-            body.push(Line::styled(&words.usage_scope, Style::fg("muted")));
         }
         if info.configured && info.logged_in {
             if let Some(me) = &self.me {
-                body.push(row(11, &format!("…{}", me.account_hint)));
-                body.push(row(12, &units::usd_micros(me.available())));
-                body.push(Line::styled(
-                    if me.can_spend {
-                        &words.ready
-                    } else {
-                        &words.paused
-                    },
-                    Style::fg(if me.can_spend { "done" } else { "warn" }),
-                ));
+                let available = label(&labels.available, &units::usd_micros(me.available()));
                 if self.tab == 1 {
-                    body.push(row(
-                        13,
-                        &me.reserved_microdollars
-                            .map(units::usd_micros)
-                            .unwrap_or_else(|| words.unavailable.clone()),
+                    body.push(joined(
+                        label(&labels.account, &format!("…{}", me.account_hint)),
+                        Line::styled(&words.usage_scope, Style::fg("muted")),
+                    ));
+                    body.push(joined(
+                        available,
+                        label(
+                            &labels.reserved,
+                            &me.reserved_microdollars
+                                .map(units::usd_micros)
+                                .unwrap_or_else(|| words.unavailable.clone()),
+                        ),
                     ));
                     if let (Some(budget), Some(used)) =
                         (me.token_budget.filter(|v| *v > 0), me.used_tokens)
                     {
                         let total = used.saturating_add(me.reserved_tokens.unwrap_or(0));
-                        body.push(meter(21, total.saturating_mul(100) / budget, width));
+                        body.push(chart::meter(&labels.budget, total, budget, inner));
                     }
+                } else {
+                    body.push(available);
+                }
+                if !me.can_spend {
+                    body.push(Line::styled(&words.paused, Style::fg("warn")));
                 }
             }
             if self.tab == 1 {
                 if let Some(usage) = &self.usage {
-                    body.push(row(14, &units::usd_micros(usage.spent_microdollars)));
-                    body.push(row(15, &usage.confirmed_requests.to_string()));
-                    body.push(row(16, &usage.unknown_requests.to_string()));
+                    let mut totals = joined(
+                        label(
+                            &labels.charged,
+                            &units::usd_micros(usage.spent_microdollars),
+                        ),
+                        label(&labels.requests, &usage.confirmed_requests.to_string()),
+                    );
+                    if usage.unknown_requests > 0 {
+                        totals = joined(
+                            totals,
+                            label(&labels.unresolved, &usage.unknown_requests.to_string()),
+                        );
+                    }
+                    body.push(totals);
                     body.extend(token_chart(
                         usage.prompt_tokens,
                         usage.completion_tokens,
                         usage.cached_tokens,
                         usage.reasoning_tokens,
-                        width.saturating_sub(4),
+                        inner,
                     ));
                 }
                 if let Some(error) = &self.usage_error {
@@ -240,10 +268,10 @@ impl Dashboard {
                 Style::fg("muted"),
             ));
         }
-        if self.tab == 0 {
-            body.push(row(9, info.project));
-            body.push(row(10, &info.session.file));
-        }
+        let body: Vec<Line> = body
+            .into_iter()
+            .flat_map(|line| line.wrap(inner.max(1), &Line::default()))
+            .collect();
         let available = max_rows.saturating_sub(4).max(1);
         self.offset = self.offset.min(body.len().saturating_sub(available));
         let offset = self.offset;
@@ -263,19 +291,21 @@ fn label(name: &str, value: &str) -> Line {
     line.push(value, Style::default());
     line
 }
-fn row(index: usize, value: &str) -> Line {
-    label(&WORDS.labels[index], value)
+fn joined(mut left: Line, right: Line) -> Line {
+    left.push(&WORDS.separator, Style::fg("muted"));
+    left.extend(right);
+    left
 }
 fn token_chart(input: u64, output: u64, cached: u64, reasoning: u64, width: usize) -> Vec<Line> {
     let mut rows = chart::render(
         &[
             chart::Bar {
-                label: &WORDS.labels[17],
+                label: &WORDS.labels.input,
                 value: input,
                 color: &chart::CONFIG.input_color,
             },
             chart::Bar {
-                label: &WORDS.labels[18],
+                label: &WORDS.labels.output,
                 value: output,
                 color: &chart::CONFIG.output_color,
             },
@@ -283,25 +313,17 @@ fn token_chart(input: u64, output: u64, cached: u64, reasoning: u64, width: usiz
         width,
     );
     let pct = u128::from(cached) * 100 / u128::from(input.max(1));
-    rows.push(row(19, &format!("{} ({pct}%)", units::tokens(cached))).truncate(width));
-    rows.push(row(20, &units::tokens(reasoning)).truncate(width));
-    rows
-}
-fn meter(index: usize, pct: u64, width: usize) -> Line {
-    let cells = width
-        .saturating_sub(WORDS.labels[index].len() + 14)
-        .clamp(4, 20);
-    let filled = pct.min(100) as usize * cells / 100;
-    let mut line = row(index, "");
-    line.push(
-        format!(
-            "{}{} {pct}%",
-            "━".repeat(filled),
-            "─".repeat(cells - filled)
-        ),
-        Style::fg(if pct >= 90 { "warn" } else { "accent" }),
+    rows.push(
+        joined(
+            label(
+                &WORDS.labels.cached,
+                &format!("{} ({pct}%)", units::tokens(cached)),
+            ),
+            label(&WORDS.labels.reasoning, &units::tokens(reasoning)),
+        )
+        .truncate(width),
     );
-    line
+    rows
 }
 
 #[cfg(test)]
@@ -311,19 +333,71 @@ mod tests {
     use crate::io::term::KeyModifiers;
 
     #[test]
+    fn populated_cards_stay_compact_and_keep_charges_and_small_token_counts_visible() {
+        let session = Session {
+            model: "gpt-6-astra".into(),
+            effort: None,
+            mode: "MANUAL".into(),
+            context_pct: Some(8),
+        };
+        let info = Info {
+            session: &session,
+            usage: Usage::default(),
+            requests: 0,
+            configured: true,
+            logged_in: true,
+        };
+        let mut card = Dashboard::new(1, 0, false);
+        card.finished(
+            Ok(Me {
+                account_hint: "5594".into(),
+                balance_microdollars: 4_947_622,
+                reserved_microdollars: Some(33_768),
+                can_spend: true,
+                token_budget: Some(1_000_000),
+                used_tokens: Some(1),
+                ..Me::default()
+            }),
+            Ok(Overview {
+                confirmed_requests: 13,
+                unknown_requests: 1,
+                spent_microdollars: 18_610,
+                prompt_tokens: 88_900,
+                completion_tokens: 1_500,
+                cached_tokens: 32_300,
+                reasoning_tokens: 341,
+            }),
+        );
+        for tab in [0, 1] {
+            card.tab = tab;
+            let rows = card.render(&info, 180, 40);
+            assert!(rows.len() <= 12 && rows.iter().all(|row| row.width() <= 64));
+            let text = rows.iter().map(Line::text).collect::<Vec<_>>().join("\n");
+            assert!(text.contains("Available: $4.947622"));
+            if tab == 1 {
+                assert!(text.contains("Charged: $0.01861") && text.contains("Unresolved: 1"));
+                assert!(text.contains("<1%") && text.contains("88.9K") && text.contains("1.5K"));
+                let output = rows
+                    .iter()
+                    .find(|row| row.text().contains("│ Output "))
+                    .unwrap();
+                assert_eq!(output.text().matches('█').count(), 1);
+            }
+        }
+    }
+
+    #[test]
     fn cards_fit_small_terminals_and_unavailable_usage_stays_unavailable() {
         let session = Session {
             model: "demo".into(),
             effort: None,
             mode: "MANUAL".into(),
             context_pct: Some(120),
-            file: "/saved/session".into(),
         };
         let info = Info {
             session: &session,
             usage: Usage::default(),
             requests: 0,
-            project: "/project",
             configured: true,
             logged_in: true,
         };
@@ -352,7 +426,7 @@ mod tests {
             .collect::<Vec<_>>()
             .join("\n");
         assert!(text.contains("Usage unavailable") && text.contains("$12.30"));
-        assert!(!text.contains("Charged: $0.00") && !text.contains("Token budget used:"));
+        assert!(!text.contains("Charged: $0.00") && !text.contains("Budget"));
         card.refreshing(2, 1, true);
         let text = card
             .render(&info, 100, 24)

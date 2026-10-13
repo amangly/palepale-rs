@@ -1,5 +1,5 @@
 max_cells = 24
-filled = "━"
-empty = "─"
+filled = "█"
+empty = "░"
 input_color = "accent"
 output_color = "chart_output"

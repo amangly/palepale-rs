@@ -287,6 +287,20 @@ impl Session {
         cols: u16,
         auto_login: bool,
     ) -> Self {
+        Self::spawn(
+            Self::command(sandbox, api_url, key, args, auto_login),
+            rows,
+            cols,
+        )
+    }
+
+    fn command(
+        sandbox: &Sandbox,
+        api_url: &str,
+        key: Option<&str>,
+        args: &[&str],
+        auto_login: bool,
+    ) -> CommandBuilder {
         // Packaged Windows tests stay portable instead of installing into the runner profile.
         #[cfg(windows)]
         std::fs::write(sandbox.home().join("install.json"), r#"{"declined":true}"#).unwrap();
@@ -304,7 +318,7 @@ impl Session {
         }
         cmd.env("TERM", "xterm-256color");
         cmd.env("PALEPALE_NO_UPDATE", "1");
-        Self::spawn(cmd, rows, cols)
+        cmd
     }
 
     fn spawn(cmd: CommandBuilder, rows: u16, cols: u16) -> Self {
@@ -356,6 +370,18 @@ impl Session {
         self.screen.screen().contents()
     }
 
+    fn capture(&self, name: &str) {
+        if let Ok(folder) = std::env::var("PALEPALE_CAPTURE_DIR") {
+            let path = std::path::Path::new(&folder).join(name);
+            std::fs::write(path.with_extension("txt"), self.contents()).unwrap();
+            std::fs::write(
+                path.with_extension("ansi"),
+                self.screen.screen().contents_formatted(),
+            )
+            .unwrap();
+        }
+    }
+
     fn bottom_row(&self) -> String {
         self.row(usize::from(self.screen.screen().size().0) - 1)
     }
@@ -400,6 +426,14 @@ impl Session {
         self.poll(WAIT, &format!("never saw {text:?}"), |s| {
             s.contents().contains(text).then_some(())
         });
+    }
+
+    fn wait_for_logo(&mut self) {
+        for row in include_str!("../../data/palepale-ascii.txt").lines() {
+            if !row.trim().is_empty() {
+                self.wait_for(row.trim_end());
+            }
+        }
     }
 
     #[track_caller]
@@ -542,12 +576,62 @@ async fn a_session_welcomes_chats_switches_mode_and_quits() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn the_matrix_intro_animates_through_resize_with_and_without_color() {
+    tokio::task::spawn_blocking(|| {
+        for no_color in [false, true] {
+            let sandbox = Sandbox::default();
+            let mut cmd = Session::command(&sandbox, "", None, &[], false);
+            if no_color {
+                cmd.env("NO_COLOR", "1");
+            }
+            let mut s = Session::spawn(cmd, ROWS, COLS);
+            s.wait_for("palepale v");
+            s._master
+                .resize(PtySize {
+                    rows: ROWS + 1,
+                    cols: COLS,
+                    pixel_width: 0,
+                    pixel_height: 0,
+                })
+                .unwrap();
+            s.screen.screen_mut().set_size(ROWS + 1, COLS);
+            let mut rain = std::collections::HashSet::new();
+            s.poll(
+                WAIT,
+                &format!("Matrix rain did not animate after resize (NO_COLOR={no_color})"),
+                |s| {
+                    let columns = include_str!("../../data/palepale-ascii.txt")
+                        .lines()
+                        .map(|row| row.trim_end().len())
+                        .max()
+                        .unwrap();
+                    let logo: String = (0..usize::from(ROWS + 1))
+                        .map(|row| s.row(row).chars().skip(2).take(columns).collect::<String>())
+                        .collect();
+                    if logo.chars().any(|c| c.is_ascii_digit() || c == 'Z') {
+                        rain.insert(logo);
+                    }
+                    (rain.len() >= 3).then_some(())
+                },
+            );
+            s.wait_for_logo();
+            s.wait_quiet();
+            s.send("\x04");
+            assert!(s.wait_exit());
+            assert!(sandbox.sessions().is_empty());
+        }
+    })
+    .await
+    .unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn typing_during_the_matrix_intro_keeps_the_draft_and_reveals_the_logo() {
     let fake = Fake::start().await;
     in_session(&fake, Sandbox::default(), Some(ENV_KEY), |s| {
         s.type_text("keep this draft");
         s.wait_for("keep this draft");
-        s.wait_for("|__) |__|");
+        s.wait_for_logo();
         let screen = s.contents();
         assert!(screen.contains("/help commands"), "{screen}");
         assert!(
@@ -1056,36 +1140,40 @@ async fn slash_status_refreshes_account_balance_with_local_model_and_mode() {
         s.wait_for("MANUAL");
         s.type_text("/status");
         s.send("\r");
-        s.wait_for("Backend: backend configured");
         s.wait_for("╭ Status");
-        s.wait_for("Account: …3456");
-        s.wait_for("Available balance: $12.30");
+        s.wait_for("Available: $12.30");
         let screen = s.contents();
         assert!(screen.contains("Model: demo-2"), "{screen}");
         assert!(screen.contains("Mode: MANUAL"), "{screen}");
-        assert!(screen.contains("nothing sent yet"), "{screen}");
+        assert!(screen.contains("not used yet"), "{screen}");
+        assert!(
+            !screen.contains("Session file:")
+                && !screen.contains("Project:")
+                && !screen.contains("Version:"),
+            "{screen}"
+        );
+        s.capture("status-session");
         s.send("\t");
-        s.wait_for("All-time confirmed account usage");
+        s.wait_for("Account: …3456");
+        s.wait_for("all time");
         s.wait_for("Charged: $3.00");
-        s.wait_for("Confirmed requests: 42");
+        s.wait_for("Requests: 42");
         s.wait_for("50%");
         let screen = s.contents();
-        let input = screen
-            .lines()
-            .find(|row| row.contains("Input tokens"))
-            .unwrap();
+        let input = screen.lines().find(|row| row.contains("│ Input ")).unwrap();
         let output = screen
             .lines()
-            .find(|row| row.contains("Output tokens"))
+            .find(|row| row.contains("│ Output "))
             .unwrap();
         assert!(input.contains("12K") && output.contains("3K"), "{screen}");
-        assert_eq!(input.matches('━').count(), 24, "{screen}");
-        assert_eq!(output.matches('━').count(), 6, "{screen}");
-        assert!(screen.contains("Cached input: 6K (50%)"), "{screen}");
-        assert!(screen.contains("Reasoning tokens: 1K"), "{screen}");
+        assert_eq!(input.matches('█').count(), 24, "{screen}");
+        assert_eq!(output.matches('█').count(), 6, "{screen}");
+        assert!(screen.contains("Cached: 6K (50%)"), "{screen}");
+        assert!(screen.contains("Reasoning: 1K"), "{screen}");
+        s.capture("status-usage");
         s.send("r");
-        s.wait_for("Refreshing account and usage");
-        s.wait_gone("Refreshing account and usage");
+        s.wait_for("Refreshing…");
+        s.wait_gone("Refreshing…");
         s.send("\x1b");
         s.wait_gone("╭ Status");
     })
@@ -1102,7 +1190,7 @@ async fn status_loads_without_blocking_input_and_does_not_reopen_after_dismissal
         s.type_text("/status");
         s.send("\r");
         s.wait_for("╭ Status");
-        s.wait_for("Refreshing account and usage");
+        s.wait_for("Refreshing…");
         s.send("\x1b[Z");
         s.wait_for("Mode: PLAN");
         s.send("\x1b");
@@ -1124,7 +1212,7 @@ async fn unavailable_account_usage_keeps_the_balance_without_inventing_zero_usag
     in_session(&fake, Sandbox::default(), Some(ENV_KEY), |s| {
         s.type_text("/status");
         s.send("\r");
-        s.wait_for("Available balance: $12.30");
+        s.wait_for("Available: $12.30");
         s.send("\t");
         s.wait_for("Usage unavailable:");
         assert!(!s.contents().contains("Charged: $0.00"));
@@ -1429,7 +1517,8 @@ async fn disconnected_session_keeps_local_commands_and_restores_the_terminal() {
         s.wait_for("Backend not configured");
         s.wait_quiet();
         assert!(s.row(0).contains("palepale"));
-        assert!(s.contents().contains("|__) |__|"));
+        s.wait_for_logo();
+        s.capture("welcome");
         if let Ok(path) = std::env::var("PALEPALE_CAPTURE_PATH") {
             std::fs::write(&path, s.contents()).unwrap();
             std::fs::write(
@@ -1440,7 +1529,7 @@ async fn disconnected_session_keeps_local_commands_and_restores_the_terminal() {
         }
         s.type_text("/status");
         s.send("\r");
-        s.wait_for("Backend: backend not configured");
+        s.wait_for("Offline");
         assert!(!s.contents().contains("Balance"));
         s.send("\x1b");
         s.wait_gone("╭ Status");
@@ -1472,7 +1561,7 @@ async fn narrow_disconnected_session_keeps_the_editor_and_quits() {
         assert!(s.row(0).contains("palepale"));
         s.type_text("/status");
         s.send("\r");
-        s.wait_for("Backend: backend not configured");
+        s.wait_for("Offline");
         s.send("\x04");
         assert!(s.wait_exit());
     })

@@ -2,9 +2,16 @@
 source: src/tui/welcome.rs
 expression: "snapshot(&render(&info(false), 100))"
 ---
-[accent] __   __  _   ___  __   __  _   ___[/]   [accent+bold]palepale[/][muted] v0.2.0-1[/]
-[accent]|__) |__| |   |_  |__) |__| |   |_[/]    [mode_manual+bold]MANUAL[/][muted] | backend not configured[/]
-[accent]|    |  | |__ |__ |    |  | |__ |__[/]   [muted]~/src/project[/]
-                                      [muted]Backend not configured. Unset PALEPALE_OFFLINE or set[/]
-                                      [muted]PALEPALE_API_URL to connect.[/]
-                                      [muted]/help commands · /status usage · /models model[/]
+[accent]          ::: :::[/]        
+[accent]       :::::: ::::::[/]     
+[accent]    --------- ---------[/]  
+[accent]  ----------- -----------[/]   [accent+bold]palepale[/][muted] v0.2.0-1[/]
+[accent]  -----   --- ---   -----[/]   [mode_manual+bold]MANUAL[/][muted] | backend not configured[/]
+[accent]  ===     === ===     ===[/]   [muted]~/src/project[/]
+[accent]  ===    ==== ====    ===[/]   [muted]Backend not configured. Unset PALEPALE_OFFLINE or set PALEPALE_API_URL[/]
+[accent]  =========== =======+===[/]   [muted]to connect.[/]
+[accent]  +++++   +++ +++   +++++[/]   [muted]/help commands · /status usage · /models model[/]
+[accent]  ++      +++ +++       +[/]
+[accent]          *** ***[/]        
+[accent]          *** ***[/]        
+[accent]            * *[/]

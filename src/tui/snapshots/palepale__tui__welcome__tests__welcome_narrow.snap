@@ -2,9 +2,19 @@
 source: src/tui/welcome.rs
 expression: "snapshot(&render(&info(true), 40))"
 ---
-[accent] __   __  _   ___  __   __  _   ___[/]
-[accent]|__) |__| |   |_  |__) |__| |   |_[/]
-[accent]|    |  | |__ |__ |    |  | |__ |__[/]
+[accent]          ::: :::[/]
+[accent]       :::::: ::::::[/]
+[accent]    --------- ---------[/]
+[accent]  ----------- -----------[/]
+[accent]  -----   --- ---   -----[/]
+[accent]  ===     === ===     ===[/]
+[accent]  ===    ==== ====    ===[/]
+[accent]  =========== =======+===[/]
+[accent]  +++++   +++ +++   +++++[/]
+[accent]  ++      +++ +++       +[/]
+[accent]          *** ***[/]
+[accent]          *** ***[/]
+[accent]            * *[/]
 
 [accent+bold]palepale[/][muted] v0.2.0-1[/]
 [mode_manual+bold]MANUAL[/][muted] · backend not configured[/]

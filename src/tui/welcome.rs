@@ -21,6 +21,7 @@ pub const ART: &str = include_str!("../../data/palepale-ascii.txt");
 
 pub fn logo() -> Vec<Line> {
     ART.lines()
+        .skip_while(|row| row.trim().is_empty())
         .map(|row| Line::styled(row.trim_end(), Style::fg("accent")))
         .collect()
 }
@@ -127,10 +128,10 @@ mod tests {
     }
 
     #[test]
-    fn compact_logo_uses_the_matrix_accent() {
+    fn supplied_ascii_art_uses_the_matrix_accent() {
         assert!(ART.is_ascii());
-        assert_eq!(logo().len(), 3);
-        assert!(logo().iter().all(|row| row.width() <= 35));
+        assert_eq!(logo().len(), 13);
+        assert!(logo().iter().all(|row| row.width() <= 25));
         assert!(
             render(&info(true), 100)
                 .iter()

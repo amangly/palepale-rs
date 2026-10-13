@@ -1,5 +1,5 @@
-max_frames = 100
-virtual_frame_rate = 30
+max_frames = 180
+virtual_frame_rate = 60
 rain_time = 1
 rain_symbols = "0123456789Z*:.=+-|_"
 highlight_color = "dbffdb"

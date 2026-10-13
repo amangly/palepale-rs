@@ -125,8 +125,6 @@ pub struct Session {
     pub mode: String,
     /// Share of the context window the last request used.
     pub context_pct: Option<u64>,
-    /// Where the conversation is saved, from its first message on.
-    pub file: String,
 }
 
 impl Ctx<'_> {

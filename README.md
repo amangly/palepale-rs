@@ -38,7 +38,7 @@ MANUAL follows permission rules. PLAN restricts writes while preparing a plan. A
 
 Opening `/models` fetches the latest catalog. If the server is unavailable, it shows the cached list.
 
-The opening screen uses a three-line ASCII logo with a brief Matrix rain effect from [ttfx](https://github.com/omacom/ttfx). Typing skips the animation and keeps your input. `NO_COLOR` or `PALEPALE_NO_ANIMATION=1` skips it too.
+The opening screen reveals the supplied ASCII artwork with a brief Matrix rain effect from [ttfx](https://github.com/omacom/ttfx). Typing skips the animation and keeps your input. `PALEPALE_NO_ANIMATION=1` skips it too. `NO_COLOR` keeps the animation in plain text.
 
 `/effort` shows the levels reported by the model catalog. Choose `default` to reset it, or set a level directly with `/effort low`.
 
@@ -48,7 +48,7 @@ Use `/logout` then `/login` to connect another account. Changing the browser acc
 
 Run `palepale` to check for updates before opening the session. When a newer release is available, Palepale shows download progress, verifies `SHA256SUMS`, installs it, and opens the updated CLI in the same terminal. Rapid restarts share a check for one minute. An unavailable update service or failed checksum leaves the installed version usable. Press Ctrl+C during the check or download to continue with it.
 
-`/status` opens a card with Session and Usage tabs. Input and output token bars share a scale, with cached input and reasoning totals below. View context usage, session cost at listed rates, available and reserved balances, and confirmed account charges. Left/right or Tab switch tabs, up/down scroll, `r` refreshes account data, and Escape returns to the composer. Account data loads in the background; missing usage data is shown as unavailable.
+`/status` opens a compact card with Session and Usage tabs. Shared charts show context, input/output tokens, and account budget use. Cached input and reasoning totals sit below the token bars. Session cost uses listed model rates; Usage shows confirmed account charges and available and reserved balances. Tab switches tabs, up/down scroll, `r` refreshes, and Escape closes the card. Missing usage data is shown as unavailable.
 
 Settings live in `~/.palepale/config.toml`. Set `auto_update = false` to disable automatic updates.
 
