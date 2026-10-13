@@ -1,4 +1,4 @@
-# Palepale coding agent
+# Palepale-rs
 
 Use your [palepale.tech](https://palepale.tech) account to run a coding agent in your terminal. Read code, edit files, run commands, and switch models in your project.
 
