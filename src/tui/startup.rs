@@ -1,12 +1,14 @@
 //! Startup replacement finishes before any conversation or terminal session starts.
 use std::sync::LazyLock;
 
+use futures_util::StreamExt;
+
 use crate::io::{clock, proc, term};
 use crate::limits;
 use crate::paths::Paths;
 use crate::text::styled::{Line, Style};
 use crate::text::{template::fill, theme};
-use crate::tui::ui;
+use crate::tui::{keymap, keymap::Action, ui};
 use crate::update::{self, Outcome, Progress};
 use serde::Deserialize;
 
@@ -37,6 +39,14 @@ pub async fn update(paths: &Paths, enabled: bool) -> Option<std::process::ExitCo
         return None;
     }
     let exe = proc::current_exe().ok()?;
+    let raw = match term::Raw::enter() {
+        Ok(raw) => raw,
+        Err(error) => {
+            finish(&fill(&WORDS.failed, &[("error", &error.to_string())]));
+            return None;
+        }
+    };
+    let mut inputs = Box::pin(term::inputs());
     let (tx, mut rx) = tokio::sync::watch::channel(Progress::Checking);
     let emit = |progress| {
         // Short phases can finish in one poll; paint them before replacement and reopening.
@@ -54,11 +64,20 @@ pub async fn update(paths: &Paths, enabled: bool) -> Option<std::process::ExitCo
         frame += 1;
         tokio::select! {
             result = &mut operation => break Some(result),
-            _ = tokio::signal::ctrl_c() => break None,
+            _ = term::interrupted() => break None,
+            Some(input) = inputs.next() => {
+                if let term::Input::Key(key) = input
+                    && keymap::get().action(&key) == Some(Action::CtrlC)
+                {
+                    break None;
+                }
+            },
             _ = rx.changed() => {},
             _ = tick.tick() => {},
         }
     };
+    drop(inputs);
+    drop(raw);
     match result {
         Some(Ok(Outcome::Updated(change))) => {
             finish(&fill(&WORDS.opening, &[("tag", &change.to)]));
