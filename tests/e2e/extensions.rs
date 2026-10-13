@@ -38,11 +38,7 @@ fn setup(sandbox: &Sandbox, large: bool) -> PathBuf {
         .join(".agents/skills/native-check/SKILL.md");
     std::fs::create_dir_all(skill.parent().unwrap()).unwrap();
     std::fs::write(&skill, "---\nname: native-check\ndescription: Check the native MCP fixture.\n---\nInspect the native fixture and report its answer.\n").unwrap();
-    std::fs::write(
-        sandbox.home().join("trusted.json"),
-        json!({"projects":[sandbox.project.path()]}).to_string(),
-    )
-    .unwrap();
+    sandbox.trust_project();
     let log = sandbox.project.path().join("native-rpc.log");
     let mut args = vec!["--modern".to_owned(), log.display().to_string()];
     if large {

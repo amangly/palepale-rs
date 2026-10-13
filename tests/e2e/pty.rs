@@ -32,11 +32,7 @@ async fn compact_extension_managers_add_a_server_and_select_a_skill_without_send
         .join(".agents/skills/native-check/SKILL.md");
     std::fs::create_dir_all(skill.parent().unwrap()).unwrap();
     std::fs::write(skill, "---\nname: native-check\ndescription: Check the UI fixture.\n---\nInspect the UI fixture.\n").unwrap();
-    std::fs::write(
-        sandbox.home().join("trusted.json"),
-        serde_json::json!({"projects":[sandbox.project.path()]}).to_string(),
-    )
-    .unwrap();
+    sandbox.trust_project();
     let url = fake.url.clone();
     tokio::task::spawn_blocking(move || {
         let mut session = Session::start_sized(&sandbox, &url, Some(ENV_KEY), &[], 24, 64, false);

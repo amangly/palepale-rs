@@ -45,6 +45,18 @@ impl Sandbox {
         self.home.path()
     }
 
+    pub fn trust_project(&self) {
+        let project = self.project.path().to_path_buf();
+        // Unix getcwd resolves aliases such as macOS /var -> /private/var.
+        #[cfg(unix)]
+        let project = project.canonicalize().unwrap();
+        std::fs::write(
+            self.home().join("trusted.json"),
+            serde_json::json!({"projects": [project]}).to_string(),
+        )
+        .unwrap();
+    }
+
     /// Runs palepale pointed at `api_url`, with `key` as its env key; with none it has only
     /// what the home stores.
     pub async fn run(&self, api_url: &str, args: &[&str], key: Option<&str>) -> Run {
