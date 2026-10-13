@@ -114,6 +114,25 @@ pub fn read_bytes(path: &Path) -> io::Result<Vec<u8>> {
     std::fs::read(path)
 }
 
+pub fn read_limited(path: &Path, max: usize) -> io::Result<Option<String>> {
+    use std::io::Read;
+    let file = match std::fs::File::open(path) {
+        Ok(file) => file,
+        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(None),
+        Err(e) => return Err(e),
+    };
+    let mut bytes = Vec::new();
+    file.take(max as u64 + 1).read_to_end(&mut bytes)?;
+    if bytes.len() > max {
+        return Err(io::Error::other(format!("file exceeds {max} bytes")));
+    }
+    String::from_utf8(bytes).map(Some).map_err(io::Error::other)
+}
+
+pub fn home_dir() -> Option<PathBuf> {
+    dirs::home_dir()
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Kind {
     Missing,

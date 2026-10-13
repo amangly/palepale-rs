@@ -297,3 +297,42 @@ reason = "forums a directory search offers to pick from; past this the search wo
 [forums.batch_max]
 value = 8
 reason = "threads, topic pages or searches fetched in one batched forum tool call, run at once; enough to be useful without hammering the forum"
+[extensions.card_width]
+value = 64
+reason = "Extension managers fit beside a conversation in a small terminal."
+[extensions.skill_file_bytes]
+value = 131072
+reason = "Bound reads of third-party skill files."
+[extensions.skill_catalog_chars]
+value = 8000
+reason = "Keep skill metadata from occupying the conversation."
+[extensions.skill_count]
+value = 512
+reason = "Bound discovery work in registered folders."
+[extensions.connect_timeout_secs]
+value = 20
+reason = "A missing server must not hold up a connection job indefinitely."
+[extensions.call_timeout_secs]
+value = 60
+reason = "Tools have a separate limit from server startup."
+[extensions.oauth_timeout_secs]
+value = 180
+reason = "Allow time for browser sign-in, with cancellation available."
+[extensions.tool_schema_bytes]
+value = 65536
+reason = "Reject oversized individual schemas before sending them to a model."
+[extensions.auth_lock_poll_ms]
+value = 50
+reason = "Coordinate token refresh across native CLI processes without blocking input."
+[extensions.auth_lock_timeout_secs]
+value = 30
+reason = "A busy credential store must not leave a sign-out or refresh waiting indefinitely."
+[extensions.tool_catalog_bytes]
+value = 24000
+reason = "Discover tools on demand when their schemas would dominate the prompt."
+[extensions.tool_count]
+value = 512
+reason = "Bound paginated discovery from any single server."
+[extensions.search_results]
+value = 6
+reason = "Load a small useful set of schemas per search."

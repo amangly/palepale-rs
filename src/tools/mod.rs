@@ -14,12 +14,13 @@ mod plan_exit;
 mod question;
 mod read;
 mod shell;
-mod target;
+pub(crate) mod target;
 mod todowrite;
 mod truncate;
 mod webfetch;
 mod write;
 
+use std::borrow::Cow;
 use std::sync::Arc;
 
 use futures_util::future::BoxFuture;
@@ -38,16 +39,16 @@ use files::Files;
 
 /// A tool's name, description (data/tools/<name>.md) and argument schema (<name>.schema.json).
 pub struct Spec {
-    pub name: &'static str,
-    pub description: &'static str,
+    pub name: Cow<'static, str>,
+    pub description: Cow<'static, str>,
     pub parameters: Value,
 }
 
 impl Spec {
     pub fn load(name: &'static str, description: &'static str, schema: &str) -> Self {
         Self {
-            name,
-            description,
+            name: Cow::Borrowed(name),
+            description: Cow::Borrowed(description),
             parameters: serde_json::from_str(schema).expect("tool schemas are checked by tests"),
         }
     }
@@ -163,6 +164,7 @@ pub struct Registry {
     tools: Vec<Arc<dyn Tool>>,
     /// Values for `{placeholders}` in tool descriptions.
     vars: Vec<(&'static str, String)>,
+    mcp: Option<Arc<crate::mcp::Runtime>>,
 }
 
 impl Registry {
@@ -204,7 +206,24 @@ impl Registry {
             Arc::new(question::Question),
             Arc::new(plan_exit::PlanExit),
         ];
-        Self { tools, vars }
+        Self {
+            tools,
+            vars,
+            mcp: Some(app.mcp.clone()),
+        }
+    }
+
+    /// One catalog per model request, retained until its tool calls finish.
+    pub fn snapshot(&self) -> Self {
+        let mut tools = self.tools.clone();
+        if let Some(mcp) = &self.mcp {
+            tools.extend(mcp.tools());
+        }
+        Self {
+            tools,
+            vars: self.vars.clone(),
+            mcp: None,
+        }
     }
 
     pub fn get(&self, name: &str) -> Option<&Arc<dyn Tool>> {
@@ -214,13 +233,16 @@ impl Registry {
     pub fn names(&self) -> String {
         self.tools
             .iter()
-            .map(|t| t.spec().name)
+            .map(|t| t.spec().name.as_ref())
             .collect::<Vec<_>>()
             .join(", ")
     }
 
     /// The `tools` array of a chat request.
     pub fn wire(&self) -> Vec<Value> {
+        if self.mcp.is_some() {
+            return self.snapshot().wire();
+        }
         let vars: Vec<(&str, &str)> = self.vars.iter().map(|(k, v)| (*k, v.as_str())).collect();
         self.tools
             .iter()
@@ -230,7 +252,10 @@ impl Registry {
                     "type": "function",
                     "function": {
                         "name": spec.name,
-                        "description": template::fill(spec.description, &vars).trim(),
+                        "description": match &spec.description {
+                            Cow::Borrowed(description) => template::fill(description, &vars).trim().to_owned(),
+                            Cow::Owned(description) => description.clone(),
+                        },
                         "parameters": spec.parameters,
                     }
                 })

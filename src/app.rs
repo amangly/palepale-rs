@@ -13,6 +13,7 @@ pub struct App {
     pub api: Api,
     /// Everything else on the web (the webfetch tool).
     pub fetch: Fetch,
+    pub mcp: std::sync::Arc<crate::mcp::Runtime>,
 }
 
 impl App {
@@ -27,12 +28,15 @@ impl App {
         } else {
             auth::load(&paths).ok().flatten().map(|k| k.secret)
         };
-        Ok(Self {
+        let app = Self {
             api: Api::new(http, key),
             fetch: Fetch::new(limits::get().tools.webfetch_timeout_secs.secs())?,
             paths,
             settings,
-        })
+            mcp: std::sync::Arc::default(),
+        };
+        let _ = app.mcp.reload(&app);
+        Ok(app)
     }
 
     /// Defaults only, rooted in `project`, with no key: for tests that never reach the network.
@@ -47,6 +51,7 @@ impl App {
                 .expect("fetch client"),
             paths,
             settings,
+            mcp: std::sync::Arc::default(),
         }
     }
 }

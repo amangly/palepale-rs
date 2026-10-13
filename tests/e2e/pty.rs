@@ -23,6 +23,72 @@ const POLL: Duration = Duration::from_millis(50);
 const KEY_GAP: Duration = Duration::from_millis(30);
 
 #[tokio::test(flavor = "multi_thread")]
+async fn compact_extension_managers_add_a_server_and_select_a_skill_without_sending() {
+    let fake = Fake::start().await;
+    let sandbox = Sandbox::default();
+    let skill = sandbox
+        .project
+        .path()
+        .join(".agents/skills/native-check/SKILL.md");
+    std::fs::create_dir_all(skill.parent().unwrap()).unwrap();
+    std::fs::write(skill, "---\nname: native-check\ndescription: Check the UI fixture.\n---\nInspect the UI fixture.\n").unwrap();
+    std::fs::write(
+        sandbox.home().join("trusted.json"),
+        serde_json::json!({"projects":[sandbox.project.path()]}).to_string(),
+    )
+    .unwrap();
+    let url = fake.url.clone();
+    tokio::task::spawn_blocking(move || {
+        let mut session = Session::start_sized(&sandbox, &url, Some(ENV_KEY), &[], 24, 64, false);
+        session.wait_for("palepale v");
+        session.type_text("/mcp");
+        session.send("\r");
+        session.wait_for("MCP servers");
+        session.wait_for("No servers added");
+        session.type_text("a");
+        session.wait_for("Server name");
+        session.type_text("native");
+        session.send("\r");
+        session.wait_for("HTTPS URL");
+        session.type_text("http://127.0.0.1:9/mcp");
+        session.send("\r");
+        session.wait_for("Bearer token");
+        session.send("\r");
+        session.wait_for("OAuth client ID");
+        session.send("\r");
+        session.wait_for("native  error");
+        assert!(
+            !session.contents().contains("rmcp::"),
+            "Internal transport types should stay out of the card"
+        );
+        session.capture("mcp-compact");
+        session.send("\x1b");
+        session.wait_gone("MCP servers");
+        session.type_text("/skills");
+        session.send("\r");
+        session.wait_for("Skills");
+        session.wait_for("native-check");
+        session.send("\r");
+        session.wait_for("Inspect the UI fixture.");
+        session.capture("skills-compact");
+        session.send("\r");
+        session.wait_for("$native-check");
+        session.send("\x15");
+        session.wait_gone("$native-check");
+        session.send("\x04");
+        assert!(session.wait_exit());
+        let config = std::fs::read_to_string(sandbox.home().join("config.toml")).unwrap();
+        assert!(config.contains("127.0.0.1:9/mcp"));
+    })
+    .await
+    .unwrap();
+    assert!(
+        fake.chat_bodies().is_empty(),
+        "selecting a skill must preserve the unsent draft"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn startup_update_shows_progress_reopens_and_preserves_state_or_keeps_the_old_copy() {
     use std::sync::atomic::Ordering;
     let source = crate::binary();

@@ -10,6 +10,7 @@ mod command;
 mod dashboard;
 mod editor;
 mod effort;
+mod extensions;
 mod feed;
 mod forums;
 mod frame;

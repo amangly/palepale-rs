@@ -1,0 +1,1 @@
+Search available MCP tools by task, server name or tool name. Matching tool definitions become available on your next request. Use those normal tool functions to perform the task. This search reads only the local catalog and does not call a server. Search again with different words when no tool matches.

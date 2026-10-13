@@ -4,6 +4,7 @@
 mod battery;
 mod copy;
 mod effort;
+mod extensions;
 pub mod forums;
 mod help;
 mod init;
@@ -168,6 +169,7 @@ pub enum Effect {
     PickModel,
     /// Open the session and account usage card; fetch its data beside terminal input.
     ShowStatus,
+    ShowExtensions(crate::extensions::Kind),
     /// Open the session's forums card, at the login for the forum with this base URL when one
     /// was named.
     Forums {
@@ -212,6 +214,8 @@ pub static COMMANDS: &[&dyn Command] = &[
     &logout::Logout,
     &signup::Signup,
     &status::Status,
+    &extensions::Mcp,
+    &extensions::Skills,
     &update::Update,
     &install::Install,
     &uninstall::Uninstall,

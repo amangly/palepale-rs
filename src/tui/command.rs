@@ -11,6 +11,7 @@ use crate::tui::ui;
 
 /// What finished in the background.
 pub enum Work {
+    ExtensionsReady,
     Status {
         id: u64,
         revision: u64,

@@ -34,9 +34,25 @@ pub async fn run(
     prompt: Vec<Part>,
 ) -> Outcome {
     let cancel = shared.begin_run();
-    let parts = with_reminder(cx, shared, prompt);
+    let mut parts = with_reminder(cx, shared, prompt);
+    crate::skills::expand(
+        cx.app,
+        shared,
+        cx.emit,
+        &cx.plan_file,
+        &cancel,
+        &transcript.messages,
+        &mut parts,
+    )
+    .await;
     record(cx, transcript, Message::User { parts });
-    let tools = cx.tools.wire();
+    tokio::select! {
+        () = cx.app.mcp.start_enabled(cx.app) => {},
+        () = cancel.cancelled() => {
+            (cx.emit)(AgentEvent::RunEnd { outcome: Outcome::Aborted });
+            return Outcome::Aborted;
+        }
+    }
     let max_turns = limits::get().agent.max_turns.value;
     let mut turns = 0;
 
@@ -46,6 +62,30 @@ pub async fn run(
                 break 'run Outcome::TurnLimit;
             }
             turns += 1;
+
+            tokio::select! {
+                () = cx.app.mcp.refresh_changed(cx.app) => {},
+                () = cancel.cancelled() => break 'run Outcome::Aborted,
+            }
+            let mut mcp_context = cx.app.mcp.context();
+            let previous = crate::skills::last_catalog(&transcript.messages, "<mcp_servers>");
+            if mcp_context.is_empty() && previous.is_some() {
+                mcp_context = crate::text::template::fill(
+                    &crate::extensions::text().mcp_frame,
+                    &[("servers", "")],
+                );
+            }
+            if !mcp_context.is_empty() && previous != Some(mcp_context.as_str()) {
+                record(
+                    cx,
+                    transcript,
+                    Message::User {
+                        parts: vec![Part::Reminder { text: mcp_context }],
+                    },
+                );
+            }
+            let registry = cx.tools.snapshot();
+            let tools = registry.wire();
 
             let messages = context::build(&transcript.messages);
             let turn = Turn {
@@ -86,7 +126,16 @@ pub async fn run(
                     batch::fail_all(&calls, &model_text::get().truncated_tool_call)
                 } else {
                     let history = &transcript.messages[..transcript.messages.len() - 1];
-                    batch::run(cx, history, &calls, shared, &cancel).await
+                    let round = RunCtx {
+                        app: cx.app,
+                        model: cx.model,
+                        effort: cx.effort,
+                        system: cx.system,
+                        tools: &registry,
+                        plan_file: cx.plan_file.clone(),
+                        emit: cx.emit,
+                    };
+                    batch::run(&round, history, &calls, shared, &cancel).await
                 };
                 let Batch { results, stop } = batch;
                 for result in results {
@@ -103,7 +152,7 @@ pub async fn run(
             let steered = shared.drain_steer();
             if !steered.is_empty() {
                 for parts in steered {
-                    deliver(cx, shared, transcript, parts);
+                    deliver(cx, shared, transcript, parts, &cancel).await;
                 }
                 continue;
             }
@@ -116,7 +165,7 @@ pub async fn run(
             break Outcome::Done;
         }
         for parts in queued {
-            deliver(cx, shared, transcript, parts);
+            deliver(cx, shared, transcript, parts, &cancel).await;
         }
     };
     (cx.emit)(AgentEvent::RunEnd { outcome });
@@ -135,7 +184,13 @@ fn record(cx: &RunCtx<'_>, transcript: &mut Transcript, message: Message) {
 }
 
 /// Hands a message typed mid-run to the model, and tells the frontend it landed.
-fn deliver(cx: &RunCtx<'_>, shared: &Shared, transcript: &mut Transcript, parts: Vec<Part>) {
+async fn deliver(
+    cx: &RunCtx<'_>,
+    shared: &Shared,
+    transcript: &mut Transcript,
+    parts: Vec<Part>,
+    cancel: &tokio_util::sync::CancellationToken,
+) {
     let text = parts
         .iter()
         .filter_map(|p| match p {
@@ -145,7 +200,17 @@ fn deliver(cx: &RunCtx<'_>, shared: &Shared, transcript: &mut Transcript, parts:
         .collect::<Vec<_>>()
         .join("\n");
     (cx.emit)(AgentEvent::Delivered { text });
-    let parts = with_reminder(cx, shared, parts);
+    let mut parts = with_reminder(cx, shared, parts);
+    crate::skills::expand(
+        cx.app,
+        shared,
+        cx.emit,
+        &cx.plan_file,
+        cancel,
+        &transcript.messages,
+        &mut parts,
+    )
+    .await;
     record(cx, transcript, Message::User { parts });
 }
 

@@ -19,6 +19,11 @@ pattern = "*"
 action = "deny"
 
 [[lock]]
+permission = "mcp_write"
+pattern = "*"
+action = "deny"
+
+[[lock]]
 permission = "edit"
 pattern = "{plan_file}"
 action = "allow"

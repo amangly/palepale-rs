@@ -1,0 +1,3 @@
+name = "mcp"
+summary = "Manage MCP servers and their tools"
+usage = "mcp [list]"

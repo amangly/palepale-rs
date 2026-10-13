@@ -28,6 +28,10 @@ pub struct Settings {
     /// A shell to run commands in, overriding the search in data/shells.toml.
     #[serde(default)]
     pub shell: Option<String>,
+    #[serde(default)]
+    pub skills: crate::skills::Config,
+    #[serde(default)]
+    pub mcp_servers: std::collections::BTreeMap<String, crate::mcp::Config>,
     /// What an untrusted project's config asked for and did not get.
     #[serde(skip)]
     pub untrusted: Option<Untrusted>,
@@ -159,6 +163,21 @@ fn rule_line(rule: &toml::Value) -> String {
 fn merge(base: &mut toml::Table, layer: toml::Table) {
     for (key, value) in layer {
         match (base.get_mut(&key), value) {
+            (Some(toml::Value::Table(inner)), toml::Value::Table(over)) if key == "mcp_servers" => {
+                inner.extend(over);
+            }
+            (Some(toml::Value::Table(inner)), toml::Value::Table(over)) if key == "skills" => {
+                for (name, value) in over {
+                    match (inner.get_mut(&name), value) {
+                        (Some(toml::Value::Array(existing)), toml::Value::Array(additions)) => {
+                            existing.extend(additions)
+                        }
+                        (_, value) => {
+                            inner.insert(name, value);
+                        }
+                    }
+                }
+            }
             (Some(toml::Value::Table(inner)), toml::Value::Table(over)) => merge(inner, over),
             (Some(toml::Value::Array(inner)), toml::Value::Array(over))
                 if over.iter().all(toml::Value::is_table) =>
@@ -209,6 +228,26 @@ fn defaults() -> anyhow::Result<toml::Table> {
 #[allow(clippy::disallowed_methods)]
 pub fn env(name: &str) -> Option<String> {
     std::env::var(name).ok().filter(|v| !v.is_empty())
+}
+
+/// Edit only the requested setting, retaining comments and unrelated configuration.
+pub fn edit(
+    paths: &Paths,
+    project: bool,
+    change: impl FnOnce(&mut toml_edit::DocumentMut) -> anyhow::Result<()>,
+) -> anyhow::Result<()> {
+    let file = if project {
+        paths.project_config()
+    } else {
+        paths.user_config()
+    };
+    let original = io::fs::read_string(&file)?.unwrap_or_default();
+    let mut document: toml_edit::DocumentMut = original.parse().context("reading configuration")?;
+    change(&mut document)?;
+    let text = document.to_string();
+    let _: toml::Table = toml::from_str(&text)?;
+    io::fs::write_atomic(&file, text.as_bytes(), io::fs::Access::Private)?;
+    Ok(())
 }
 
 #[cfg(test)]

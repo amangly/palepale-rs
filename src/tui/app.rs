@@ -38,6 +38,7 @@ use crate::tui::command::{self, Work};
 use crate::tui::dashboard::{self, Dashboard};
 use crate::tui::editor::Editor;
 use crate::tui::effort as effort_picker;
+use crate::tui::extensions::{self as extension_ui, Manager};
 use crate::tui::feed::{Block, Feed};
 use crate::tui::forums::{self, Forums};
 use crate::tui::keymap::{self, Action};
@@ -80,6 +81,7 @@ enum Step<'a> {
 enum Done {
     Login(login::Done),
     Forums(forums::Done),
+    Extensions(extension_ui::Done),
 }
 
 pub async fn run(app: &App, initial: Option<String>) -> anyhow::Result<ExitCode> {
@@ -165,6 +167,8 @@ struct Tui<'a> {
     session_requests: u64,
     /// The `/forums` card, likewise.
     forums: Option<Forums>,
+    extensions: Option<Manager>,
+    extension_id: u64,
     /// The turn in flight, for the working line.
     progress: Option<Progress>,
     last_verb: Option<usize>,
@@ -229,6 +233,8 @@ impl<'a> Tui<'a> {
             session_usage: Usage::default(),
             session_requests: 0,
             forums: None,
+            extensions: None,
+            extension_id: 0,
             progress: None,
             last_verb: None,
             rng: fastrand::Rng::new(),
@@ -363,6 +369,13 @@ impl<'a> Tui<'a> {
         let mut turn: Option<Turn<'a>> = None;
         let mut job: Option<BoxFuture<'a, Done>> = None;
         let mut work: FuturesUnordered<BoxFuture<'a, Work>> = FuturesUnordered::new();
+        if !self.app.mcp.list().is_empty() && settings::env("PALEPALE_OFFLINE").is_none() {
+            let app = self.app;
+            work.push(Box::pin(async move {
+                app.mcp.start_enabled(app).await;
+                Work::ExtensionsReady
+            }));
+        }
         if self.app.api.is_configured() && settings::env("PALEPALE_NO_AUTO_LOGIN").is_none() {
             if self.app.api.has_key() {
                 let app = self.app;
@@ -465,7 +478,7 @@ impl<'a> Tui<'a> {
                 },
             }
             // Closing a card drops whatever it was waiting on.
-            if self.login.is_none() && self.forums.is_none() {
+            if self.login.is_none() && self.forums.is_none() && self.extensions.is_none() {
                 job = None;
             }
         }
@@ -537,9 +550,10 @@ impl<'a> Tui<'a> {
                 Step::Continue
             }
             Input::Paste(_)
-                if self.picker.is_some()
-                    || self.effort_picker.is_some()
-                    || self.dashboard.is_some() =>
+                if self.extensions.is_none()
+                    && (self.picker.is_some()
+                        || self.effort_picker.is_some()
+                        || self.dashboard.is_some()) =>
             {
                 Step::Continue
             }
@@ -547,6 +561,8 @@ impl<'a> Tui<'a> {
                 if let Some(card) = &mut self.login {
                     card.insert(&text);
                 } else if let Some(card) = &mut self.forums {
+                    card.insert(&text);
+                } else if let Some(card) = &mut self.extensions {
                     card.insert(&text);
                 } else if let Some(card) = self.cards.front_mut() {
                     card.insert(&text);
@@ -557,6 +573,11 @@ impl<'a> Tui<'a> {
             }
             Input::Key(key) if self.login.is_some() => self.login_key(&key),
             Input::Key(key) if self.forums.is_some() => self.forums_key(&key),
+            Input::Key(key) if self.extensions.is_some() => {
+                let action = keymap::get().action(&key);
+                let next = self.extensions.as_mut().expect("guarded").key(action, &key);
+                self.extension_next(next)
+            }
             Input::Key(key) if self.picker.is_some() => {
                 self.picker_key(&key);
                 Step::Continue
@@ -666,6 +687,10 @@ impl<'a> Tui<'a> {
     /// Hands a card's finished work back to it; what it asks next may be more work.
     fn job_done(&mut self, done: Done) -> Step<'a> {
         match done {
+            Done::Extensions(done) => {
+                let next = self.extensions.as_mut().map(|card| card.finished(done));
+                next.map_or(Step::Continue, |next| self.extension_next(next))
+            }
             Done::Login(done) => {
                 let logged_in = matches!(&done, login::Done::LoggedIn(_));
                 let next = self.login.as_mut().map(|card| card.finished(done));
@@ -690,6 +715,35 @@ impl<'a> Tui<'a> {
                     Some(next) => self.forums_next(next),
                     None => Step::Continue,
                 }
+            }
+        }
+    }
+
+    fn extension_next(&mut self, next: extension_ui::Next) -> Step<'a> {
+        match next {
+            extension_ui::Next::Stay => Step::Continue,
+            extension_ui::Next::Close => {
+                self.extensions = None;
+                Step::Continue
+            }
+            extension_ui::Next::Insert(text) => {
+                self.extensions = None;
+                self.editor.insert(&text);
+                Step::Continue
+            }
+            extension_ui::Next::Copy(text) => {
+                self.copy(&text);
+                Step::Continue
+            }
+            extension_ui::Next::Run(job) => {
+                let Some(card) = &self.extensions else {
+                    return Step::Continue;
+                };
+                Step::Job(
+                    extension_ui::run(self.app, card.id, *job, card.cancel())
+                        .map(Done::Extensions)
+                        .boxed(),
+                )
             }
         }
     }
@@ -1006,6 +1060,12 @@ impl<'a> Tui<'a> {
     /// Applies what a command finished with.
     fn finish(&mut self, done: Work) -> Step<'a> {
         let outcome: CommandOutcome = match done {
+            Work::ExtensionsReady => {
+                if let Some(manager) = &mut self.extensions {
+                    manager.sync_servers(self.app.mcp.list());
+                }
+                return Step::Continue;
+            }
             Work::Status {
                 id,
                 revision,
@@ -1103,6 +1163,13 @@ impl<'a> Tui<'a> {
                     return Step::Work(command::refresh_catalog(self.app));
                 }
                 Effect::ShowStatus => return self.refresh_status(),
+                Effect::ShowExtensions(kind) => {
+                    self.extension_id = self.extension_id.wrapping_add(1);
+                    self.extensions = Some(Manager::new(self.extension_id, kind));
+                    return self.extension_next(extension_ui::Next::Run(Box::new(
+                        extension_ui::Job::Load,
+                    )));
+                }
                 Effect::Forums { login } => match crate::forums::store::load(&self.app.paths) {
                     Ok(list) => self.forums = Some(Forums::new(list, login.as_deref())),
                     Err(e) => self.feed.notice(&format!("{e:#}"), "error"),
@@ -1202,6 +1269,8 @@ impl<'a> Tui<'a> {
             Some(login.render(width))
         } else if let Some(forums) = &self.forums {
             Some(forums.render(width))
+        } else if let Some(manager) = &self.extensions {
+            Some(manager.render(width, height.saturating_sub(live.len() + 3).max(5)))
         } else if let Some(picker) = &self.picker {
             Some(picker.render(width))
         } else if let Some(picker) = &self.effort_picker {

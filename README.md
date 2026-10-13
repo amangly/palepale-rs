@@ -30,6 +30,8 @@ After installing, open a new terminal in your project folder and run `palepale`.
 | `/models` | Refresh the list and pick a model |
 | `/effort` | Choose reasoning effort for the current model |
 | `/status` | Open session details, balance, and account usage |
+| `/mcp` | Add and manage MCP servers and inspect their tools |
+| `/skills` | Search, preview, and select reusable workflows |
 | `/help` | List commands |
 | Escape | Interrupt the current turn |
 | Ctrl+D | Quit with an empty composer |
@@ -43,6 +45,41 @@ The opening screen reveals the Palepale logo with a brief Matrix effect from [tt
 `/effort` shows the levels reported by the model catalog. Choose `default` to reset it, or set a level directly with `/effort low`.
 
 Use `/logout` then `/login` to connect another account. Changing the browser account does not switch an already paired CLI.
+
+## MCP and skills
+
+`/mcp` opens a compact server list. Press `a` to add an HTTPS URL or local program, enter its name and connection details, then connect. Local arguments use a JSON array, so paths with spaces stay intact. Tab switches user/project scope in the form. In server details, `e` enables or disables, `r` reconnects, `l` starts OAuth sign-in, `o` signs out, and `d` removes the definition. The sign-in card shows a clickable browser link; press `c` to copy it if the browser did not open.
+
+Server definitions use the existing user or project configuration:
+
+```toml
+[mcp_servers.docs]
+url = "https://developers.openai.com/mcp"
+
+[mcp_servers.local]
+command = "/path/to/your/mcp-server"
+args = ["--stdio"]
+env_vars = ["SERVICE_TOKEN"]
+read_only_tools = ["search"]
+```
+
+Use `bearer_token_env_var = "SERVICE_TOKEN"` for an HTTP bearer token. OAuth credentials are saved privately, separately from the Palepale account. Project servers require project trust and a review of each changed definition before starting. MCP calls follow MANUAL/AUTO permissions; PLAN blocks tools unless their names are explicitly listed in `read_only_tools`. Server annotations do not grant access. Connections run in the background, and large tool catalogs use local on-demand discovery.
+
+`/skills` searches standard `SKILL.md` folders in the project's `.agents/skills` directories and `~/.agents/skills`. Press `a` to register another folder, including existing Claude Code or Codex skill folders. Enter opens a preview; Enter again inserts `$skill-name ` into your draft. Add the task and send when ready. Use `e` to enable/disable a skill and `r` to rescan.
+
+A skill starts with YAML metadata, followed by its instructions:
+
+```markdown
+---
+name: review
+description: Review a change for bugs and missing checks.
+---
+Read the diff, inspect affected code, and report concrete issues.
+```
+
+Keep it at `.agents/skills/review/SKILL.md`, with the name matching its folder. Enabled skills can be selected automatically from their descriptions; full instructions and references load only when needed. `disable-model-invocation: true` requires explicit selection, and `user-invocable: false` permits automatic use only. Previews never execute scripts, and skill instructions retain the current permissions. Untrusted project skills stay inactive until the project is trusted.
+
+`palepale mcp list` and `palepale skills list` also work outside the TUI. This release supports MCP tools over stdio and Streamable HTTP, with JSON/SSE responses and OAuth. Resources, prompts, images, sampling, and server-driven interactive workflows are not enabled.
 
 ## Updates and settings
 

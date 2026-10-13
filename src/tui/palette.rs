@@ -172,7 +172,7 @@ mod tests {
         assert!(p.open("/mo").is_empty());
         assert_eq!(p.key(Action::Submit, "/mo"), Step::Ignored);
         // New text reopens it with the first match picked.
-        assert_eq!(p.key(Action::Submit, "/m"), Step::Run("mode".to_owned()));
+        assert_eq!(p.key(Action::Submit, "/m"), Step::Run("mcp".to_owned()));
     }
 
     #[test]

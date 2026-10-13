@@ -63,6 +63,7 @@ User settings live in `~/.palepale/config.toml`; a project can add `.palepale/co
 | `PALEPALE_HOME` | Change the state folder |
 | `PALEPALE_NO_AUTO_LOGIN=1` | Skip startup pairing |
 | `PALEPALE_NO_BROWSER=1` | Show the pairing link without opening it |
+| `PALEPALE_NO_USER_SKILLS=1` | Skip personal skills for isolated runs |
 | `PALEPALE_OFFLINE=1` | Disable network access |
 | `PALEPALE_NO_UPDATE=1` | Disable automatic update checks |
 | `PALEPALE_NO_ANIMATION=1` | Skip the Matrix opening animation |

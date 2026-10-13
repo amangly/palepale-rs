@@ -7,13 +7,17 @@ use crate::agent::message::{Assistant, Finish, Message, Part, ToolResult};
 use crate::agent::model_text;
 
 pub fn build(messages: &[Message]) -> Vec<Message> {
+    let catalogs = ["<available_skills>", "<mcp_servers>"];
+    let latest: Vec<_> = catalogs.iter().map(|prefix| messages.iter().rposition(|m| matches!(m,
+        Message::User { parts } if parts.iter().any(|p| matches!(p, Part::Reminder { text } if text.starts_with(prefix)))
+    ))).collect();
     let mut out = Vec::with_capacity(messages.len());
     // Calls from the latest assistant turn still waiting for a result.
     let mut open: Vec<(String, String)> = Vec::new();
     // Calls from cut-off turns: dropped, so their results must go too.
     let mut dropped: HashSet<String> = HashSet::new();
 
-    for message in messages {
+    for (index, message) in messages.iter().enumerate() {
         match message {
             Message::Assistant(a) if matches!(a.finish, Finish::Error | Finish::Aborted) => {
                 answer_open(&mut out, &mut open);
@@ -37,9 +41,14 @@ pub fn build(messages: &[Message]) -> Vec<Message> {
                 open.retain(|(id, _)| *id != result.call_id);
                 out.push(message.clone());
             }
-            Message::User { .. } => {
+            Message::User { parts } => {
                 answer_open(&mut out, &mut open);
-                out.push(message.clone());
+                let parts: Vec<_> = parts.iter().filter(|part| !matches!(part,
+                    Part::Reminder { text } if catalogs.iter().enumerate().any(|(i, prefix)| text.starts_with(prefix) && latest[i] != Some(index))
+                )).cloned().collect();
+                if !parts.is_empty() {
+                    out.push(Message::User { parts });
+                }
             }
         }
     }

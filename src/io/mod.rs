@@ -6,6 +6,8 @@ pub mod clock;
 pub mod fetch;
 pub mod fs;
 pub mod http;
+pub mod mcp;
+pub mod mcp_auth;
 pub mod proc;
 pub mod search;
 pub mod secret;

@@ -46,6 +46,25 @@ pub struct Limits {
     pub forums: ForumLimits,
     pub edit: EditLimits,
     pub tui: TuiLimits,
+    pub extensions: ExtensionLimits,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ExtensionLimits {
+    pub card_width: Limit<usize>,
+    pub skill_file_bytes: Limit<usize>,
+    pub skill_catalog_chars: Limit<usize>,
+    pub skill_count: Limit<usize>,
+    pub connect_timeout_secs: Limit<u64>,
+    pub call_timeout_secs: Limit<u64>,
+    pub oauth_timeout_secs: Limit<u64>,
+    pub auth_lock_poll_ms: Limit<u64>,
+    pub auth_lock_timeout_secs: Limit<u64>,
+    pub tool_schema_bytes: Limit<usize>,
+    pub tool_catalog_bytes: Limit<usize>,
+    pub tool_count: Limit<usize>,
+    pub search_results: Limit<usize>,
 }
 
 #[derive(Debug, Deserialize)]

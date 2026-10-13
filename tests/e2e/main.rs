@@ -3,6 +3,7 @@
 #![allow(clippy::disallowed_methods, clippy::disallowed_macros)]
 
 mod chat;
+mod extensions;
 mod fake_palepale;
 mod login;
 mod models;
@@ -148,6 +149,7 @@ pub const CLEARED: &[&str] = &[
     "PALEPALE_NO_ANIMATION",
     "PALEPALE_OFFLINE",
     "PALEPALE_NO_AUTO_LOGIN",
+    "PALEPALE_NO_USER_SKILLS",
     "PALEPALE_API_KEY",
     "PALEPALE_RELEASES_URL",
     "OTHER_API_URL",
@@ -171,6 +173,7 @@ pub fn launch_env(home: &Path, api_url: &str, key: Option<&str>) -> Vec<(&'stati
         ("PALEPALE_CHAT_URL", api_url.to_owned()),
         ("PALEPALE_NO_BROWSER", "1".to_owned()),
         ("PALEPALE_NO_AUTO_LOGIN", "1".to_owned()),
+        ("PALEPALE_NO_USER_SKILLS", "1".to_owned()),
     ];
     if api_url.is_empty() {
         env.push(("PALEPALE_OFFLINE", "1".to_owned()));

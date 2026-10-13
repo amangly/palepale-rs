@@ -42,6 +42,8 @@ pub const QUESTION: Permission = permission("question", Effect::Other);
 pub const PLAN_EXIT: Permission = permission("plan_exit", Effect::Other);
 /// The same call repeated; asked by the agent, not a tool.
 pub const DOOM_LOOP: Permission = permission("doom_loop", Effect::Other);
+pub const MCP: Permission = permission("mcp", Effect::Other);
+pub const MCP_WRITE: Permission = permission("mcp_write", Effect::ChangesFiles);
 
 /// Every permission above; a new one goes here too, so the tests see it.
 #[cfg(test)]
@@ -60,6 +62,8 @@ const ALL: &[Permission] = &[
     QUESTION,
     PLAN_EXIT,
     DOOM_LOOP,
+    MCP,
+    MCP_WRITE,
 ];
 
 #[cfg(test)]
