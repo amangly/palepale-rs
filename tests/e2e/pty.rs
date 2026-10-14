@@ -1415,13 +1415,20 @@ async fn slash_godmode_selects_server_profile_and_clears_it() {
         s.send("\r");
         s.wait_for("╭ Coding profile");
         s.wait_for("Deep");
-        assert!(!s.contents().contains("Unlisted profile"));
+        s.wait_for("CINDER");
+        s.wait_for("XYRO");
         s.send("\x1b[B");
         s.wait_for("│ › Direct");
         s.send("\x1b[B");
         s.wait_for("│ › Deep");
+        s.send("\x1b[B");
+        s.wait_for("│ › Review");
+        s.send("\x1b[B");
+        s.wait_for("│ › jb-1");
+        s.send("\x1b[B");
+        s.wait_for("│ › CINDER");
         s.send("\r");
-        s.wait_for("Coding profile: deep");
+        s.wait_for("Coding profile: jb-2");
         s.type_text("first");
         s.send("\r");
         s.wait_for("Hello there!");
@@ -1437,7 +1444,7 @@ async fn slash_godmode_selects_server_profile_and_clears_it() {
     .await;
     assert_eq!(fake.hits("/v1/agent-profiles"), 1);
     let requests = fake.chat_bodies();
-    assert_eq!(requests[0]["agent_profile"], "deep");
+    assert_eq!(requests[0]["agent_profile"], "jb-2");
     assert!(requests[1].get("agent_profile").is_none());
 }
 

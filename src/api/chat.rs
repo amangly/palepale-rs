@@ -199,10 +199,7 @@ fn request(turn: &Turn<'_>) -> wire::Request {
             include_usage: true,
         },
         reasoning_effort: turn.model.effort(turn.effort).map(str::to_owned),
-        agent_profile: turn
-            .agent_profile
-            .filter(|id| crate::api::agent_profiles::supported(id))
-            .map(str::to_owned),
+        agent_profile: turn.agent_profile.map(str::to_owned),
     }
 }
 
@@ -308,21 +305,21 @@ mod tests {
     }
 
     #[test]
-    fn request_sends_only_supported_profiles() {
+    fn request_sends_the_selected_server_profile() {
         let m = model(false);
         let turn = Turn {
             model: &m,
             effort: None,
-            agent_profile: Some("deep"),
+            agent_profile: Some("jb-2"),
             system: "sys",
             messages: &[],
             tools: &[],
         };
-        assert_eq!(request(&turn).agent_profile.as_deref(), Some("deep"));
-        let unlisted = Turn {
-            agent_profile: Some("unlisted"),
+        assert_eq!(request(&turn).agent_profile.as_deref(), Some("jb-2"));
+        let off = Turn {
+            agent_profile: None,
             ..turn
         };
-        assert_eq!(request(&unlisted).agent_profile, None);
+        assert_eq!(request(&off).agent_profile, None);
     }
 }

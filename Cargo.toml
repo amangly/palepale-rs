@@ -6,7 +6,7 @@ exclude = ["crates/cffetch", "bench/cache"]
 
 [package]
 name = "palepale"
-version = "0.1.12"
+version = "0.1.13"
 edition = "2024"
 rust-version = "1.98"
 description = "Palepale native terminal coding agent"

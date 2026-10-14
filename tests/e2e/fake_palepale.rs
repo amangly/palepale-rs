@@ -217,7 +217,9 @@ async fn agent_profiles() -> impl IntoResponse {
         {"id":"direct","name":"Direct","description":"Concise answers and focused edits"},
         {"id":"deep","name":"Deep","description":"Careful implementation and verification"},
         {"id":"review","name":"Review","description":"Evidence-led code review"},
-        {"id":"unlisted","name":"Unlisted profile","description":"Not supported by this release"}
+        {"id":"jb-1","name":"jb-1","description":"jb-1"},
+        {"id":"jb-2","name":"CINDER","description":"CINDER"},
+        {"id":"jb-3","name":"XYRO","description":"XYRO"}
     ]}))
 }
 
