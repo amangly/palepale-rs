@@ -6,7 +6,6 @@ mod backend;
 mod battery;
 mod cli;
 mod commands;
-mod effort;
 mod extensions;
 mod forums;
 mod frontend;

@@ -1,10 +1,10 @@
 # Where palepale lives. `env` names the variable that overrides an origin (tests point it at a fake).
 [origins.api]
-url = "https://api.palepale.tech"
+url = "http://127.0.0.1:8080"
 env = "PALEPALE_API_URL"
 
 [origins.chat]
-url = "https://palepale.tech"
+url = "http://127.0.0.1:3000"
 env = "PALEPALE_CHAT_URL"
 
 # Where palepale's own releases are listed, for the updater.

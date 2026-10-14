@@ -47,41 +47,6 @@ pub struct Capabilities {
     pub caching: bool,
 }
 
-impl Model {
-    pub fn effort_levels(&self) -> Vec<&str> {
-        if !self.capabilities.reasoning {
-            return Vec::new();
-        }
-        crate::effort::levels()
-            .iter()
-            .filter(|level| match &self.reasoning_efforts {
-                Some(supported) => supported.contains(&level.id),
-                None => level.legacy,
-            })
-            .map(|level| level.id.as_str())
-            .collect()
-    }
-
-    pub fn supports_effort(&self, id: &str) -> bool {
-        let levels = self.effort_levels();
-        levels.contains(&id) || (id == "max" && !levels.is_empty())
-    }
-
-    /// Resolve a ceiling alias once for the request, transcript and status bar.
-    pub fn effort<'a>(&'a self, requested: Option<&'a str>) -> Option<&'a str> {
-        let levels = self.effort_levels();
-        requested.and_then(|id| {
-            if levels.contains(&id) {
-                Some(id)
-            } else if id == "max" {
-                levels.last().copied()
-            } else {
-                None
-            }
-        })
-    }
-}
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Source {
     Live,
@@ -126,6 +91,8 @@ struct Cached {
     fetched_at: Timestamp,
     #[serde(default)]
     release: Option<String>,
+    #[serde(default)]
+    api_origin: Option<String>,
     data: Vec<Model>,
 }
 
@@ -140,7 +107,8 @@ pub async fn load(app: &App, refresh: bool) -> Catalog {
         };
     }
     let path = app.paths.models_cache();
-    let cached = read_cache(&path);
+    let origin = crate::api::endpoints::origin("api");
+    let cached = read_cache(&path, &origin);
     let now = io::clock::now();
     let ttl = SignedDuration::try_from(limits::get().models.cache_ttl_secs.secs())
         .unwrap_or(SignedDuration::MAX);
@@ -158,6 +126,7 @@ pub async fn load(app: &App, refresh: bool) -> Catalog {
             let cache = Cached {
                 fetched_at: now,
                 release: crate::release::tag().map(str::to_owned),
+                api_origin: Some(origin),
                 data: models,
             };
             // A cache that fails to write only costs a fetch next time.
@@ -206,11 +175,11 @@ fn usable(models: &[Model]) -> bool {
     !models.is_empty()
 }
 
-fn read_cache(path: &std::path::Path) -> Option<Cached> {
+fn read_cache(path: &std::path::Path, origin: &str) -> Option<Cached> {
     let text = io::fs::read_string(path).ok().flatten()?;
     serde_json::from_str::<Cached>(&text)
         .ok()
-        .filter(|cache| usable(&cache.data))
+        .filter(|cache| cache.api_origin.as_deref() == Some(origin) && usable(&cache.data))
 }
 
 fn is_fresh(fetched_at: Timestamp, now: Timestamp, ttl: SignedDuration) -> bool {
@@ -244,32 +213,6 @@ mod tests {
     }
 
     #[test]
-    fn effort_metadata_controls_choices_and_the_effective_request() {
-        let mut model = fixture().remove(0);
-        assert_eq!(model.effort_levels(), ["low", "high"]);
-        assert_eq!(model.effort(Some("max")), Some("high"));
-        assert_eq!(model.effort(Some("medium")), None);
-        assert_eq!(model.effort(None), None);
-        model.reasoning_efforts = Some(vec![
-            "xhigh".into(),
-            "minimal".into(),
-            "none".into(),
-            "unknown".into(),
-            "xhigh".into(),
-        ]);
-        assert_eq!(model.effort_levels(), ["none", "minimal", "xhigh"]);
-        assert_eq!(model.effort(Some("max")), Some("xhigh"));
-        model.reasoning_efforts = Some(vec![]);
-        assert!(model.effort_levels().is_empty());
-        assert!(!model.supports_effort("max"));
-        model.reasoning_efforts = None;
-        assert_eq!(model.effort_levels(), ["low", "medium", "high", "max"]);
-        model.capabilities.reasoning = false;
-        assert!(model.effort_levels().is_empty());
-        assert_eq!(model.effort(Some("high")), None);
-    }
-
-    #[test]
     fn legacy_metadata_stays_absent_when_cached() {
         let mut value: serde_json::Value = serde_json::from_str(FIXTURE).unwrap();
         value["data"][0]
@@ -279,7 +222,10 @@ mod tests {
         let legacy: Model = serde_json::from_value(value["data"][0].clone()).unwrap();
         let cached: Model = serde_json::from_value(serde_json::to_value(&legacy).unwrap()).unwrap();
         assert!(cached.reasoning_efforts.is_none());
-        assert_eq!(cached.effort_levels(), ["low", "medium", "high", "max"]);
+        assert_eq!(
+            cached.default_reasoning_effort,
+            legacy.default_reasoning_effort
+        );
     }
 
     #[test]
@@ -290,6 +236,7 @@ mod tests {
             let cache = Cached {
                 fetched_at: io::clock::now(),
                 release: None,
+                api_origin: Some("http://127.0.0.1:8080".into()),
                 data,
             };
             io::fs::write_atomic(
@@ -300,9 +247,10 @@ mod tests {
             .unwrap();
         };
         write(Vec::new());
-        assert!(read_cache(&path).is_none());
+        assert!(read_cache(&path, "http://127.0.0.1:8080").is_none());
         write(fixture());
-        assert!(read_cache(&path).is_some());
+        assert!(read_cache(&path, "http://127.0.0.1:8080").is_some());
+        assert!(read_cache(&path, "https://api.palepale.tech").is_none());
     }
 
     #[test]

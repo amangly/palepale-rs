@@ -108,7 +108,6 @@ mod tests {
             scope: super::super::Scope::Session,
             session: Some(super::super::Session {
                 model: "demo".into(),
-                effort: None,
                 mode: "AUTO".into(),
                 agent_profile: Some("deep".into()),
                 context_pct: None,

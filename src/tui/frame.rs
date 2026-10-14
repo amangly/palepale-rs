@@ -1,9 +1,8 @@
 //! The two rules framing the message bar, in the mode's colour. The bottom one carries all the
-//! status, right-aligned: the mode, model and effort, context use and cost (order in
+//! status, right-aligned: the mode, model, context use and cost (order in
 //! data/ui.toml). When the terminal is narrow the dashes shrink before any item is cut.
 
 use crate::commands::godmode;
-use crate::effort;
 use crate::mode::Mode;
 use crate::text::styled::{Line, Style};
 use crate::text::units;
@@ -16,7 +15,6 @@ const TAIL: usize = 2;
 
 pub struct Info<'a> {
     pub model: &'a str,
-    pub effort: Option<&'a str>,
     pub agent_profile: Option<&'a str>,
     /// Share of the context window the last request used.
     pub context_pct: Option<u64>,
@@ -71,14 +69,7 @@ fn item_line(mode: &Mode, info: &Info<'_>, item: &str) -> Option<Line> {
             ),
             Style::fg("accent"),
         ),
-        "model" => {
-            let mut line = Line::styled(info.model, muted.clone());
-            if let Some(id) = info.effort {
-                let color = effort::get(id).map_or("muted", |l| l.color.as_str());
-                line.push(format!(" {id}"), Style::fg(color));
-            }
-            line
-        }
+        "model" => Line::styled(info.model, muted.clone()),
         "context" => Line::styled(format!("ctx {}%", info.context_pct?), muted),
         "cost" => Line::styled(
             format!(
@@ -103,7 +94,6 @@ mod tests {
     fn info() -> Info<'static> {
         Info {
             model: "demo-2",
-            effort: Some("high"),
             agent_profile: None,
             context_pct: Some(12),
             cost_micros: 42_000,
@@ -123,7 +113,7 @@ mod tests {
 
     #[test]
     fn the_bottom_rule_right_aligns_the_items_and_shrinks_its_dashes_first() {
-        let items = "MANUAL · demo-2 high · ctx 12%";
+        let items = "MANUAL · demo-2 · ctx 12%";
         for width in [100, 60] {
             let line = bottom(manual(), &info(), width);
             assert_eq!(line.width(), width);
@@ -146,18 +136,16 @@ mod tests {
     }
 
     #[test]
-    fn the_frame_is_in_the_mode_colour_and_effort_in_its_level_colour() {
+    fn the_frame_is_in_the_mode_colour() {
         let line = bottom(mode::get("plan").unwrap(), &info(), 60);
         let tagged = line.to_tagged();
         assert!(tagged.starts_with("[mode_plan]"), "{tagged}");
-        assert!(tagged.contains("[effort_high] high[/]"), "{tagged}");
         assert!(tagged.contains("[mode_plan+bold]PLAN[/]"), "{tagged}");
     }
 
     #[test]
     fn items_without_a_value_are_skipped() {
         let i = Info {
-            effort: None,
             context_pct: None,
             ..info()
         };

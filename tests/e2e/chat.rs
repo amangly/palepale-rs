@@ -3,26 +3,20 @@ use serde_json::Value;
 use crate::fake_palepale::{Fake, Reply};
 use crate::{Sandbox, WITH_KEY};
 
-fn chat_only_catalog(sandbox: &Sandbox) {
+fn chat_only_catalog(fake: &Fake) {
     let mut catalog: Value =
         serde_json::from_str(include_str!("../fixtures/api/models.json")).unwrap();
     for model in catalog["data"].as_array_mut().unwrap() {
         model["capabilities"]["tool_calling"] = false.into();
     }
-    catalog["fetched_at"] = jiff::Timestamp::now().to_string().into();
-    std::fs::create_dir_all(sandbox.home().join("cache")).unwrap();
-    std::fs::write(
-        sandbox.home().join("cache/models.json"),
-        catalog.to_string(),
-    )
-    .unwrap();
+    fake.model_lists([catalog.clone(), catalog]);
 }
 
 #[tokio::test(flavor = "multi_thread")]
 async fn chat_only_models_answer_without_tools_and_cannot_execute_unsolicited_calls() {
     let fake = Fake::start().await;
     let sandbox = Sandbox::default();
-    chat_only_catalog(&sandbox);
+    chat_only_catalog(&fake);
     fake.script([Reply::sse("hello.sse")]);
     let run = sandbox.run(&fake.url, &["-p", "hello"], WITH_KEY).await;
     assert_eq!(run.success().stdout(), "Hello there!\n");
@@ -243,27 +237,19 @@ async fn truncated_tool_calls_record_refusals_and_complete_json_events_without_w
     );
 }
 #[tokio::test(flavor = "multi_thread")]
-async fn effort_is_forwarded_and_validated() {
+async fn reasoning_uses_the_server_default() {
     let fake = Fake::start().await;
     fake.script([Reply::sse("hello.sse"), Reply::sse("hello.sse")]);
     let sandbox = Sandbox::default();
 
     sandbox
-        .run(&fake.url, &["--effort", "high", "-p", "hi"], WITH_KEY)
+        .run(&fake.url, &["-p", "hi"], WITH_KEY)
         .await
         .success();
-    assert_eq!(fake.chat_bodies()[0]["reasoning_effort"], "high");
+    assert!(fake.chat_bodies()[0].get("reasoning_effort").is_none());
 
-    // A model that does not reason gets no effort, and none is recorded as used.
-    let args = [
-        "--model",
-        "fake-coder",
-        "--effort",
-        "high",
-        "--json",
-        "-p",
-        "hi",
-    ];
+    // Neither reasoning nor chat-only models need a client-supplied level.
+    let args = ["--model", "fake-coder", "--json", "-p", "hi"];
     let run = sandbox.run(&fake.url, &args, WITH_KEY).await;
     assert!(fake.chat_bodies()[1].get("reasoning_effort").is_none());
     let end = run
@@ -274,12 +260,6 @@ async fn effort_is_forwarded_and_validated() {
         .find(|e| e["type"] == "message_end")
         .unwrap();
     assert_eq!(end["message"]["effort"], Value::Null, "{end}");
-
-    let bad = sandbox
-        .run(&fake.url, &["--effort", "ludicrous", "-p", "hi"], WITH_KEY)
-        .await;
-    assert_eq!(bad.code(), Some(1));
-    assert!(bad.stderr().contains("unknown effort"));
 }
 
 #[tokio::test(flavor = "multi_thread")]

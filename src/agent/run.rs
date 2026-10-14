@@ -19,7 +19,6 @@ use crate::tools::Registry;
 pub struct RunCtx<'a> {
     pub app: &'a App,
     pub model: &'a Model,
-    pub effort: Option<&'a str>,
     pub system: &'a str,
     pub tools: &'a Registry,
     /// Where PLAN mode writes its plan; the only file it may change.
@@ -116,7 +115,6 @@ pub async fn run(
             let agent_profile = shared.agent_profile();
             let turn = Turn {
                 model: cx.model,
-                effort: cx.effort,
                 agent_profile: agent_profile.as_deref(),
                 system: cx.system,
                 messages: &messages,
@@ -151,7 +149,6 @@ pub async fn run(
                 let round = RunCtx {
                     app: cx.app,
                     model: cx.model,
-                    effort: cx.effort,
                     system: cx.system,
                     tools: &registry,
                     plan_file: cx.plan_file.clone(),
@@ -396,7 +393,6 @@ mod tests {
             let cx = RunCtx {
                 app: &self.app,
                 model: &self.model,
-                effort: None,
                 system: "sys",
                 tools: &registry,
                 plan_file: self.plan_file(),

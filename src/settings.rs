@@ -6,7 +6,7 @@ use serde::Deserialize;
 use crate::paths::Paths;
 use crate::permission::lists;
 use crate::permission::rule::Rule;
-use crate::{effort, io, mode, trust};
+use crate::{io, mode, trust};
 
 const DEFAULTS: &str = include_str!("../data/defaults.toml");
 
@@ -16,9 +16,9 @@ const DEFAULTS: &str = include_str!("../data/defaults.toml");
 #[serde(deny_unknown_fields)]
 pub struct Settings {
     pub model: String,
-    /// `None` leaves effort to the model's own default.
-    #[serde(default)]
-    pub effort: Option<String>,
+    /// Accept older user settings while the server chooses reasoning automatically.
+    #[serde(default, rename = "effort")]
+    pub _legacy_effort: Option<String>,
     pub mode: String,
     /// Every layer's rules, in layer order; the last match wins.
     #[serde(default)]
@@ -48,7 +48,6 @@ pub struct Untrusted {
 #[derive(Debug, Default)]
 pub struct Overrides {
     pub model: Option<String>,
-    pub effort: Option<String>,
     pub mode: Option<String>,
 }
 
@@ -85,14 +84,8 @@ pub fn load(paths: &Paths, flags: &Overrides) -> anyhow::Result<Settings> {
     if let Some(model) = &flags.model {
         settings.model.clone_from(model);
     }
-    if flags.effort.is_some() {
-        settings.effort.clone_from(&flags.effort);
-    }
     if let Some(mode) = &flags.mode {
         settings.mode.clone_from(mode);
-    }
-    if let Some(level) = &settings.effort {
-        effort::validate(level)?;
     }
     mode::find(&settings.mode).map_err(|e| anyhow!(e))?;
     Ok(settings)
@@ -301,6 +294,20 @@ mod tests {
             ..Overrides::default()
         };
         assert_eq!(load(&paths, &flags).unwrap().model, "flag");
+    }
+
+    #[test]
+    fn an_old_effort_setting_does_not_block_startup() {
+        let home = tempfile::tempdir().unwrap();
+        let paths = Paths::at(home.path().into(), home.path().into());
+        io::fs::write_atomic(
+            &paths.user_config(),
+            b"effort = 'high'",
+            io::fs::Access::Private,
+        )
+        .unwrap();
+        let settings = load(&paths, &Overrides::default()).unwrap();
+        assert_eq!(settings._legacy_effort.as_deref(), Some("high"));
     }
 
     fn project_with(config: &str) -> (tempfile::TempDir, Paths) {

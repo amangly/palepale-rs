@@ -17,7 +17,6 @@ use crate::limits;
 
 pub struct Turn<'a> {
     pub model: &'a Model,
-    pub effort: Option<&'a str>,
     pub agent_profile: Option<&'a str>,
     pub system: &'a str,
     pub messages: &'a [Message],
@@ -198,7 +197,6 @@ fn request(turn: &Turn<'_>) -> wire::Request {
         stream_options: StreamOptions {
             include_usage: true,
         },
-        reasoning_effort: turn.model.effort(turn.effort).map(str::to_owned),
         agent_profile: turn.agent_profile.map(str::to_owned),
     }
 }
@@ -237,7 +235,7 @@ fn message(
     Assistant {
         parts,
         model: turn.model.id.clone(),
-        effort: turn.model.effort(turn.effort).map(str::to_owned),
+        effort: None,
         usage,
         finish,
         error,
@@ -284,11 +282,10 @@ mod tests {
     }
 
     #[test]
-    fn effort_is_sent_only_to_reasoning_models() {
+    fn reasoning_uses_the_server_default() {
         let m = model(false);
         let turn = Turn {
             model: &m,
-            effort: Some("high"),
             agent_profile: None,
             system: "sys",
             messages: &[],
@@ -296,12 +293,22 @@ mod tests {
         };
         let recorded =
             |turn: &Turn<'_>| message(turn, vec![], Finish::Done, None, None, None).effort;
-        assert!(request(&turn).reasoning_effort.is_none());
+        assert!(
+            serde_json::to_value(request(&turn))
+                .unwrap()
+                .get("reasoning_effort")
+                .is_none()
+        );
         assert_eq!(recorded(&turn), None);
         let m = model(true);
         let turn = Turn { model: &m, ..turn };
-        assert_eq!(request(&turn).reasoning_effort.as_deref(), Some("high"));
-        assert_eq!(recorded(&turn).as_deref(), Some("high"));
+        assert!(
+            serde_json::to_value(request(&turn))
+                .unwrap()
+                .get("reasoning_effort")
+                .is_none()
+        );
+        assert_eq!(recorded(&turn), None);
     }
 
     #[test]
@@ -309,7 +316,6 @@ mod tests {
         let m = model(false);
         let turn = Turn {
             model: &m,
-            effort: None,
             agent_profile: Some("jb-2"),
             system: "sys",
             messages: &[],

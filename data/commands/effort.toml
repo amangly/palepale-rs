@@ -1,4 +1,0 @@
-name = "effort"
-summary = "Choose reasoning effort for the current model"
-usage = "effort [level|default]"
-scope = ["session"]

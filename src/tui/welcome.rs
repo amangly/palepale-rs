@@ -8,7 +8,6 @@ pub struct Info {
     pub version: &'static str,
     pub cwd: String,
     pub model: String,
-    pub effort: Option<String>,
     pub mode_label: String,
     pub mode_color: String,
     pub backend_configured: bool,
@@ -67,9 +66,6 @@ fn text(info: &Info) -> Vec<Line> {
     let separator = if info.braille { " · " } else { " | " };
     state.push(separator, Style::fg("muted"));
     state.push(&info.model, Style::fg("muted"));
-    if let Some(effort) = &info.effort {
-        state.push(format!(" {effort}"), Style::fg("muted"));
-    }
     let mut lines = vec![name, state, Line::styled(&info.cwd, Style::fg("muted"))];
     if !info.backend_configured {
         lines.push(Line::styled(
@@ -97,7 +93,6 @@ mod tests {
             version: "v0.2.0-1",
             cwd: "~/src/project".into(),
             model: crate::backend::text().disconnected.clone(),
-            effort: None,
             mode_label: "MANUAL".into(),
             mode_color: "mode_manual".into(),
             backend_configured: false,

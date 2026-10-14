@@ -5,7 +5,6 @@ pub mod arguments;
 mod battery;
 mod copy;
 pub mod discovered;
-mod effort;
 mod extensions;
 pub mod forums;
 pub mod godmode;
@@ -125,8 +124,6 @@ pub struct Ctx<'a> {
 
 pub struct Session {
     pub model: String,
-    /// The effort each request carries: none for a model that does not reason.
-    pub effort: Option<String>,
     pub mode: String,
     pub agent_profile: Option<String>,
     /// Share of the context window the last request used.
@@ -162,10 +159,6 @@ pub enum Effect {
     },
     /// Start a fresh conversation with a new session file.
     NewConversation,
-    /// Ask for this reasoning effort from the next turn on.
-    SetEffort(Option<String>),
-    /// Choose from the selected model's supported reasoning levels.
-    PickEffort,
     /// Open the server's current coding profile list.
     PickAgentProfile(Vec<crate::api::agent_profiles::Profile>),
     /// Apply a server-owned coding profile to future requests.
@@ -234,7 +227,6 @@ pub static COMMANDS: &[&dyn Command] = &[
     &models::Models,
     &forums::Forums,
     &mode::Mode,
-    &effort::Effort,
     &godmode::Godmode,
     &copy::Copy,
     &init::Init,

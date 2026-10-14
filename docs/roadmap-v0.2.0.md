@@ -8,7 +8,7 @@ Planned against Palepale [v0.1.11](https://github.com/amangly/palepale-rs/releas
 
 ## Current baseline
 
-Palepale already has a native Rust agent loop, streaming tools, model and effort selection, AUTO/MANUAL/PLAN modes, account usage charts, startup updates, and MCP/skill managers. Keep those workflows.
+Palepale already has a native Rust agent loop, streaming tools, model selection, AUTO/MANUAL/PLAN modes, account usage charts, startup updates, and MCP/skill managers. Keep those workflows.
 
 The next release addresses these gaps:
 
@@ -43,7 +43,7 @@ P0 defines the persistence and request boundaries. P1 completes this milestone's
 
 ### Implementation choices
 
-- Extend the session format additively. Resume follows an explicit head, restores model/effort/mode, and never repeats a completed external action. Compaction preserves the original transcript.
+- Extend the session format additively. Resume follows an explicit head, restores model and mode, and never repeats a completed external action. Compaction preserves the original transcript.
 - Use the configured Palepale home, including PALEPALE_HOME, for user commands and instructions. Preserve the current CLAUDE.md fallback where AGENTS.md is absent. Nested rules stay within their directory scope.
 - Reuse the existing attachment representation. Capability checks happen before a model request, and an incompatible model leaves the draft intact.
 - Begin custom commands with prompt templates and argument expansion. Shell substitution and agent overrides wait for their execution boundaries.

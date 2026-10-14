@@ -545,9 +545,9 @@ mod tests {
     fn end(error: Option<ErrorInfo>, finish: Finish) -> AgentEvent {
         AgentEvent::MessageEnd {
             message: Assistant {
+                effort: None,
                 parts: Vec::new(),
                 model: "m".into(),
-                effort: None,
                 usage: None,
                 finish,
                 error,

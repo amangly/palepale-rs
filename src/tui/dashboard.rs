@@ -22,7 +22,6 @@ struct Words {
     offline: String,
     unavailable: String,
     no_context: String,
-    default_effort: String,
     paused: String,
     session_cost: String,
     usage_scope: String,
@@ -161,16 +160,7 @@ impl Dashboard {
         rows.push(tabs);
         let mut body = Vec::new();
         if self.tab == 0 {
-            body.push(joined(
-                label(&labels.model, &info.session.model),
-                Line::styled(
-                    info.session
-                        .effort
-                        .as_deref()
-                        .unwrap_or(&words.default_effort),
-                    Style::fg("muted"),
-                ),
-            ));
+            body.push(label(&labels.model, &info.session.model));
             body.push(joined(
                 label(&labels.mode, &info.session.mode),
                 label(&labels.requests, &info.requests.to_string()),
@@ -339,7 +329,6 @@ mod tests {
     fn populated_cards_stay_compact_and_keep_charges_and_small_token_counts_visible() {
         let session = Session {
             model: "gpt-6-astra".into(),
-            effort: None,
             mode: "MANUAL".into(),
             agent_profile: None,
             context_pct: Some(8),
@@ -394,7 +383,6 @@ mod tests {
     fn cards_fit_small_terminals_and_unavailable_usage_stays_unavailable() {
         let session = Session {
             model: "demo".into(),
-            effort: None,
             mode: "MANUAL".into(),
             agent_profile: None,
             context_pct: Some(120),

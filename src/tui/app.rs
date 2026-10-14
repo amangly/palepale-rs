@@ -37,7 +37,6 @@ use crate::tui::card::{self, Card};
 use crate::tui::command::{self, Work};
 use crate::tui::dashboard::{self, Dashboard};
 use crate::tui::editor::Editor;
-use crate::tui::effort as effort_picker;
 use crate::tui::extensions::{self as extension_ui, Manager};
 use crate::tui::feed::{Block, Feed};
 use crate::tui::forums::{self, Forums};
@@ -86,7 +85,7 @@ enum Done {
 }
 
 pub async fn run(app: &App, initial: Option<String>) -> anyhow::Result<ExitCode> {
-    let catalog = models::load(app, false).await;
+    let catalog = models::load(app, true).await;
     // An explicit model must match the configured backend catalog.
     let model = if app.api.is_configured() && !catalog.models.is_empty() {
         Some(catalog.selected(&app.settings.model)?.clone())
@@ -141,8 +140,6 @@ struct Tui<'a> {
     catalog: Catalog,
     /// The model for the next turn, and the system prompt written for it.
     model: Option<Model>,
-    /// The effort asked for: the setting until `/effort` changes it.
-    effort: Option<String>,
     system: String,
     shared: &'a Shared,
     screen: Screen,
@@ -161,7 +158,6 @@ struct Tui<'a> {
     login: Option<Login>,
     /// The `/models` card, likewise.
     picker: Option<Picker>,
-    effort_picker: Option<effort_picker::Picker>,
     godmode_picker: Option<godmode_picker::Picker>,
     dashboard: Option<Dashboard>,
     dashboard_id: u64,
@@ -182,8 +178,7 @@ struct Tui<'a> {
     /// The current conversation's session file, and those of conversations `/new` put away.
     session_file: String,
     earlier: Vec<String>,
-    /// Input tokens of the last request; the bar divides by the current model's window, so a
-    /// switch of model shows its own share at once.
+    /// Input tokens of the last request for the selected model.
     context_tokens: Option<u64>,
 }
 
@@ -202,11 +197,6 @@ impl<'a> Tui<'a> {
         if let Some(text) = initial {
             editor.set_text(&text);
         }
-        let effort = app.settings.effort.clone().filter(|id| {
-            model
-                .as_ref()
-                .is_some_and(|model| model.supports_effort(id))
-        });
         let mut tui = Self {
             app,
             catalog,
@@ -215,7 +205,6 @@ impl<'a> Tui<'a> {
                 .map(|model| system_prompt::build(&app.paths, model))
                 .unwrap_or_default(),
             model,
-            effort,
             shared,
             screen: Screen::new(width, height, theme::get(), term::color_depth()),
             feed: Feed::new(),
@@ -229,7 +218,6 @@ impl<'a> Tui<'a> {
             cards: VecDeque::new(),
             login: None,
             picker: None,
-            effort_picker: None,
             godmode_picker: None,
             dashboard: None,
             dashboard_id: 0,
@@ -290,11 +278,6 @@ impl<'a> Tui<'a> {
                         backend.disconnected.clone()
                     }
                 }),
-            effort: self
-                .model
-                .as_ref()
-                .and_then(|m| m.effort(self.effort.as_deref()))
-                .map(str::to_owned),
             mode: self.shared.mode().label.clone(),
             agent_profile: self.shared.agent_profile(),
             context_pct: self.context_pct(),
@@ -311,11 +294,6 @@ impl<'a> Tui<'a> {
                 .as_ref()
                 .map(|m| m.id.clone())
                 .unwrap_or_else(|| crate::backend::text().disconnected.clone()),
-            effort: self
-                .model
-                .as_ref()
-                .and_then(|m| m.effort(self.effort.as_deref()))
-                .map(str::to_owned),
             mode_label: mode.label.clone(),
             mode_color: mode.color.clone(),
             backend_configured: self.app.api.is_configured(),
@@ -424,6 +402,7 @@ impl<'a> Tui<'a> {
                     self.queue.clear();
                     let app = self.app;
                     work.push(Box::pin(async move { Work::ExtensionsReady(commands::discovered::list(app).await) }));
+                    work.push(command::sync_catalog(app));
                     while let Ok(event) = events.try_recv() {
                         self.agent(event);
                     }
@@ -471,12 +450,10 @@ impl<'a> Tui<'a> {
                     let (app, tools, emit) = (self.app, turns.tools, turns.emit);
                     let plan_file = tools::plan_file(&app.paths, &owned.id());
                     let system = self.system.clone();
-                    let effort = self.effort.clone();
                     turn = Some(Box::pin(async move {
                         let cx = RunCtx {
                             app,
                             model: &model,
-                            effort: effort.as_deref(),
                             system: &system,
                             tools,
                             plan_file,
@@ -567,7 +544,6 @@ impl<'a> Tui<'a> {
             Input::Paste(_)
                 if self.extensions.is_none()
                     && (self.picker.is_some()
-                        || self.effort_picker.is_some()
                         || self.godmode_picker.is_some()
                         || self.dashboard.is_some()) =>
             {
@@ -596,10 +572,6 @@ impl<'a> Tui<'a> {
             }
             Input::Key(key) if self.picker.is_some() => {
                 self.picker_key(&key);
-                Step::Continue
-            }
-            Input::Key(key) if self.effort_picker.is_some() => {
-                self.effort_key(&key);
                 Step::Continue
             }
             Input::Key(key) if self.godmode_picker.is_some() => {
@@ -782,7 +754,6 @@ impl<'a> Tui<'a> {
             picker::Step::Pick(id) => {
                 self.picker = None;
                 self.switch_model(&id);
-                self.open_effort_picker();
             }
         }
     }
@@ -791,24 +762,6 @@ impl<'a> Tui<'a> {
     fn copy(&mut self, text: &str) {
         clipboard::copy(text);
         self.toast = Some(Toast::new(&ui::get().text.copied, clock::instant()));
-    }
-
-    fn effort_key(&mut self, key: &crate::io::term::KeyEvent) {
-        let action = keymap::get().action(key);
-        if action == Some(Action::CycleMode) {
-            return self.cycle_mode();
-        }
-        let Some(picker) = &mut self.effort_picker else {
-            return;
-        };
-        match picker.key(action) {
-            effort_picker::Step::Stay => {}
-            effort_picker::Step::Close => self.effort_picker = None,
-            effort_picker::Step::Pick(id) => {
-                self.effort_picker = None;
-                self.set_effort(id);
-            }
-        }
     }
 
     fn godmode_key(&mut self, key: &crate::io::term::KeyEvent) {
@@ -873,58 +826,9 @@ impl<'a> Tui<'a> {
         Step::Continue
     }
 
-    /// Asks for `effort` from the next turn on, for this session only.
-    fn set_effort(&mut self, effort: Option<String>) {
-        let text = &ui::get().text;
-        if let Some(id) = effort.as_deref() {
-            let Some(model) = &self.model else {
-                self.feed.notice(&models_note(&self.catalog), "warn");
-                return;
-            };
-            if !model.supports_effort(id) {
-                let levels = model.effort_levels();
-                let note = if levels.is_empty() {
-                    template::fill(&text.effort_unavailable, &[("model", &model.id)])
-                } else {
-                    template::fill(
-                        &text.effort_unsupported,
-                        &[
-                            ("model", &model.id),
-                            ("effort", id),
-                            ("levels", &levels.join(", ")),
-                        ],
-                    )
-                };
-                self.feed.notice(&note, "warn");
-                return;
-            }
-        }
-        self.effort = effort;
-        let resolved = self
-            .model
-            .as_ref()
-            .and_then(|model| model.effort(self.effort.as_deref()));
-        let note = template::fill(
-            &text.effort_set,
-            &[("effort", resolved.unwrap_or(&text.effort_default))],
-        );
-        self.feed.notice(&note, "done");
-    }
-
-    fn open_effort_picker(&mut self) {
-        self.effort_picker = self.model.as_ref().and_then(|model| {
-            (!model.effort_levels().is_empty())
-                .then(|| effort_picker::Picker::new(model, self.effort.as_deref()))
-        });
-    }
-
     fn replace_model(&mut self, model: Model) {
-        if self
-            .effort
-            .as_deref()
-            .is_some_and(|id| !model.supports_effort(id))
-        {
-            self.effort = None;
+        if self.model.as_ref().is_some_and(|old| old.id != model.id) {
+            self.context_tokens = None;
         }
         self.system = system_prompt::build(&self.app.paths, &model);
         self.model = Some(model);
@@ -1156,7 +1060,6 @@ impl<'a> Tui<'a> {
             }
             Work::Catalog(catalog) => {
                 self.catalog = catalog;
-                self.effort_picker = None;
                 if self.catalog.models.is_empty() {
                     self.feed.notice(&models_note(&self.catalog), "warn");
                     return Step::Continue;
@@ -1183,6 +1086,21 @@ impl<'a> Tui<'a> {
                     &self.catalog,
                     self.model.as_ref().map_or("", |m| m.id.as_str()),
                 ));
+                return Step::Continue;
+            }
+            Work::CatalogSync(catalog) => {
+                if catalog.models.is_empty() {
+                    return Step::Continue;
+                }
+                self.catalog = catalog;
+                if let Some(model) = self
+                    .model
+                    .as_ref()
+                    .and_then(|model| self.catalog.get(&model.id))
+                    .cloned()
+                {
+                    self.replace_model(model);
+                }
                 return Step::Continue;
             }
             Work::Command(Err(e)) => {
@@ -1249,20 +1167,6 @@ impl<'a> Tui<'a> {
                     Err(e) => self.feed.notice(&format!("{e:#}"), "error"),
                 },
                 Effect::NewConversation => return Step::NewConversation,
-                Effect::SetEffort(id) => self.set_effort(id),
-                Effect::PickEffort => match &self.model {
-                    Some(model) if !model.effort_levels().is_empty() => {
-                        self.open_effort_picker();
-                    }
-                    Some(model) => self.feed.notice(
-                        &template::fill(
-                            &ui::get().text.effort_unavailable,
-                            &[("model", &model.id)],
-                        ),
-                        "muted",
-                    ),
-                    None => self.feed.notice(&models_note(&self.catalog), "warn"),
-                },
                 Effect::Send(text) => return Step::Send(vec![Part::Text { text }]),
                 Effect::CopyLastReply => match self.feed.last_reply() {
                     Some(text) => self.copy(&text),
@@ -1347,8 +1251,6 @@ impl<'a> Tui<'a> {
             Some(manager.render(width, height.saturating_sub(live.len() + 3).max(5)))
         } else if let Some(picker) = &self.picker {
             Some(picker.render(width))
-        } else if let Some(picker) = &self.effort_picker {
-            Some(picker.render(width))
         } else if let Some(picker) = &self.godmode_picker {
             Some(picker.render(width))
         } else if let Some(card) = &mut self.dashboard {
@@ -1392,10 +1294,6 @@ impl<'a> Tui<'a> {
                     .map_or(crate::backend::text().disconnected.as_str(), |m| {
                         m.id.as_str()
                     }),
-                effort: self
-                    .model
-                    .as_ref()
-                    .and_then(|m| m.effort(self.effort.as_deref())),
                 agent_profile: self.shared.agent_profile().as_deref(),
                 context_pct: self.context_pct(),
                 cost_micros: self.cost_micros,

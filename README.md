@@ -1,6 +1,6 @@
 # Palepale-rs
 
-Use your [palepale.tech](https://palepale.tech) account to run a coding agent in your terminal. Read code, edit files, run commands, and switch models in your project.
+Run a coding agent against your local Palepale API. Read code, edit files, run commands, and switch models in your project.
 
 ## Get started
 
@@ -14,7 +14,7 @@ Run it from your project folder:
 
 On macOS/Linux, run `chmod +x palepale` once, then `./palepale`.
 
-The first launch opens palepale.tech in your browser. Sign in, match the code shown in your terminal, and choose **Connect CLI**. Later launches use your saved login.
+Start the local backend and website first. From the workspace root on Windows, run `.\palepale-server\scripts\start-local.ps1`. The CLI connects to `http://127.0.0.1:8080` and opens the local pairing page at `http://127.0.0.1:3000/pair`. Sign in there, match the code shown in your terminal, and choose **Connect CLI**. Later launches use your saved login. Pair again if your saved login belongs to the old public API. Set `PALEPALE_API_URL` and `PALEPALE_CHAT_URL` to use different addresses.
 
 Run `palepale install` to add the CLI to your user PATH. Before installation, use `./palepale install` or `.\palepale.exe install`.
 
@@ -28,7 +28,6 @@ After installing, open a new terminal in your project folder and run `palepale`.
 | Shift+Enter or Ctrl+J | Insert a new line |
 | Shift+Tab | Switch MANUAL, PLAN, and AUTO modes |
 | `/models` | Refresh the list and pick a model |
-| `/effort` | Choose reasoning effort for the current model |
 | `/godmode` | Choose a server coding profile for this conversation |
 | `/status` | Open session details, balance, and account usage |
 | `/mcp` | Add and manage MCP servers and inspect their tools |
@@ -43,7 +42,7 @@ Opening `/models` fetches the latest catalog. If the server is unavailable, it s
 
 The opening screen reveals the Palepale logo with a brief Matrix effect from [ttfx](https://github.com/omacom/ttfx). The SVG becomes colored block pixels, keeping its shape and green gradient in Windows Terminal and other terminals. Typing skips the animation and keeps your input. `PALEPALE_NO_ANIMATION=1` skips it too. `NO_COLOR` shows the same shape without color.
 
-`/effort` shows the levels reported by the model catalog. Choose `default` to reset it, or set a level directly with `/effort low`.
+Reasoning follows the selected route's server default. The CLI fetches model capabilities and context windows from the local API at startup and after each turn.
 
 `/godmode` fetches the current profile names from Palepale and opens a picker. Choose one to apply it to the next model request, or use `/godmode off` to clear it. `/godmode status` shows the current choice. The server owns the profile text; the CLI sends its id with each request. A new conversation clears the choice.
 

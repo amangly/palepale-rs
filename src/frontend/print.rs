@@ -37,7 +37,7 @@ pub async fn run(app: &App, prompt: String, format: Format) -> anyhow::Result<Ex
     if !app.api.is_configured() {
         anyhow::bail!(crate::backend::text().unavailable.clone());
     }
-    let catalog = models::load(app, false).await;
+    let catalog = models::load(app, true).await;
     // An explicit model must match the configured backend catalog.
     let model = catalog.selected(&app.settings.model)?;
     let mode = mode::get(&app.settings.mode).ok_or_else(|| anyhow!("mode was validated"))?;
@@ -58,7 +58,6 @@ pub async fn run(app: &App, prompt: String, format: Format) -> anyhow::Result<Ex
     let cx = RunCtx {
         app,
         model,
-        effort: app.settings.effort.as_deref(),
         system: &system,
         tools: &registry,
         plan_file,

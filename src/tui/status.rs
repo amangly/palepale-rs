@@ -238,9 +238,9 @@ mod tests {
         assert_eq!(p.tokens(), 100);
         p.event(&AgentEvent::MessageEnd {
             message: Assistant {
+                effort: None,
                 parts: Vec::new(),
                 model: "m".into(),
-                effort: None,
                 usage: Some(Usage {
                     input: 10,
                     cached: 0,

@@ -55,12 +55,27 @@ async fn offline_reports_no_models_without_a_cache() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn offline_uses_a_stale_cache() {
+async fn an_unusable_live_list_uses_same_origin_cache() {
     let fake = Fake::start().await;
     let sandbox = Sandbox::default();
+    fake.model_lists([
+        serde_json::from_str(include_str!("../fixtures/api/models.json")).unwrap(),
+        serde_json::json!({"data": []}),
+    ]);
     sandbox.run(&fake.url, &["models"], None).await.success();
-    let out = sandbox.run(DEAD_URL, &["models", "--refresh"], None).await;
+    let out = sandbox.run(&fake.url, &["models", "--refresh"], None).await;
     let out = out.success().stdout();
     assert!(out.contains("fake-coder"), "{out}");
     assert!(out.contains("Could not reach palepale"), "{out}");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_cache_from_another_api_is_ignored() {
+    let fake = Fake::start().await;
+    let sandbox = Sandbox::default();
+    sandbox.run(&fake.url, &["models"], None).await.success();
+    let out = sandbox.run(DEAD_URL, &["models"], None).await;
+    let out = out.success().stdout();
+    assert!(out.contains("No models available"), "{out}");
+    assert!(!out.contains("demo-2"), "{out}");
 }

@@ -9,10 +9,10 @@ use crate::commands::{self, Ctx, Missing, Scope};
 use crate::frontend::print::{self, Format};
 use crate::io::term;
 use crate::settings::{Overrides, Untrusted};
-use crate::{effort, install, mode, release, trust, tui};
+use crate::{install, mode, release, trust, tui};
 
-/// The help for `--effort`, `--mode` and the commands is filled in from their catalogs by
-/// `command()`, so a new level, mode or command shows up with no edit here.
+/// The help for `--mode` and the commands is filled in from their catalogs by
+/// `command()`, so a new mode or command shows up with no edit here.
 #[derive(Parser)]
 #[command(
     version,
@@ -24,9 +24,6 @@ struct Cli {
     /// Model id for this run (see `palepale models`).
     #[arg(long, global = true)]
     model: Option<String>,
-
-    #[arg(long, global = true)]
-    effort: Option<String>,
 
     #[arg(long, global = true)]
     mode: Option<String>,
@@ -53,7 +50,6 @@ enum Sub {
 /// `Cli`'s shape with the parts that are data filled in.
 fn command() -> clap::Command {
     let ids = |ids: Vec<&str>| ids.join(", ");
-    let efforts = ids(effort::levels().iter().map(|l| l.id.as_str()).collect());
     let modes = ids(mode::all().iter().map(|m| m.id.as_str()).collect());
     let names: Vec<&str> = commands::available(Scope::Cli)
         .map(|c| c.spec())
@@ -62,9 +58,6 @@ fn command() -> clap::Command {
         .collect();
     Cli::command()
         .version(release::version())
-        .mut_arg("effort", |a| {
-            a.help(format!("Reasoning effort for this run: {efforts}"))
-        })
         .mut_arg("mode", |a| {
             a.help(format!("Permission mode for this run: {modes}"))
         })
@@ -102,7 +95,6 @@ pub async fn run() -> ExitCode {
 async fn dispatch(cli: Cli) -> anyhow::Result<ExitCode> {
     let flags = Overrides {
         model: cli.model,
-        effort: cli.effort,
         mode: cli.mode,
     };
     let mut app = App::load(&flags)?;
@@ -234,9 +226,7 @@ mod tests {
             assert!(help.contains(name), "{name} missing from:\n{help}");
         }
         assert!(!help.contains("keytest"), "hidden commands stay hidden");
-        for level in effort::levels() {
-            assert!(help.contains(&level.id), "{}", level.id);
-        }
+        assert!(!help.contains("--effort"));
         for mode in mode::all() {
             assert!(help.contains(&mode.id), "{}", mode.id);
         }

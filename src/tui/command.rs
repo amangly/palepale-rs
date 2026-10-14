@@ -24,6 +24,7 @@ pub enum Work {
     },
     Command(anyhow::Result<Outcome>),
     Catalog(Catalog),
+    CatalogSync(Catalog),
 }
 
 pub fn refresh_status(app: &App, id: u64) -> BoxFuture<'_, Work> {
@@ -113,4 +114,8 @@ pub fn start<'a>(app: &'a App, line: &str, session: Session) -> Result<Started<'
 /// A fresh model list, fetched without holding up input.
 pub fn refresh_catalog(app: &App) -> BoxFuture<'_, Work> {
     Box::pin(async move { Work::Catalog(models::load(app, true).await) })
+}
+
+pub fn sync_catalog(app: &App) -> BoxFuture<'_, Work> {
+    Box::pin(async move { Work::CatalogSync(models::load(app, true).await) })
 }
