@@ -95,6 +95,12 @@ impl Fake {
             .route("/api/pow", get(pow))
             .route("/api/signup", post(signup))
             .route("/web/ok", get(web_ok))
+            .route("/skills/index.json", get(skill_index))
+            .route("/skills/native-check/SKILL.md", get(skill_body))
+            .route(
+                "/skills/native-check/references/guide.md",
+                get(|| async { "Remote supporting reference" }),
+            )
             .route("/web/blocked", get(web_blocked))
             .route("/forum/mobiquo/mobiquo.php", post(mobiquo))
             .layer(middleware::from_fn_with_state(inner.clone(), record))
@@ -197,6 +203,16 @@ async fn web_ok() -> impl IntoResponse {
         "<html><head><title>Widget docs</title></head><body>\
          <h1>Widget API</h1><p>The widget spins at 3 rpm.</p></body></html>",
     )
+}
+
+async fn skill_index() -> impl IntoResponse {
+    axum::Json(
+        json!({"skills":[{"name":"native-check","version":"1","files":["SKILL.md","references/guide.md"]}]}),
+    )
+}
+
+async fn skill_body() -> &'static str {
+    "---\nname: native-check\ndescription: Review using a remote skill source\n---\nRemote skill installed during this conversation. Read references/guide.md when needed."
 }
 
 /// A forum's Tapatalk plugin, as far as logging in: `FORUM_PASSWORD` gets a session cookie, any

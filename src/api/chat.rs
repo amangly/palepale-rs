@@ -184,11 +184,7 @@ fn request(turn: &Turn<'_>) -> wire::Request {
     let mut messages = vec![WireMessage::System {
         content: turn.system.to_owned(),
     }];
-    messages.extend(
-        turn.messages
-            .iter()
-            .map(|m| WireMessage::from_message(m, &replay)),
-    );
+    messages.extend(wire::messages(turn.messages, &replay));
     wire::Request {
         model: turn.model.id.clone(),
         messages,

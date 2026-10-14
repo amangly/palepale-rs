@@ -1,0 +1,5 @@
+data: {"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"prompt-1","type":"function","function":{"name":"mcp_prompts","arguments":"{\"server\":\"fixture\",\"action\":\"get\",\"name\":\"review\",\"arguments\":{\"topic\":\"native\"}}"}}]}}]}
+
+data: {"choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}
+
+data: [DONE]

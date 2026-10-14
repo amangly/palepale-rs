@@ -30,6 +30,11 @@ struct Text {
     exists: String,
     missing: String,
     invalid_endpoint: String,
+    login: String,
+    logged_in: String,
+    logged_out: String,
+    unavailable: String,
+    toggled: String,
 }
 
 #[derive(Parser)]
@@ -40,6 +45,8 @@ struct Options {
 }
 
 #[derive(Subcommand)]
+// Parsed once per command; boxing individual options would obscure clap's shape.
+#[allow(clippy::large_enum_variant)]
 enum Action {
     List,
     Add {
@@ -49,9 +56,27 @@ enum Action {
         #[arg(long)]
         url: Option<String>,
         #[arg(long)]
+        cwd: Option<std::path::PathBuf>,
+        #[arg(long = "env")]
+        environment: Vec<String>,
+        #[arg(long = "header")]
+        http_headers: Vec<String>,
+        #[arg(long = "header-env")]
+        env_http_headers: Vec<String>,
+        #[arg(long, value_parser = ["auto", "http", "sse"], default_value = "auto")]
+        transport: String,
+        #[arg(long)]
+        no_oauth: bool,
+        #[arg(long)]
         bearer_token_env_var: Option<String>,
         #[arg(long)]
         client_id: Option<String>,
+        #[arg(long)]
+        client_secret_env_var: Option<String>,
+        #[arg(long)]
+        oauth_callback_port: Option<u16>,
+        #[arg(long = "oauth-scope")]
+        scopes: Vec<String>,
         #[arg(long = "env-var")]
         env_vars: Vec<String>,
         #[arg(long)]
@@ -62,6 +87,19 @@ enum Action {
         command: Vec<String>,
     },
     Check {
+        name: String,
+    },
+    #[command(alias = "login")]
+    Auth {
+        name: String,
+    },
+    Logout {
+        name: String,
+    },
+    Enable {
+        name: String,
+    },
+    Disable {
         name: String,
     },
     Remove {
@@ -127,9 +165,18 @@ impl Command for Mcp {
                     name,
                     scope,
                     url,
+                    cwd,
+                    environment,
+                    http_headers,
+                    env_http_headers,
+                    transport,
+                    no_oauth,
                     command,
                     bearer_token_env_var,
                     client_id,
+                    client_secret_env_var,
+                    oauth_callback_port,
+                    scopes,
                     env_vars,
                     startup_timeout_secs,
                     tool_timeout_secs,
@@ -148,10 +195,23 @@ impl Command for Mcp {
                     let mut program = command.into_iter();
                     let config = mcp::Config {
                         url,
+                        cwd,
+                        environment: pairs(environment)?,
+                        http_headers: pairs(http_headers)?,
+                        env_http_headers: pairs(env_http_headers)?,
+                        transport: match transport.as_str() {
+                            "http" => mcp::Transport::Http,
+                            "sse" => mcp::Transport::Sse,
+                            _ => mcp::Transport::Auto,
+                        },
+                        oauth: !no_oauth,
                         command: program.next(),
                         args: program.collect(),
                         bearer_token_env_var,
                         client_id,
+                        client_secret_env_var,
+                        oauth_callback_port,
+                        scopes,
                         env_vars,
                         startup_timeout_secs,
                         tool_timeout_secs,
@@ -188,6 +248,68 @@ impl Command for Mcp {
                     }
                     result
                 }
+                Action::Auth { name } => {
+                    let server = find(cx, &name)?;
+                    if matches!(
+                        server.state,
+                        mcp::State::Off | mcp::State::Untrusted | mcp::State::Review
+                    ) {
+                        bail!(TEXT.unavailable.clone());
+                    }
+                    if cx.scope == Scope::Session {
+                        return Ok(Outcome {
+                            text: String::new(),
+                            effects: vec![Effect::McpAuth(name)],
+                        });
+                    }
+                    let challenge = app.mcp.challenge(&name);
+                    let login = tokio::time::timeout(
+                        crate::limits::get().extensions.connect_timeout_secs.secs(),
+                        io::mcp_auth::Login::begin(
+                            &server.config,
+                            mcp::credential_path(&app.paths, &server.config),
+                            challenge.as_deref(),
+                        ),
+                    )
+                    .await
+                    .map_err(|_| anyhow::anyhow!("OAuth discovery timed out"))??;
+                    io::term::out(&format!(
+                        "{}\n",
+                        fill(&TEXT.login, &[("name", &name), ("url", login.url())])
+                    ));
+                    if crate::settings::env("PALEPALE_NO_BROWSER").is_none() {
+                        let _ = io::proc::open_url(login.url());
+                    }
+                    let cancel = tokio_util::sync::CancellationToken::new();
+                    tokio::select! { result = login.finish(&cancel) => result.map_err(|e|anyhow::anyhow!(mcp::redact(&server.config, &e.to_string())))?, () = io::term::interrupted() => { cancel.cancel(); bail!("Sign-in cancelled"); } }
+                    app.mcp.disconnect(&name);
+                    fill(&TEXT.logged_in, &[("name", &name)])
+                }
+                Action::Logout { name } => {
+                    let server = find(cx, &name)?;
+                    app.mcp.disconnect(&name);
+                    io::mcp_auth::Store::new(mcp::credential_path(&app.paths, &server.config))
+                        .logout()
+                        .await?;
+                    fill(&TEXT.logged_out, &[("name", &name)])
+                }
+                action @ (Action::Enable { .. } | Action::Disable { .. }) => {
+                    let (name, enabled) = match action {
+                        Action::Enable { name } => (name, true),
+                        Action::Disable { name } => (name, false),
+                        _ => unreachable!(),
+                    };
+                    let mut server = find(cx, &name)?;
+                    server.config.enabled = enabled;
+                    mcp::save(app, &name, &server.config, server.scope)?;
+                    fill(
+                        &TEXT.toggled,
+                        &[
+                            ("name", &name),
+                            ("state", if enabled { "enabled" } else { "disabled" }),
+                        ],
+                    )
+                }
                 Action::Remove { name, scope } => {
                     let scope = placement(&scope);
                     let file = config_file(cx, scope);
@@ -213,6 +335,30 @@ impl Command for Mcp {
     }
 }
 
+fn find(cx: &Ctx<'_>, name: &str) -> anyhow::Result<mcp::View> {
+    cx.app
+        .mcp
+        .list()
+        .into_iter()
+        .find(|s| s.name == name)
+        .ok_or_else(|| anyhow::anyhow!(TEXT.unavailable.clone()))
+}
+
+fn pairs(values: Vec<String>) -> anyhow::Result<std::collections::BTreeMap<String, String>> {
+    values
+        .into_iter()
+        .map(|v| {
+            let (name, value) = v.split_once('=').ok_or_else(|| {
+                anyhow::anyhow!("Use NAME=value for environment variables and headers")
+            })?;
+            if name.is_empty() {
+                bail!("Environment/header name cannot be empty");
+            }
+            Ok((name.to_owned(), value.to_owned()))
+        })
+        .collect()
+}
+
 fn placement(scope: &str) -> Placement {
     if scope == "project" {
         Placement::Project
@@ -235,4 +381,32 @@ fn contains(file: &std::path::Path, name: &str) -> anyhow::Result<bool> {
         .get("mcp_servers")
         .and_then(toml::Value::as_table)
         .is_some_and(|servers| servers.contains_key(name)))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn session_auth_uses_the_native_card_without_writing_terminal_output() {
+        let project = crate::tools::testing::Project::new();
+        mcp::save(
+            &project.app,
+            "docs",
+            &mcp::Config {
+                url: Some("https://example.com/mcp".into()),
+                ..Default::default()
+            },
+            Placement::User,
+        )
+        .unwrap();
+        let cx = Ctx {
+            app: &project.app,
+            scope: Scope::Session,
+            session: None,
+        };
+        let outcome = Mcp.run(&cx, &["auth".into(), "docs".into()]).await.unwrap();
+        assert!(outcome.text.is_empty());
+        assert_eq!(outcome.effects, [Effect::McpAuth("docs".into())]);
+    }
 }

@@ -7,6 +7,104 @@ use crate::fake_palepale::{Fake, Reply};
 use crate::{Sandbox, WITH_KEY};
 
 #[tokio::test(flavor = "multi_thread")]
+async fn a_remote_skill_installed_from_a_prompt_is_available_in_the_same_conversation() {
+    let sandbox = Sandbox::default();
+    let fake = Fake::start().await;
+    fake.set_home(sandbox.home());
+    fake.script([
+        Reply::sse("extensions/skill-install.sse"),
+        Reply::sse("extensions/skill-load.sse"),
+        Reply::sse("hello.sse"),
+    ]);
+    sandbox
+        .run(
+            &fake.url,
+            &[
+                "--print",
+                "Install this skill source in Palepale and use its review workflow",
+            ],
+            WITH_KEY,
+        )
+        .await
+        .success();
+    let bodies = fake.chat_bodies();
+    assert_eq!(bodies.len(), 3);
+    let messages = |i: usize| bodies[i]["messages"].to_string();
+    assert!(!messages(0).contains("- native-check:"));
+    assert!(messages(1).contains("- native-check:"));
+    assert!(messages(2).contains("Remote skill installed during this conversation."));
+    assert_eq!(fake.hits("/skills/index.json"), 1);
+    assert_eq!(fake.hits("/skills/native-check/SKILL.md"), 1);
+    assert!(
+        std::fs::read_to_string(sandbox.home().join("config.toml"))
+            .unwrap()
+            .contains("urls")
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn skills_cli_registers_verifies_toggles_and_removes_a_local_source() {
+    let sandbox = Sandbox::default();
+    let source = sandbox.home().join("workflows/native-review");
+    std::fs::create_dir_all(source.join("references")).unwrap();
+    std::fs::write(
+        source.join("SKILL.md"),
+        "---\nname: native-review\ndescription: Review edits\n---\nLocal workflow marker",
+    )
+    .unwrap();
+    let path = source.to_str().unwrap();
+    sandbox
+        .run(crate::DEAD_URL, &["skills", "add", path], None)
+        .await
+        .success();
+    let check = sandbox
+        .run(crate::DEAD_URL, &["skills", "check", "native-review"], None)
+        .await;
+    assert!(check.success().stdout().contains("Local workflow marker"));
+    sandbox
+        .run(
+            crate::DEAD_URL,
+            &["skills", "disable", "native-review"],
+            None,
+        )
+        .await
+        .success();
+    assert!(
+        !sandbox
+            .run(crate::DEAD_URL, &["skills", "check", "native-review"], None)
+            .await
+            .0
+            .status
+            .success()
+    );
+    sandbox
+        .run(
+            crate::DEAD_URL,
+            &["skills", "enable", "native-review"],
+            None,
+        )
+        .await
+        .success();
+    sandbox
+        .run(crate::DEAD_URL, &["skills", "check", "native-review"], None)
+        .await
+        .success();
+    sandbox
+        .run(crate::DEAD_URL, &["skills", "remove", path], None)
+        .await
+        .success();
+    assert!(
+        !sandbox
+            .run(crate::DEAD_URL, &["skills", "check", "native-review"], None)
+            .await
+            .0
+            .status
+            .success()
+    );
+    assert!(source.join("SKILL.md").exists());
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn mcp_cli_registers_checks_and_removes_only_palepales_selected_config() {
     let sandbox = Sandbox::default();
     let home = sandbox.home();
@@ -22,10 +120,23 @@ async fn mcp_cli_registers_checks_and_removes_only_palepales_selected_config() {
     let program = fixture().to_str().unwrap();
     let log = sandbox.project.path().join("native-rpc.log");
     let log = log.to_str().unwrap();
+    std::fs::create_dir(sandbox.project.path().join("server folder")).unwrap();
     let added = sandbox
         .run(
             crate::DEAD_URL,
-            &["mcp", "add", "fixture", "--", program, "--modern", log],
+            &[
+                "mcp",
+                "add",
+                "fixture",
+                "--cwd",
+                "server folder",
+                "--env",
+                "MCP_FIXTURE_VALUE=configured",
+                "--",
+                program,
+                "--modern",
+                log,
+            ],
             None,
         )
         .await;
@@ -65,6 +176,20 @@ async fn mcp_cli_registers_checks_and_removes_only_palepales_selected_config() {
         .await;
     assert!(check.success().stdout().contains("fixture: connected"));
     assert!(check.stdout().contains("echo"));
+    let events = std::fs::read_to_string(log).unwrap();
+    assert!(events.contains("fixture-env") && events.contains("server folder"));
+    sandbox
+        .run(crate::DEAD_URL, &["mcp", "disable", "fixture"], None)
+        .await
+        .success();
+    let disabled = sandbox
+        .run(crate::DEAD_URL, &["mcp", "check", "fixture"], None)
+        .await;
+    assert!(!disabled.0.status.success());
+    sandbox
+        .run(crate::DEAD_URL, &["mcp", "enable", "fixture"], None)
+        .await
+        .success();
     sandbox
         .run(crate::DEAD_URL, &["mcp", "remove", "fixture"], None)
         .await
@@ -187,7 +312,7 @@ async fn a_server_added_during_a_conversation_is_available_on_the_next_model_req
     assert!(!sandbox.home().join(".claude.json").exists());
 }
 
-fn fixture() -> &'static Path {
+pub(super) fn fixture() -> &'static Path {
     static FIXTURE: OnceLock<(tempfile::TempDir, PathBuf)> = OnceLock::new();
     &FIXTURE
         .get_or_init(|| {
@@ -232,6 +357,98 @@ fn setup(sandbox: &Sandbox, large: bool) -> PathBuf {
     )
     .unwrap();
     log
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn mcp_image_results_reach_the_next_model_request_as_attachments() {
+    let sandbox = Sandbox::default();
+    setup(&sandbox, false);
+    let path = sandbox.home().join("config.toml");
+    let mut config: toml::Value = toml::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+    config["mcp_servers"]["fixture"]["args"]
+        .as_array_mut()
+        .unwrap()
+        .push(toml::Value::String("--media".into()));
+    std::fs::write(path, toml::to_string(&config).unwrap()).unwrap();
+    let fake = Fake::start().await;
+    fake.script([
+        Reply::sse("extensions/mcp-echo.sse"),
+        Reply::sse("hello.sse"),
+    ]);
+    sandbox
+        .run(
+            &fake.url,
+            &["--print", "Inspect the fixture image"],
+            WITH_KEY,
+        )
+        .await
+        .success();
+    let bodies = fake.chat_bodies();
+    assert_eq!(bodies.len(), 2);
+    let messages = bodies[1]["messages"].as_array().unwrap();
+    assert!(
+        messages
+            .iter()
+            .any(|m| m["content"].as_array().is_some_and(|parts| parts
+                .iter()
+                .any(|p| p["image_url"]["url"] == "data:image/png;base64,AQID")))
+    );
+    assert!(
+        messages
+            .iter()
+            .filter(|m| m["role"] == "tool")
+            .all(|m| !m["content"].as_str().unwrap().contains("AQID"))
+    );
+    let transcript = std::fs::read_to_string(&sandbox.sessions()[0]).unwrap();
+    assert!(transcript.contains("attachments"));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn automatic_skill_loading_resources_and_prompts_work_in_the_native_loop() {
+    let sandbox = Sandbox::default();
+    setup(&sandbox, false);
+    let config_path = sandbox.home().join("config.toml");
+    let mut config: toml::Value =
+        toml::from_str(&std::fs::read_to_string(&config_path).unwrap()).unwrap();
+    config["mcp_servers"]["fixture"]["args"]
+        .as_array_mut()
+        .unwrap()
+        .push(toml::Value::String("--catalogs".into()));
+    std::fs::write(config_path, toml::to_string(&config).unwrap()).unwrap();
+    let reference = sandbox
+        .project
+        .path()
+        .join(".agents/skills/native-check/references/checks.md");
+    std::fs::create_dir_all(reference.parent().unwrap()).unwrap();
+    std::fs::write(reference, "Lazy supporting reference content").unwrap();
+    let fake = Fake::start().await;
+    fake.script([
+        Reply::sse("extensions/skill-load.sse"),
+        Reply::sse("extensions/mcp-resource.sse"),
+        Reply::sse("extensions/mcp-prompt.sse"),
+        Reply::sse("hello.sse"),
+    ]);
+    sandbox
+        .run(
+            &fake.url,
+            &["--print", "Review this fixture using its workflow"],
+            WITH_KEY,
+        )
+        .await
+        .success();
+    let bodies = fake.chat_bodies();
+    assert_eq!(bodies.len(), 4);
+    let messages = |i: usize| bodies[i]["messages"].to_string();
+    assert!(!messages(0).contains("Inspect the native fixture and report its answer."));
+    assert!(messages(1).contains("Inspect the native fixture and report its answer."));
+    assert!(
+        messages(1).contains("checks.md")
+            && !messages(1).contains("Lazy supporting reference content")
+    );
+    assert!(messages(2).contains("Native resource body"));
+    assert!(messages(3).contains("Review native fixture instructions"));
+    let transcript = std::fs::read_to_string(&sandbox.sessions()[0]).unwrap();
+    assert!(!transcript.contains(crate::fake_palepale::ENV_KEY));
 }
 
 #[tokio::test(flavor = "multi_thread")]

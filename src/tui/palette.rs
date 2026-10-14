@@ -14,6 +14,7 @@ pub struct Palette {
     /// The text it last answered for; any change resets the pick and a dismissal.
     seen: String,
     dismissed: bool,
+    discovered: Vec<Spec>,
 }
 
 /// What a key did while the popup was up.
@@ -47,7 +48,28 @@ pub fn matches(text: &str) -> Vec<&'static Spec> {
 
 impl Palette {
     /// The commands to show for `text`; empty when the popup is closed.
-    pub fn open(&mut self, text: &str) -> Vec<&'static Spec> {
+    pub fn set_discovered(&mut self, specs: Vec<Spec>) {
+        self.discovered = specs;
+    }
+
+    pub fn matches(&self, text: &str) -> Vec<Spec> {
+        let mut found: Vec<_> = matches(text).into_iter().cloned().collect();
+        if let Some(prefix) = text
+            .strip_prefix(Scope::Session.prefix())
+            .filter(|p| !p.contains(char::is_whitespace))
+        {
+            found.extend(
+                self.discovered
+                    .iter()
+                    .filter(|s| s.name.starts_with(prefix) && commands::find(&s.name).is_none())
+                    .cloned(),
+            );
+        }
+        found.sort_by(|a, b| a.name.cmp(&b.name));
+        found
+    }
+
+    pub fn open(&mut self, text: &str) -> Vec<Spec> {
         if text != self.seen {
             text.clone_into(&mut self.seen);
             self.selected = 0;
@@ -56,7 +78,7 @@ impl Palette {
         if self.dismissed {
             return Vec::new();
         }
-        let found = matches(text);
+        let found = self.matches(text);
         self.selected = self.selected.min(found.len().saturating_sub(1));
         found
     }
@@ -87,7 +109,7 @@ impl Palette {
         Step::Handled
     }
 
-    pub fn render(&self, found: &[&Spec], width: usize) -> Vec<Line> {
+    pub fn render(&self, found: &[Spec], width: usize) -> Vec<Line> {
         let rows = limits::get().tui.palette_rows.value.max(1);
         let start = (self.selected + 1).saturating_sub(rows);
         let name_width = found.iter().map(|s| self.width_of(s)).max().unwrap_or(0);

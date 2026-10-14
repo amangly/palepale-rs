@@ -23,6 +23,70 @@ const POLL: Duration = Duration::from_millis(50);
 const KEY_GAP: Duration = Duration::from_millis(30);
 
 #[tokio::test(flavor = "multi_thread")]
+async fn discovered_mcp_prompt_slash_commands_resolve_arguments_before_sending() {
+    let fake = Fake::start().await;
+    fake.script([Reply::sse("hello.sse")]);
+    let sandbox = Sandbox::default();
+    let config = serde_json::json!({"mcp_servers":{"fixture":{"command":super::extensions::fixture(),"args":["--modern",sandbox.home().join("rpc.log"),"--catalogs"]}}});
+    std::fs::write(
+        sandbox.home().join("config.toml"),
+        toml::to_string(&config).unwrap(),
+    )
+    .unwrap();
+    let url = fake.url.clone();
+    tokio::task::spawn_blocking(move || {
+        let mut session = Session::start_sized(&sandbox, &url, Some(ENV_KEY), &[], 24, 64, false);
+        session.wait_for("palepale v");
+        session.type_text("/fixture:review native");
+        session.send("\r");
+        session.wait_for("Hello there!");
+        session.send("\x04");
+        assert!(session.wait_exit());
+    })
+    .await
+    .unwrap();
+    let requests = fake.chat_bodies();
+    assert_eq!(requests.len(), 1);
+    assert!(
+        requests[0]["messages"]
+            .to_string()
+            .contains("Review native fixture instructions")
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn discovered_skill_slash_commands_load_the_workflow_and_prompt_in_the_same_turn() {
+    let fake = Fake::start().await;
+    fake.script([Reply::sse("hello.sse")]);
+    let sandbox = Sandbox::default();
+    let skill = sandbox
+        .project
+        .path()
+        .join(".agents/skills/native-review/SKILL.md");
+    std::fs::create_dir_all(skill.parent().unwrap()).unwrap();
+    std::fs::write(skill,"---\nname: native-review\ndescription: Native slash workflow\n---\nSlash workflow body marker").unwrap();
+    sandbox.trust_project();
+    let url = fake.url.clone();
+    tokio::task::spawn_blocking(move || {
+        let mut session = Session::start_sized(&sandbox, &url, Some(ENV_KEY), &[], 24, 64, false);
+        session.wait_for("palepale v");
+        session.type_text("/native-review inspect this diff");
+        session.send("\r");
+        session.wait_for("Hello there!");
+        session.send("\x04");
+        assert!(session.wait_exit());
+    })
+    .await
+    .unwrap();
+    let requests = fake.chat_bodies();
+    assert_eq!(requests.len(), 1);
+    let messages = requests[0]["messages"].to_string();
+    assert!(
+        messages.contains("Slash workflow body marker") && messages.contains("inspect this diff")
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn compact_extension_managers_add_a_server_and_select_a_skill_without_sending() {
     let fake = Fake::start().await;
     let sandbox = Sandbox::default();

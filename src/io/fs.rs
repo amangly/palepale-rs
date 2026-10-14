@@ -183,6 +183,57 @@ pub fn list_dir(path: &Path) -> io::Result<Vec<Entry>> {
     Ok(entries)
 }
 
+/// Bounded walks resolve links once, preventing cycles and escapes into unrelated folders.
+fn skill_walk(root: &Path, depth: usize, limit: usize, definitions: bool) -> Vec<PathBuf> {
+    let root = canonical(root);
+    let mut pending = vec![(root.clone(), 0)];
+    let mut seen = std::collections::HashSet::new();
+    let mut files = Vec::new();
+    let mut visited = 0;
+    while let Some((dir, level)) = pending.pop() {
+        if !seen.insert(dir.clone()) || (!definitions && !dir.starts_with(&root)) {
+            continue;
+        }
+        visited += 1;
+        if visited > limit.saturating_mul(depth + 1).max(1) {
+            break;
+        }
+        let entries = list_dir(&dir).unwrap_or_default();
+        for entry in entries.into_iter().rev() {
+            if entry.name.starts_with('.') || entry.name == "node_modules" {
+                continue;
+            }
+            let path = canonical(&dir.join(&entry.name));
+            if !definitions && !path.starts_with(&root) {
+                continue;
+            }
+            if entry.is_dir {
+                if level < depth {
+                    pending.push((path, level + 1));
+                }
+            } else if (entry.name == "SKILL.md") == definitions
+                && kind(&path).is_ok_and(|k| k == Kind::File)
+            {
+                files.push(path);
+                if files.len() >= limit {
+                    files.sort();
+                    return files;
+                }
+            }
+        }
+    }
+    files.sort();
+    files
+}
+
+pub fn skill_files(root: &Path, depth: usize, limit: usize) -> Vec<PathBuf> {
+    skill_walk(root, depth, limit, true)
+}
+
+pub fn skill_support_files(root: &Path, depth: usize, limit: usize) -> Vec<PathBuf> {
+    skill_walk(root, depth, limit, false)
+}
+
 /// A file created for appending, never one that was already there.
 pub struct Appender(std::fs::File);
 

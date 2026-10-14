@@ -11,7 +11,7 @@ use crate::tui::ui;
 
 /// What finished in the background.
 pub enum Work {
-    ExtensionsReady,
+    ExtensionsReady(Vec<commands::discovered::Discovered>),
     Status {
         id: u64,
         revision: u64,
@@ -51,8 +51,31 @@ pub struct Started<'a> {
 /// Starts `line` (what followed the `/`); `Err` is the notice for a command that does not run
 /// here.
 pub fn start<'a>(app: &'a App, line: &str, session: Session) -> Result<Started<'a>, String> {
-    let words: Vec<String> = line.split_whitespace().map(str::to_owned).collect();
+    let words =
+        commands::arguments::parse(line).ok_or_else(|| ui::get().text.command_quote.clone())?;
     let (name, args) = words.split_first().ok_or_else(String::new)?;
+    if commands::find(name).is_none() {
+        let name = name.clone();
+        let args = args.to_vec();
+        let echo = Scope::Session.invoke(line);
+        return Ok(Started {
+            echo,
+            run: Box::pin(async move {
+                let found = commands::discovered::list(app).await;
+                let result = match found.iter().find(|d| d.spec.name == name) {
+                    Some(command) => command.run(&args).await,
+                    None => Err(anyhow::anyhow!(template::fill(
+                        &ui::get().text.unknown_command,
+                        &[
+                            ("command", &Scope::Session.invoke(&name)),
+                            ("help", "/help")
+                        ]
+                    ))),
+                };
+                Work::Command(result)
+            }),
+        });
+    }
     let command = commands::lookup(name, Scope::Session).map_err(|missing| {
         let text = &ui::get().text;
         let typed = Scope::Session.invoke(name);

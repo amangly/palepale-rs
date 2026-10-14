@@ -35,6 +35,13 @@ pub async fn run(
 ) -> Outcome {
     let cancel = shared.begin_run();
     let mut parts = with_reminder(cx, shared, prompt);
+    if !crate::commands::discovered::expand_prompts(cx, shared, &cancel, &mut parts).await {
+        record(cx, transcript, Message::User { parts });
+        (cx.emit)(AgentEvent::RunEnd {
+            outcome: Outcome::Failed,
+        });
+        return Outcome::Failed;
+    }
     crate::skills::expand(
         cx.app,
         shared,
@@ -62,6 +69,28 @@ pub async fn run(
                     cx.app.mcp.refresh_changed(cx.app).await;
                 } => {},
                 () = cancel.cancelled() => break 'run Outcome::Aborted,
+            }
+            let skills = crate::skills::load(cx.app).await;
+            let mut skill_context =
+                crate::skills::visible_catalog(&skills, cx.app, shared, &cx.plan_file);
+            let previous_skills =
+                crate::skills::last_catalog(&transcript.messages, "<available_skills>");
+            if skill_context.is_empty() && previous_skills.is_some() {
+                skill_context = crate::text::template::fill(
+                    &crate::extensions::text().skills_frame,
+                    &[("skills", "")],
+                );
+            }
+            if !skill_context.is_empty() && previous_skills != Some(skill_context.as_str()) {
+                record(
+                    cx,
+                    transcript,
+                    Message::User {
+                        parts: vec![Part::Reminder {
+                            text: skill_context,
+                        }],
+                    },
+                );
             }
             let mut mcp_context = cx.app.mcp.context();
             let previous = crate::skills::last_catalog(&transcript.messages, "<mcp_servers>");

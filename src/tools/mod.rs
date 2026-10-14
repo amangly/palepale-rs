@@ -14,6 +14,7 @@ mod plan_exit;
 mod question;
 mod read;
 mod shell;
+mod skill;
 pub(crate) mod target;
 mod todowrite;
 mod truncate;
@@ -86,6 +87,7 @@ pub enum Refusal {
 
 pub struct Output {
     pub content: String,
+    pub attachments: Vec<crate::agent::message::Attachment>,
     pub is_error: bool,
     pub details: Option<Value>,
 }
@@ -94,6 +96,7 @@ impl Output {
     pub fn ok(content: impl Into<String>) -> Self {
         Self {
             content: content.into(),
+            attachments: vec![],
             is_error: false,
             details: None,
         }
@@ -102,6 +105,7 @@ impl Output {
     pub fn error(content: impl Into<String>) -> Self {
         Self {
             content: content.into(),
+            attachments: vec![],
             is_error: true,
             details: None,
         }
@@ -190,6 +194,7 @@ impl Registry {
         ];
         let tools: Vec<Arc<dyn Tool>> = vec![
             Arc::new(read::Read),
+            Arc::new(skill::Skill),
             Arc::new(write::Write),
             Arc::new(edit::Edit),
             Arc::new(fs::Fs),
@@ -218,6 +223,7 @@ impl Registry {
         let mut tools = self.tools.clone();
         if let Some(mcp) = &self.mcp {
             tools.extend(mcp.tools());
+            tools.extend(mcp.catalog_tools());
         }
         Self {
             tools,

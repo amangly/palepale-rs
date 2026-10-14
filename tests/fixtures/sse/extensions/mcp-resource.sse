@@ -1,0 +1,5 @@
+data: {"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"resource-1","type":"function","function":{"name":"mcp_resources","arguments":"{\"server\":\"fixture\",\"action\":\"read\",\"uri\":\"memory://fixture/notes\"}"}}]}}]}
+
+data: {"choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}
+
+data: [DONE]

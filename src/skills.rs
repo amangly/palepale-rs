@@ -23,6 +23,8 @@ pub struct Config {
     pub paths: Vec<PathBuf>,
     #[serde(default)]
     pub disabled: Vec<PathBuf>,
+    #[serde(default)]
+    pub urls: Vec<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -35,6 +37,7 @@ pub struct Skill {
     pub error: Option<String>,
     pub explicit_only: bool,
     pub invocable: bool,
+    pub slash: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -66,6 +69,10 @@ struct Metadata {
     explicit_only: bool,
     #[serde(default = "invocable", rename = "user-invocable")]
     invocable: bool,
+    #[serde(default)]
+    metadata: std::collections::BTreeMap<String, serde_yaml_ng::Value>,
+    compatibility: Option<String>,
+    slash: Option<bool>,
 }
 
 fn invocable() -> bool {
@@ -87,7 +94,23 @@ fn parse(source: &str, folder: &str) -> anyhow::Result<(Metadata, String)> {
             bail!("Unsupported skill execution field: {field}");
         }
     }
-    let metadata: Metadata = serde_yaml_ng::from_value(document)?;
+    let mut metadata: Metadata = serde_yaml_ng::from_value(document)?;
+    if metadata
+        .compatibility
+        .as_ref()
+        .is_some_and(|s| s.is_empty() || s.chars().count() > 500)
+    {
+        bail!("Skill compatibility must contain 1–500 characters");
+    }
+    for key in ["opencode/autoinvoke", "palepale/autoinvoke"] {
+        if metadata
+            .metadata
+            .get(key)
+            .is_some_and(|v| v.as_bool() == Some(false) || v.as_str() == Some("false"))
+        {
+            metadata.explicit_only = true;
+        }
+    }
     if !valid_name(&metadata.name) || metadata.name != folder {
         bail!(
             "Skill name must match its folder and contain 1–64 lowercase letters, digits or single hyphens"
@@ -122,9 +145,27 @@ pub async fn load(app: &App) -> Vec<Skill> {
     let config = settings::load(&paths, &settings::Overrides::default())
         .map(|s| s.skills)
         .unwrap_or_else(|_| app.settings.skills.clone());
-    tokio::task::spawn_blocking(move || discover_at(&paths, config))
+    let mut errors = Vec::new();
+    for url in &config.urls {
+        if let Err(error) = io::skill_cache::pull(url, &paths.home, false).await {
+            errors.push(Skill {
+                name: "remote-skills".into(),
+                description: url.clone(),
+                path: io::skill_cache::source_dir(url, &paths.home),
+                scope: Scope::User,
+                state: State::Invalid,
+                error: Some(error.to_string()),
+                explicit_only: true,
+                invocable: false,
+                slash: false,
+            });
+        }
+    }
+    let mut found = tokio::task::spawn_blocking(move || discover_at(&paths, config))
         .await
-        .unwrap_or_default()
+        .unwrap_or_default();
+    found.extend(errors);
+    found
 }
 
 fn discover_at(paths: &crate::paths::Paths, config: Config) -> Vec<Skill> {
@@ -138,7 +179,9 @@ fn discover_at(paths: &crate::paths::Paths, config: Config) -> Vec<Skill> {
         }
     }
     for dir in paths.project.ancestors() {
-        roots.push((dir.join(".agents/skills"), Scope::Project));
+        for root in &text().project_skill_roots {
+            roots.push((dir.join(root), Scope::Project));
+        }
         if repo.as_deref().is_none_or(|root| dir == root) {
             break;
         }
@@ -146,8 +189,11 @@ fn discover_at(paths: &crate::paths::Paths, config: Config) -> Vec<Skill> {
     if settings::env("PALEPALE_NO_USER_SKILLS").is_none()
         && let Some(home) = io::fs::home_dir()
     {
-        roots.push((home.join(".agents/skills"), Scope::User));
+        for root in &text().user_skill_roots {
+            roots.push((home.join(root), Scope::User));
+        }
     }
+    roots.push((paths.home.join("skills"), Scope::User));
     for path in &config.paths {
         let path = if path.is_absolute() {
             path.clone()
@@ -160,6 +206,13 @@ fn discover_at(paths: &crate::paths::Paths, config: Config) -> Vec<Skill> {
             Scope::User
         };
         roots.push((path, scope));
+    }
+    for url in &config.urls {
+        roots.extend(
+            io::skill_cache::cached(url, &paths.home)
+                .into_iter()
+                .map(|path| (path, Scope::User)),
+        );
     }
     roots.sort_by_key(|(_, scope)| if *scope == Scope::Project { 0 } else { 1 });
     let disabled: HashSet<PathBuf> = config
@@ -185,12 +238,11 @@ fn discover_at(paths: &crate::paths::Paths, config: Config) -> Vec<Skill> {
         let candidates = if io::fs::kind(&direct).is_ok_and(|k| k == io::fs::Kind::File) {
             vec![direct]
         } else {
-            io::fs::list_dir(&root)
-                .unwrap_or_default()
-                .into_iter()
-                .filter(|e| e.is_dir)
-                .map(|e| root.join(e.name).join("SKILL.md"))
-                .collect()
+            io::fs::skill_files(
+                &root,
+                limits::get().extensions.skill_depth.value,
+                limits::get().extensions.skill_count.value,
+            )
         };
         for candidate in candidates {
             if skills.len() >= limits::get().extensions.skill_count.value {
@@ -211,15 +263,29 @@ fn discover_at(paths: &crate::paths::Paths, config: Config) -> Vec<Skill> {
                     .map_err(anyhow::Error::from)
                     .and_then(|s| s.context("SKILL.md not found"))
                     .and_then(|s| parse(&s, &folder));
-            let (name, description, error, explicit_only, invocable) = match parsed {
+            let (name, description, error, explicit_only, invocable, slash) = match parsed {
                 Ok((meta, _)) => (
                     meta.name,
                     meta.description,
                     None,
                     meta.explicit_only,
                     meta.invocable,
+                    meta.slash.unwrap_or_else(|| {
+                        !["opencode/slash", "palepale/slash"].iter().any(|key| {
+                            meta.metadata.get(*key).is_some_and(|v| {
+                                v.as_bool() == Some(false) || v.as_str() == Some("false")
+                            })
+                        })
+                    }),
                 ),
-                Err(e) => (folder, String::new(), Some(e.to_string()), false, false),
+                Err(e) => (
+                    folder,
+                    String::new(),
+                    Some(e.to_string()),
+                    false,
+                    false,
+                    false,
+                ),
             };
             let first = if error.is_none() && (scope != Scope::Project || trusted) {
                 names.insert(name.clone())
@@ -246,6 +312,7 @@ fn discover_at(paths: &crate::paths::Paths, config: Config) -> Vec<Skill> {
                 error,
                 explicit_only,
                 invocable,
+                slash,
             });
         }
     }
@@ -329,7 +396,7 @@ pub async fn expand(
 ) {
     let skills = load(app).await;
     let names = invocations(parts);
-    let mut catalog = catalog(&skills);
+    let mut catalog = visible_catalog(&skills, app, shared, plan_file);
     let previous = last_catalog(history, "<available_skills>");
     if catalog.is_empty() && previous.is_some() {
         catalog = fill(&text().skills_frame, &[("skills", "")]);
@@ -347,7 +414,11 @@ pub async fn expand(
                 })?;
             let target = crate::tools::target::resolve(&app.paths, &skill.path.to_string_lossy())
                 .map_err(anyhow::Error::msg)?;
-            let asks = crate::tools::target::asks("read", &target);
+            let mut asks = crate::tools::target::asks("read", &target);
+            asks.push(crate::permission::gate::Ask::new(
+                crate::tools::permissions::SKILL.name,
+                &name,
+            ));
             let policy = Policy {
                 rules: &app.settings.permission,
                 mode: shared.mode(),
@@ -369,15 +440,7 @@ pub async fn expand(
                     }
                 }
             }
-            let instructions = body(skill)?;
-            Ok(fill(
-                &text().skill_frame,
-                &[
-                    ("name", &skill.name),
-                    ("path", &skill.path.to_string_lossy()),
-                    ("body", &instructions),
-                ],
-            ))
+            context(skill)
         }
         .await;
         let context = match result {
@@ -389,6 +452,49 @@ pub async fn expand(
         };
         parts.push(Part::Reminder { text: context });
     }
+}
+
+pub fn visible_catalog(skills: &[Skill], app: &App, shared: &Shared, plan_file: &str) -> String {
+    let policy = Policy {
+        rules: &app.settings.permission,
+        mode: shared.mode(),
+        plan_file,
+    };
+    let visible: Vec<_> = skills
+        .iter()
+        .filter(|s| {
+            !matches!(
+                policy.decide(&[crate::permission::gate::Ask::new("skill", &s.name)]),
+                Decision::Deny(_)
+            )
+        })
+        .cloned()
+        .collect();
+    catalog(&visible)
+}
+
+pub fn context(skill: &Skill) -> anyhow::Result<String> {
+    let instructions = body(skill)?;
+    let directory = skill.path.parent().context("Skill has no directory")?;
+    let files = io::fs::skill_support_files(
+        directory,
+        limits::get().extensions.skill_depth.value,
+        limits::get().extensions.skill_support_files.value,
+    )
+    .iter()
+    .map(|p| p.display().to_string())
+    .collect::<Vec<_>>()
+    .join("\n");
+    Ok(fill(
+        &text().skill_frame,
+        &[
+            ("name", &skill.name),
+            ("path", &skill.path.to_string_lossy()),
+            ("directory", &directory.to_string_lossy()),
+            ("body", &instructions),
+            ("files", &files),
+        ],
+    ))
 }
 
 pub fn last_catalog<'a>(history: &'a [Message], prefix: &str) -> Option<&'a str> {
@@ -423,6 +529,73 @@ pub fn add(app: &App, path: &str, scope: Scope) -> anyhow::Result<()> {
             paths.push(value.as_ref());
         }
         doc["skills"]["paths"] = toml_edit::value(paths);
+        Ok(())
+    })
+}
+
+pub async fn add_source(app: &App, source: &str, scope: Scope) -> anyhow::Result<()> {
+    if source.starts_with("https://") || source.starts_with("http://") {
+        io::skill_cache::validate(source)?;
+        settings::edit(&app.paths, scope == Scope::Project, |doc| {
+            let mut urls = doc
+                .get("skills")
+                .and_then(|s| s.get("urls"))
+                .and_then(toml_edit::Item::as_array)
+                .cloned()
+                .unwrap_or_default();
+            if !urls.iter().any(|s| s.as_str() == Some(source)) {
+                urls.push(source);
+            }
+            doc["skills"]["urls"] = toml_edit::value(urls);
+            Ok(())
+        })?;
+        if scope == Scope::User || trust::is_trusted(&app.paths)? {
+            io::skill_cache::pull(source, &app.paths.home, true).await?;
+        }
+        Ok(())
+    } else {
+        add(app, source, scope)
+    }
+}
+
+pub async fn refresh(app: &App) -> anyhow::Result<()> {
+    let settings = settings::load(&app.paths, &settings::Overrides::default())?;
+    for url in settings.skills.urls {
+        io::skill_cache::pull(&url, &app.paths.home, true).await?;
+    }
+    Ok(())
+}
+
+pub fn remove_source(app: &App, source: &str, scope: Scope) -> anyhow::Result<()> {
+    let remote = source.starts_with("http://") || source.starts_with("https://");
+    let path = if Path::new(source).is_absolute() {
+        PathBuf::from(source)
+    } else {
+        app.paths.project.join(source)
+    };
+    let target = io::fs::canonical(&path);
+    settings::edit(&app.paths, scope == Scope::Project, |doc| {
+        let field = if remote { "urls" } else { "paths" };
+        if let Some(items) = doc
+            .get_mut("skills")
+            .and_then(|s| s.get_mut(field))
+            .and_then(toml_edit::Item::as_array_mut)
+        {
+            items.retain(|item| {
+                item.as_str().is_none_or(|v| {
+                    if remote {
+                        v != source
+                    } else {
+                        let path = if Path::new(v).is_absolute() {
+                            PathBuf::from(v)
+                        } else {
+                            app.paths.project.join(v)
+                        };
+                        io::fs::canonical(&path) != target
+                    }
+                })
+            });
+        }
         Ok(())
     })
 }
@@ -496,6 +669,103 @@ pub fn toggle(app: &App, skill: &Skill) -> anyhow::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[tokio::test]
+    async fn native_skill_tool_loads_grouped_compatibility_folders_and_supporting_files() {
+        use crate::tools::{Registry, testing::Project};
+        let project = Project::new();
+        let root = project
+            .app
+            .paths
+            .project
+            .join(".palepale/skills/team/review");
+        io::fs::write_atomic(&root.join("SKILL.md"), b"---\nname: review\ndescription: Review native changes\nlicense: MIT\ncompatibility: Palepale\nmetadata:\n  author: team\n---\nRead references/checks.md before editing.", io::fs::Access::Private).unwrap();
+        io::fs::write_atomic(
+            &root.join("references/checks.md"),
+            b"Supporting reference marker",
+            io::fs::Access::Private,
+        )
+        .unwrap();
+        io::fs::write_atomic(
+            &root.join("scripts/run.sh"),
+            b"exit 99",
+            io::fs::Access::Private,
+        )
+        .unwrap();
+        trust::trust(&project.app.paths).unwrap();
+        let skills = discover(&project.app);
+        assert!(
+            skills
+                .iter()
+                .any(|s| s.name == "review" && s.state == State::Ready)
+        );
+        let registry = Registry::builtin(&project.app);
+        let skill = registry.get("skill").unwrap();
+        let cx = project.cx();
+        let check = skill
+            .check(&serde_json::json!({"name":"review"}), &cx)
+            .unwrap();
+        assert!(
+            check
+                .asks
+                .iter()
+                .any(|a| a.permission == "skill" && a.patterns == ["review"])
+        );
+        let output = skill.run(serde_json::json!({"name":"review"}), &cx).await;
+        assert!(!output.is_error, "{}", output.content);
+        assert!(
+            output.content.contains("Base directory:")
+                && output.content.contains("checks.md")
+                && output.content.contains("run.sh")
+        );
+        assert!(
+            !output.content.contains("Supporting reference marker")
+                && !output.content.contains("exit 99")
+        );
+    }
+
+    #[tokio::test]
+    async fn compatible_metadata_and_disabled_skills_are_excluded_from_automatic_loading() {
+        use crate::tools::{Registry, testing::Project};
+        let project = Project::new();
+        let file = project
+            .app
+            .paths
+            .project
+            .join(".claude/skills/group/review/SKILL.md");
+        io::fs::write_atomic(&file, b"---\nname: review\ndescription: Review changes\nmetadata:\n  opencode/autoinvoke: false\n---\nManual workflow body", io::fs::Access::Private).unwrap();
+        trust::trust(&project.app.paths).unwrap();
+        let skills = discover(&project.app);
+        let skill = skills.iter().find(|s| s.name == "review").unwrap();
+        assert!(skill.explicit_only);
+        assert!(!catalog(&skills).contains("- review:"));
+        let registry = Registry::builtin(&project.app);
+        assert!(
+            registry
+                .get("skill")
+                .unwrap()
+                .check(&serde_json::json!({"name":"review"}), &project.cx())
+                .is_err()
+        );
+        let mut parts = vec![Part::Text {
+            text: "$review verify".into(),
+        }];
+        let cx = project.cx();
+        expand(
+            &project.app,
+            cx.shared,
+            cx.emit,
+            cx.plan_file,
+            &cx.cancel,
+            &[],
+            &mut parts,
+        )
+        .await;
+        assert!(
+            parts.iter().any(
+                |p| matches!(p,Part::Reminder { text } if text.contains("Manual workflow body"))
+            )
+        );
+    }
     #[test]
     fn frontmatter_supports_multiline_unicode_and_plain_arguments() {
         let (meta, body) = parse("---\nname: review\ndescription: >\n  Check changes\n  carefully.\n---\nUse $ARGUMENTS as text.", "review").unwrap();
@@ -510,6 +780,57 @@ mod tests {
                 "review"
             )
             .is_err()
+        );
+    }
+
+    #[tokio::test]
+    async fn skill_name_denials_hide_the_catalog_and_reach_the_normal_gate() {
+        use crate::permission::{
+            gate::Decision,
+            rule::{Action, Rule},
+        };
+        use crate::tools::{Registry, testing::Project};
+        let mut project = Project::new();
+        let file = project
+            .app
+            .paths
+            .project
+            .join(".agents/skills/private-review/SKILL.md");
+        io::fs::write_atomic(&file, b"---\nname: private-review\ndescription: Private review workflow\n---\nPrivate instructions", io::fs::Access::Private).unwrap();
+        trust::trust(&project.app.paths).unwrap();
+        project.app.settings.permission.push(Rule {
+            permission: "skill".into(),
+            pattern: "private-*".into(),
+            action: Action::Deny,
+        });
+        project.shared.set_mode(crate::mode::get("manual").unwrap());
+        let cx = project.cx();
+        assert!(
+            !visible_catalog(
+                &discover(&project.app),
+                &project.app,
+                cx.shared,
+                cx.plan_file
+            )
+            .contains("- private-review:")
+        );
+        let registry = Registry::builtin(&project.app);
+        let check = registry
+            .get("skill")
+            .unwrap()
+            .check(&serde_json::json!({"name":"private-review"}), &cx)
+            .unwrap();
+        let mode = project.shared.mode();
+        let policy = Policy {
+            mode,
+            rules: &project.app.settings.permission,
+            plan_file: cx.plan_file,
+        };
+        assert!(
+            check
+                .asks
+                .iter()
+                .any(|a| matches!(policy.decide(std::slice::from_ref(a)), Decision::Deny(_)))
         );
     }
 

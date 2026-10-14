@@ -64,6 +64,8 @@ pub struct Text {
     pub add_bearer: String,
     pub add_client_id: String,
     pub working: String,
+    pub project_skill_roots: Vec<String>,
+    pub user_skill_roots: Vec<String>,
     pub skills_frame: String,
     pub mcp_frame: String,
     pub skill_frame: String,

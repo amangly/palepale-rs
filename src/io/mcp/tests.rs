@@ -46,6 +46,230 @@ fn config(modern: bool, log: &Path) -> Config {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn slash_prompt_reads_obey_the_active_permission_policy() {
+    let mut project = Project::new();
+    let log = project.app.paths.project.join("prompt-denied.log");
+    let mut config = config(true, &log);
+    config.args.push("--catalogs".into());
+    crate::mcp::save(&project.app, "fixture", &config, Scope::User).unwrap();
+    project
+        .app
+        .mcp
+        .connect(&project.app, "fixture", false)
+        .await
+        .unwrap();
+    project.app.settings.permission.push(Rule {
+        permission: "mcp".into(),
+        pattern: "fixture.prompts/get".into(),
+        action: Action::Deny,
+    });
+    let output = crate::commands::discovered::prompt(
+        json!({"server":"fixture","action":"get","name":"review","arguments":{"topic":"native"}}),
+        &project.cx(),
+    )
+    .await;
+    assert!(
+        output.is_error
+            && !output
+                .content
+                .contains("Review native fixture instructions")
+    );
+    assert!(
+        !io::fs::read_string(&log)
+            .unwrap()
+            .unwrap()
+            .contains("prompts/get")
+    );
+    project.app.mcp.disconnect("fixture");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn tool_list_changes_refresh_the_existing_process_and_invalidate_old_definitions() {
+    let project = Project::new();
+    let log = project.app.paths.project.join("changed.log");
+    let mut config = config(true, &log);
+    config.args.push("--changes".into());
+    crate::mcp::save(&project.app, "fixture", &config, Scope::User).unwrap();
+    project
+        .app
+        .mcp
+        .connect(&project.app, "fixture", false)
+        .await
+        .unwrap();
+    let before = Registry::builtin(&project.app).snapshot();
+    let echo = before.get("mcp__fixture__echo").unwrap();
+    let result = echo.run(json!({"x":42}), &project.cx()).await;
+    assert!(!result.is_error, "{}", result.content);
+    tokio::time::timeout(Duration::from_secs(3), async {
+        loop {
+            project.app.mcp.refresh_changed(&project.app).await;
+            if Registry::builtin(&project.app)
+                .snapshot()
+                .get("mcp__fixture__updated")
+                .is_some()
+            {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .unwrap();
+    assert!(echo.check(&json!({"x":42}), &project.cx()).is_err());
+    let log = io::fs::read_string(&log).unwrap().unwrap();
+    assert_eq!(log.lines().filter(|line| *line == "discover").count(), 1);
+    assert_eq!(
+        log.lines()
+            .filter(|line| *line == "no-palepale-key")
+            .count(),
+        1
+    );
+    assert_eq!(log.lines().filter(|line| *line == "tools/list").count(), 3);
+    project.app.mcp.disconnect("fixture");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn matching_progress_extends_the_idle_timeout_without_replaying_a_call() {
+    let project = Project::new();
+    let log = project.app.paths.project.join("progress.log");
+    let config = config(true, &log);
+    let connection = Arc::new(
+        Connection::open(
+            &config,
+            &project.app.paths.project,
+            project.app.paths.home.join("auth"),
+        )
+        .await
+        .unwrap(),
+    );
+    let result = connection
+        .clone()
+        .call(
+            "progress".into(),
+            json!({}),
+            Duration::from_millis(250),
+            CancellationToken::new(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(result["structuredContent"]["answer"], 42);
+    assert_eq!(
+        io::fs::read_string(&log)
+            .unwrap()
+            .unwrap()
+            .lines()
+            .filter(|line| *line == "echo")
+            .count(),
+        1
+    );
+    connection.close();
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn native_catalog_tools_paginate_read_resources_and_get_prompts_with_generation_checks() {
+    let project = Project::new();
+    let log = project.app.paths.project.join("catalog-rpc.log");
+    let mut config = config(true, &log);
+    config.args.push("--catalogs".into());
+    config
+        .environment
+        .insert("MCP_FIXTURE_VALUE".into(), "configured".into());
+    config.cwd = Some("subfolder".into());
+    std::fs::create_dir_all(project.app.paths.project.join("subfolder")).unwrap();
+    crate::mcp::save(&project.app, "fixture_server", &config, Scope::User).unwrap();
+    project
+        .app
+        .mcp
+        .connect(&project.app, "fixture_server", false)
+        .await
+        .unwrap();
+    let registry = Registry::builtin(&project.app).snapshot();
+    let cx = project.cx();
+    let commands = crate::commands::discovered::list(&project.app).await;
+    let slash = commands
+        .iter()
+        .find(|d| d.spec.name == "fixture_server:review")
+        .unwrap();
+    assert!(slash.run(&[]).await.is_err());
+    let outcome = slash.run(&["native".into()]).await.unwrap();
+    assert!(
+        matches!(&outcome.effects[0],crate::commands::Effect::McpPrompt(request) if request.contains("native"))
+    );
+    let resource = registry.get("mcp_resources").unwrap();
+    let resources = registry.get("list_mcp_resources").unwrap();
+    resources.check(&json!({}), &cx).unwrap();
+    assert!(
+        resources
+            .run(json!({}), &cx)
+            .await
+            .content
+            .contains("memory://fixture/notes")
+    );
+    let templates = registry.get("list_mcp_resource_templates").unwrap();
+    assert!(
+        templates
+            .run(json!({}), &cx)
+            .await
+            .content
+            .contains("fixture-template")
+    );
+    let read = registry.get("read_mcp_resource").unwrap();
+    assert!(
+        read.check(&json!({"uri":"memory://fixture/notes"}), &cx)
+            .is_err()
+    );
+    assert!(
+        read.run(
+            json!({"server":"fixture_server","uri":"memory://fixture/notes"}),
+            &cx
+        )
+        .await
+        .content
+        .contains("Native resource body")
+    );
+    for (args, expected) in [
+        (
+            json!({"server":"fixture_server","action":"list"}),
+            "memory://fixture/other",
+        ),
+        (
+            json!({"server":"fixture_server","action":"templates"}),
+            "fixture-template",
+        ),
+        (
+            json!({"server":"fixture_server","action":"read","uri":"memory://fixture/notes"}),
+            "Native resource body",
+        ),
+    ] {
+        resource.check(&args, &cx).unwrap();
+        let result = resource.run(args, &cx).await;
+        assert!(
+            !result.is_error && result.content.contains(expected),
+            "{}",
+            result.content
+        );
+    }
+    let prompt = registry.get("mcp_prompts").unwrap();
+    let result = prompt.run(json!({"server":"fixture_server","action":"get","name":"review","arguments":{"topic":"native"}}), &cx).await;
+    assert!(
+        !result.is_error
+            && result
+                .content
+                .contains("Review native fixture instructions"),
+        "{}",
+        result.content
+    );
+    let log = io::fs::read_string(&log).unwrap().unwrap();
+    assert!(log.contains("fixture-env") && log.contains("subfolder"));
+    project.app.mcp.disconnect("fixture_server");
+    assert!(
+        resource
+            .check(&json!({"server":"fixture_server","action":"list"}), &cx)
+            .is_err()
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn native_stdio_negotiates_both_lifecycles_and_reaches_the_normal_permission_gate() {
     for modern in [true, false] {
         let project = Project::new();

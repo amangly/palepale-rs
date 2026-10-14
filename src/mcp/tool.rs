@@ -29,13 +29,16 @@ pub struct Remote {
 fn alias(server: &str, name: &str) -> String {
     let plain = format!("mcp__{server}__{name}");
     if plain.len() <= 64
+        && !server.contains("__")
+        && !name.contains("__")
         && plain
             .bytes()
             .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-'))
     {
         return plain;
     }
-    let digest = crate::extensions::hash(plain.as_bytes());
+    let identity = serde_json::to_vec(&(server, name)).expect("MCP names serialize");
+    let digest = crate::extensions::hash(&identity);
     let clean: String = plain
         .chars()
         .map(|c| {
@@ -73,12 +76,6 @@ impl Remote {
         }
         if !schema.is_object() || schema["type"] != "object" {
             bail!("MCP tool {name} needs an object input schema");
-        }
-        if ["anyOf", "oneOf", "allOf"]
-            .iter()
-            .any(|key| schema.get(key).is_some())
-        {
-            bail!("MCP tool {name} uses an unsupported root schema combinator");
         }
         let validator = jsonschema::validator_for(&schema)
             .map_err(|e| anyhow::anyhow!("Invalid schema for {name}: {e}"))?;
@@ -158,20 +155,31 @@ impl Tool for Remote {
     }
 }
 
-fn render(value: Value, cx: &ToolCx<'_>, server: &str, tool: &str) -> Output {
+pub(super) fn render(value: Value, cx: &ToolCx<'_>, server: &str, tool: &str) -> Output {
     let mut lines = Vec::new();
     let mut unsupported = false;
+    let mut attachments = Vec::new();
     if let Some(content) = value["content"].as_array() {
         for item in content {
-            if item["type"] == "text" {
-                lines.push(item["text"].as_str().unwrap_or_default().to_owned());
-            } else {
-                unsupported = true;
-                lines.push(fill(
-                    &text().unsupported,
-                    &[("kind", item["type"].as_str().unwrap_or("unknown"))],
-                ));
-            }
+            lines.push(content_with_media(item, &mut unsupported, &mut attachments));
+        }
+    }
+    if let Some(contents) = value["contents"].as_array() {
+        for resource in contents {
+            lines.push(content_with_media(
+                &json!({"type":"resource","resource":resource}),
+                &mut unsupported,
+                &mut attachments,
+            ));
+        }
+    }
+    if let Some(messages) = value["messages"].as_array() {
+        for message in messages {
+            lines.push(format!(
+                "{}: {}",
+                message["role"].as_str().unwrap_or("message"),
+                content_with_media(&message["content"], &mut unsupported, &mut attachments)
+            ));
         }
     }
     if let Some(structured) = value.get("structuredContent") {
@@ -180,6 +188,8 @@ fn render(value: Value, cx: &ToolCx<'_>, server: &str, tool: &str) -> Output {
     if lines.is_empty()
         && value.get("content").is_none()
         && value.get("structuredContent").is_none()
+        && value.get("contents").is_none()
+        && value.get("messages").is_none()
     {
         return Output::error(
             "MCP server returned an unsupported response; interactive server requests are not enabled",
@@ -220,8 +230,91 @@ fn render(value: Value, cx: &ToolCx<'_>, server: &str, tool: &str) -> Output {
     }
     Output {
         content: shown,
+        attachments,
         is_error: value["isError"].as_bool().unwrap_or(false) || unsupported,
         details: Some(json!({"server":server,"tool":tool,"full_output":full})),
+    }
+}
+
+fn content_with_media(
+    item: &Value,
+    unsupported: &mut bool,
+    attachments: &mut Vec<crate::agent::message::Attachment>,
+) -> String {
+    use base64::Engine;
+    let resource = item["type"] == "resource";
+    let content = if resource { &item["resource"] } else { item };
+    let data = content[if resource { "blob" } else { "data" }].as_str();
+    let mime = content["mimeType"]
+        .as_str()
+        .unwrap_or("application/octet-stream");
+    let supported = matches!(
+        mime,
+        "image/png"
+            | "image/jpeg"
+            | "image/gif"
+            | "image/webp"
+            | "application/pdf"
+            | "audio/wav"
+            | "audio/x-wav"
+            | "audio/mp3"
+            | "audio/mpeg"
+    );
+    if let Some(data) = data
+        && supported
+    {
+        let cap = limits::get().extensions.skill_asset_bytes.value;
+        let total: usize = attachments.iter().map(|a| a.data.len()).sum();
+        if data.len() <= cap.saturating_mul(4) / 3 + 4
+            && total.saturating_add(data.len()) <= limits::get().extensions.skill_source_bytes.value
+            && base64::engine::general_purpose::STANDARD
+                .decode(data)
+                .is_ok_and(|bytes| bytes.len() <= cap)
+        {
+            attachments.push(crate::agent::message::Attachment {
+                mime_type: mime.into(),
+                data: data.into(),
+                filename: content["uri"].as_str().map(str::to_owned),
+            });
+            return format!(
+                "Attached {mime}{}",
+                content["uri"]
+                    .as_str()
+                    .map(|s| format!(": {s}"))
+                    .unwrap_or_default()
+            );
+        }
+        *unsupported = true;
+        return "MCP attachment is invalid or exceeds its size limit".into();
+    }
+    content_text(item, unsupported)
+}
+
+fn resource_text(resource: &Value, unsupported: &mut bool) -> String {
+    let body = resource["text"]
+        .as_str()
+        .map(str::to_owned)
+        .unwrap_or_else(|| {
+            *unsupported = true;
+            fill(&text().unsupported, &[("kind", "binary resource")])
+        });
+    format!("{}\n{body}", resource["uri"].as_str().unwrap_or("Resource"))
+}
+
+fn content_text(item: &Value, unsupported: &mut bool) -> String {
+    match item["type"].as_str() {
+        Some("text") => item["text"].as_str().unwrap_or_default().to_owned(),
+        Some("resource") => resource_text(&item["resource"], unsupported),
+        Some("resource_link") => format!(
+            "{}: {}\n{}",
+            item["name"].as_str().unwrap_or("Resource"),
+            item["uri"].as_str().unwrap_or_default(),
+            item["description"].as_str().unwrap_or_default()
+        ),
+        kind => {
+            *unsupported = true;
+            fill(&text().unsupported, &[("kind", kind.unwrap_or("unknown"))])
+        }
     }
 }
 
@@ -269,5 +362,56 @@ mod tests {
         assert!(first.len() <= 64);
         assert_ne!(first, alias(&"long".repeat(20), "a_b"));
         assert_eq!(first, alias(&"long".repeat(20), "a/b"));
+        assert_ne!(alias("a__b", "c"), alias("a", "b__c"));
+        assert_ne!(alias("a", "搜"), alias("a", "尋"));
+    }
+
+    #[test]
+    fn binary_content_is_described_without_exposing_base64_as_model_text() {
+        let mut unsupported = false;
+        let resource =
+            json!({"uri":"memory://image","blob":"PRIVATE_BASE64","mimeType":"image/png"});
+        let shown = content_text(
+            &json!({"type":"resource","resource":resource}),
+            &mut unsupported,
+        );
+        assert!(unsupported && shown.contains("memory://image"));
+        assert!(!shown.contains("PRIVATE_BASE64"));
+        let shown = content_text(
+            &json!({"type":"image","data":"PRIVATE_BASE64"}),
+            &mut unsupported,
+        );
+        assert!(!shown.contains("PRIVATE_BASE64"));
+    }
+
+    #[test]
+    fn supported_media_is_attached_and_invalid_base64_is_reported() {
+        let mut unsupported = false;
+        let mut attachments = vec![];
+        let shown = content_with_media(
+            &json!({"type":"image","mimeType":"image/png","data":"AQID"}),
+            &mut unsupported,
+            &mut attachments,
+        );
+        assert!(!unsupported && !shown.contains("AQID"));
+        assert_eq!(attachments.len(), 1);
+        content_with_media(
+            &json!({"type":"resource","resource":{"uri":"doc.pdf","mimeType":"application/pdf","blob":"AQID"}}),
+            &mut unsupported,
+            &mut attachments,
+        );
+        content_with_media(
+            &json!({"type":"audio","mimeType":"audio/wav","data":"AQID"}),
+            &mut unsupported,
+            &mut attachments,
+        );
+        assert_eq!(attachments.len(), 3);
+        content_with_media(
+            &json!({"type":"image","mimeType":"image/png","data":"!invalid!"}),
+            &mut unsupported,
+            &mut attachments,
+        );
+        assert!(unsupported);
+        assert_eq!(attachments.len(), 3);
     }
 }

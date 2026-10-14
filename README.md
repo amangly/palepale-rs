@@ -52,7 +52,7 @@ Use `/logout` then `/login` to connect another account. Changing the browser acc
 
 Setup requests in a Palepale conversation target Palepale. For a local server, run `palepale mcp add docs -- /path/to/mcp-server --stdio`; for a remote server, run `palepale mcp add docs --url https://example.com/mcp`. Definitions go in `~/.palepale/config.toml` (or `PALEPALE_HOME/config.toml` when set). Add `--scope project` before `--` to use `.palepale/config.toml` in the current folder. Existing entries are preserved; duplicate names in the selected scope are refused.
 
-Run `palepale mcp check docs` to connect and list the tools, or `palepale mcp remove docs` to remove that user entry. Project checks keep the trust and definition-review requirements from `/mcp`. Definitions reload between model requests, so a server added during a conversation becomes available there. Other coding clients keep their own settings.
+Run `palepale mcp check docs` to connect and list the tools. Use `palepale mcp auth docs` to sign in, `logout` to sign out, `enable` or `disable` to change startup, and `remove` to remove that user entry. These commands also work as `/mcp ...` in a session. Quote paths and arguments containing spaces. Project checks keep the trust and definition-review requirements from `/mcp`. Definitions reload between model requests, so a server added during a conversation becomes available there. Other coding clients keep their own settings.
 
 Server definitions use the existing user or project configuration:
 
@@ -63,13 +63,14 @@ url = "https://developers.openai.com/mcp"
 [mcp_servers.local]
 command = "/path/to/your/mcp-server"
 args = ["--stdio"]
+cwd = "."
 env_vars = ["SERVICE_TOKEN"]
 read_only_tools = ["search"]
 ```
 
-Use `bearer_token_env_var = "SERVICE_TOKEN"` for an HTTP bearer token. OAuth credentials are saved privately, separately from the Palepale account. Project servers require project trust and a review of each changed definition before starting. MCP calls follow MANUAL/AUTO permissions; PLAN blocks tools unless their names are explicitly listed in `read_only_tools`. Server annotations do not grant access. Connections run in the background, and large tool catalogs use local on-demand discovery.
+Use `bearer_token_env_var = "SERVICE_TOKEN"` for an HTTP bearer token, or `env_http_headers = { "X-API-Key" = "SERVICE_TOKEN" }` for a custom header. OAuth credentials are saved privately, separately from the Palepale account. Project servers require project trust and a review of each changed definition before starting. MCP calls follow MANUAL/AUTO permissions; PLAN blocks tool calls unless their names are explicitly listed in `read_only_tools`. Server annotations do not grant access. Connections run in the background, and large tool catalogs use local on-demand discovery. The agent can also list and read resources, inspect resource templates, and load prompts through `mcp_resources` and `mcp_prompts`.
 
-`/skills` searches standard `SKILL.md` folders in the project's `.agents/skills` directories and `~/.agents/skills`. Press `a` to register another folder, including existing Claude Code or Codex skill folders. Enter opens a preview; Enter again inserts `$skill-name ` into your draft. Add the task and send when ready. Use `e` to enable/disable a skill and `r` to rescan.
+`/skills` searches `SKILL.md` files in `.palepale/skills`, `.agents/skills`, `.claude/skills`, and `.opencode/skills` or `.opencode/skill`, including grouped subfolders. It checks the project up to its repository root and the matching personal folders. Press `a` to register another folder. Enter opens a preview; Enter again inserts `$skill-name ` into your draft. Add the task and send when ready. Use `e` to enable/disable a skill and `r` to rescan.
 
 A skill starts with YAML metadata, followed by its instructions:
 
@@ -81,9 +82,11 @@ description: Review a change for bugs and missing checks.
 Read the diff, inspect affected code, and report concrete issues.
 ```
 
-Keep it at `.agents/skills/review/SKILL.md`, with the name matching its folder. Enabled skills can be selected automatically from their descriptions; full instructions and references load only when needed. `disable-model-invocation: true` requires explicit selection, and `user-invocable: false` permits automatic use only. Previews never execute scripts, and skill instructions retain the current permissions. Untrusted project skills stay inactive until the project is trusted.
+Keep it at `.agents/skills/review/SKILL.md`, with the name matching its folder. The agent sees enabled skills' names and descriptions, then calls the native `skill` tool to load instructions, their base directory, and up to ten supporting filenames. References load separately when needed. Use `/review task` or `$review task` to invoke it explicitly. `disable-model-invocation: true` requires explicit selection; `metadata: { opencode/autoinvoke: false }` has the same effect. `user-invocable: false` permits automatic use only, and `slash: false` hides its slash alias. Previews never execute scripts, and skill instructions retain the current permissions. Untrusted project skills stay inactive until the project is trusted.
 
-`palepale mcp list` and `palepale skills list` also work outside the TUI. This release supports MCP tools over stdio and Streamable HTTP, with JSON/SSE responses and OAuth. Resources, prompts, images, sampling, and server-driven interactive workflows are not enabled.
+Register an existing folder with `palepale skills add <folder>` or an index source with `palepale skills add https://example.com/skills/`. Verify with `palepale skills check <name>`. Remote sources download `index.json` and the listed files into a versioned cache; a failed refresh keeps the previous complete version. Use `skills refresh` to check immediately.
+
+`palepale mcp list` and `palepale skills list` also work outside the TUI. MCP supports stdio, Streamable HTTP, and legacy HTTP+SSE. Connected prompts appear as `/server:prompt`, with positional arguments. Supported images, WAV/MP3 audio, and PDF resources reach attachment-capable models. See [MCP and skills](docs/mcp-and-skills.md) for configuration, permissions, and the pinned OpenCode comparison.
 
 ## Updates and settings
 

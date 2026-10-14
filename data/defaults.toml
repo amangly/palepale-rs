@@ -73,6 +73,11 @@ permission = "todo"
 pattern = "*"
 action = "allow"
 
+[[permission]]
+permission = "skill"
+pattern = "*"
+action = "allow"
+
 # Asking the user and handing over a plan are conversations, not actions.
 [[permission]]
 permission = "question"

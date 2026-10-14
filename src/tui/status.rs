@@ -274,6 +274,7 @@ mod tests {
                 call_id: "read-1".into(),
                 name: "read".into(),
                 content: "contents".into(),
+                attachments: vec![],
                 is_error: false,
                 details: None,
                 asks: Vec::new(),

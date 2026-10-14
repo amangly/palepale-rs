@@ -1,6 +1,7 @@
 name = "mcp"
 summary = "Manage MCP servers and their tools"
-usage = "mcp [list | add <name> [--scope user|project] (--url <url> | -- <program> [args...]) | check <name> | remove <name> [--scope user|project]]"
+usage = "mcp [list | add <name> [options] (--url <url> | -- <program> [args...]) | check <name> | auth <name> | logout <name> | enable <name> | disable <name> | remove <name> [--scope user|project]]"
+secret = ["--env", "--header"]
 
 [text]
 added = "Added {name} to Palepale ({scope}).\nConfig: {file}\nRun `palepale mcp check {name}` to verify the connection, or open /mcp."
@@ -9,3 +10,8 @@ removed = "Removed {name} from Palepale ({scope}).\nConfig: {file}"
 exists = "{name} is already configured in {file}. Use /mcp to change it, or remove that entry first."
 missing = "No server named {name} in {file}."
 invalid_endpoint = "Provide either --url <url> or -- <program> [args...]."
+login = "Sign in to {name}:\n{url}\nWaiting for browser sign-in…"
+logged_in = "Signed in to {name}."
+logged_out = "Signed out of {name}."
+unavailable = "Server is missing, disabled or awaiting project trust/review. Open /mcp."
+toggled = "{name}: {state}"

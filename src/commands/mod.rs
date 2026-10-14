@@ -1,8 +1,10 @@
 //! Commands: `palepale <name>` on the command line, `/name` inside a session. One file per
 //! command, one line in `COMMANDS`; where each works is data (`scope` in its spec).
 
+pub mod arguments;
 mod battery;
 mod copy;
+pub mod discovered;
 mod effort;
 mod extensions;
 pub mod forums;
@@ -51,7 +53,7 @@ impl Scope {
 
 /// A command's user-facing metadata, from `data/commands/<name>.toml`. A command may keep
 /// its own extra data in the same file, so unknown fields are allowed here.
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 pub struct Spec {
     pub name: String,
     /// Other names it answers to (`/clear` for `/new`).
@@ -171,6 +173,9 @@ pub enum Effect {
     /// Open the session and account usage card; fetch its data beside terminal input.
     ShowStatus,
     ShowExtensions(crate::extensions::Kind),
+    /// Start MCP sign-in in the terminal's cancellable browser-link card.
+    McpAuth(String),
+    McpPrompt(String),
     /// Open the session's forums card, at the login for the forum with this base URL when one
     /// was named.
     Forums {
@@ -258,7 +263,14 @@ pub fn lookup(name: &str, scope: Scope) -> Result<&'static dyn Command, Missing>
 
 /// A typed command line, `name args…`, with its secret values replaced by hints.
 pub fn redact_line(line: &str) -> String {
-    let words: Vec<String> = line.split_whitespace().map(str::to_owned).collect();
+    let Some(words) = arguments::parse(line) else {
+        // A malformed quoted secret must not be kept in history.
+        return line
+            .split_whitespace()
+            .next()
+            .unwrap_or_default()
+            .to_owned();
+    };
     match words.split_first() {
         Some((name, args)) if !args.is_empty() => match find(name) {
             Some(command) => format!("{name} {}", command.spec().redact(args)),

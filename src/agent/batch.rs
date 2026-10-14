@@ -250,6 +250,7 @@ fn result(call: &ToolCall, out: Output) -> ToolResult {
         call_id: call.id.clone(),
         name: call.name.clone(),
         content: out.content,
+        attachments: out.attachments,
         is_error: out.is_error,
         details: out.details,
         asks: Vec::new(),

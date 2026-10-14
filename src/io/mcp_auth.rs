@@ -192,7 +192,14 @@ impl Login {
         path: PathBuf,
         challenge: Option<&str>,
     ) -> anyhow::Result<Self> {
-        let listener = TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0)).await?;
+        if !config.oauth {
+            bail!("OAuth is disabled for this server");
+        }
+        let listener = TcpListener::bind((
+            std::net::Ipv4Addr::LOCALHOST,
+            config.oauth_callback_port.unwrap_or(0),
+        ))
+        .await?;
         let authority = listener.local_addr()?.to_string();
         let redirect = format!("http://{authority}/callback");
         let mut manager = manager(config, path).await?;
@@ -209,6 +216,12 @@ impl Login {
             .with_scopes(config.scopes.clone());
         if let Some(client_id) = &config.client_id {
             request = request.with_preregistered_client(client_id);
+        }
+        if let Some(variable) = &config.client_secret_env_var {
+            request = request.with_client_secret(
+                crate::settings::env(variable)
+                    .with_context(|| format!("Environment variable {variable} is not set"))?,
+            );
         }
         if let Some(challenge) = challenge {
             request = request.with_challenge(challenge);

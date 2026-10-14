@@ -78,7 +78,9 @@ impl Connection {
         project: &Path,
         credentials: std::path::PathBuf,
     ) -> Result<Self, ConnectError> {
+        let credentials_fallback = credentials.clone();
         let operation = async {
+            config.validate()?;
             let changed = Arc::new(AtomicBool::new(false));
             let handler = Handler {
                 changed: changed.clone(),
@@ -91,9 +93,20 @@ impl Connection {
                 let program =
                     io::proc::which(command).unwrap_or_else(|| std::path::PathBuf::from(command));
                 let mut process = tokio::process::Command::new(&program);
+                let cwd = config
+                    .cwd
+                    .as_ref()
+                    .map(|path| {
+                        if path.is_absolute() {
+                            path.clone()
+                        } else {
+                            project.join(path)
+                        }
+                    })
+                    .unwrap_or_else(|| project.to_path_buf());
                 process
                     .args(&config.args)
-                    .current_dir(project)
+                    .current_dir(cwd)
                     .env_clear()
                     .kill_on_drop(true)
                     .stderr(std::process::Stdio::null());
@@ -120,13 +133,14 @@ impl Connection {
                     }
                 }
                 for name in &config.env_vars {
-                    if name.starts_with("PALEPALE_") {
+                    if name.to_ascii_uppercase().starts_with("PALEPALE_") {
                         bail!("Palepale credentials cannot be inherited by MCP servers");
                     }
                     if let Some(value) = settings::env(name) {
                         process.env(name, value);
                     }
                 }
+                process.envs(&config.environment);
                 let mut process = process_wrap::tokio::CommandWrap::from(process);
                 process.wrap(process_wrap::tokio::KillOnDrop);
                 #[cfg(windows)]
@@ -146,7 +160,44 @@ impl Connection {
                     .map_err(initialize_error)?
             } else {
                 let url = config.url.as_deref().context("Missing MCP URL")?;
+                let mut headers = reqwest::header::HeaderMap::new();
+                for (name, value) in &config.http_headers {
+                    headers.insert(
+                        reqwest::header::HeaderName::from_bytes(name.as_bytes())?,
+                        reqwest::header::HeaderValue::from_str(value)?,
+                    );
+                }
+                for (name, variable) in &config.env_http_headers {
+                    let value = settings::env(variable)
+                        .with_context(|| format!("Environment variable {variable} is not set"))?;
+                    headers.insert(
+                        reqwest::header::HeaderName::from_bytes(name.as_bytes())?,
+                        reqwest::header::HeaderValue::from_str(&value)?,
+                    );
+                }
+                for name in [
+                    "host",
+                    "content-length",
+                    "transfer-encoding",
+                    "connection",
+                    "mcp-session-id",
+                    "mcp-protocol-version",
+                ] {
+                    if headers.contains_key(name) {
+                        bail!("MCP header {name} is reserved by the transport");
+                    }
+                }
+                let explicit_auth = headers.contains_key(reqwest::header::AUTHORIZATION);
+                if let Some(variable) = &config.bearer_token_env_var {
+                    let token = settings::env(variable)
+                        .with_context(|| format!("Environment variable {variable} is not set"))?;
+                    headers.insert(
+                        reqwest::header::AUTHORIZATION,
+                        reqwest::header::HeaderValue::from_str(&format!("Bearer {token}"))?,
+                    );
+                }
                 let client = reqwest::Client::builder()
+                    .default_headers(headers)
                     .redirect(reqwest::redirect::Policy::none())
                     .retry(reqwest::retry::never())
                     .connect_timeout(limits::get().http.connect_timeout_ms.ms())
@@ -160,7 +211,15 @@ impl Connection {
                 transport_config.reinit_on_expired_session = false;
                 transport_config.max_sse_event_size =
                     limits::get().tools.bash_spill_max_bytes.value;
-                if let Some(variable) = &config.bearer_token_env_var {
+                if config.transport == crate::mcp::Transport::Sse {
+                    let transport =
+                        super::mcp_sse::Sse::open(client, config, credentials, explicit_auth)
+                            .await?;
+                    handler
+                        .serve_with_lifecycle(transport, ClientLifecycleMode::Initialize)
+                        .await
+                        .map_err(initialize_error)?
+                } else if let Some(variable) = &config.bearer_token_env_var {
                     transport_config.auth_header =
                         Some(settings::env(variable).with_context(|| {
                             format!("Environment variable {variable} is not set")
@@ -172,7 +231,7 @@ impl Connection {
                         )
                         .await
                         .map_err(initialize_error)?
-                } else {
+                } else if config.oauth && !explicit_auth {
                     let mut manager = io::mcp_auth::manager(config, credentials).await?;
                     if manager.initialize_from_store().await? {
                         let client = AuthClient::new(client, manager);
@@ -198,6 +257,14 @@ impl Connection {
                             .await
                             .map_err(initialize_error)?
                     }
+                } else {
+                    handler
+                        .serve_with_lifecycle(
+                            StreamableHttpClientTransport::with_client(client, transport_config),
+                            lifecycle,
+                        )
+                        .await
+                        .map_err(initialize_error)?
                 }
             };
             Ok::<_, anyhow::Error>(Self {
@@ -209,7 +276,7 @@ impl Connection {
         let timeout = config
             .startup_timeout_secs
             .unwrap_or(limits::get().extensions.connect_timeout_secs.value);
-        match tokio::time::timeout(Duration::from_secs(timeout), operation).await {
+        let result = match tokio::time::timeout(Duration::from_secs(timeout), operation).await {
             Ok(result) => result.map_err(|e| match e.downcast::<ConnectError>() {
                 Ok(error) => error,
                 Err(error) => error.into(),
@@ -219,7 +286,17 @@ impl Connection {
                 authorization: false,
                 challenge: None,
             }),
+        };
+        if config.url.is_some()
+            && config.transport == crate::mcp::Transport::Auto
+            && result.as_ref().is_err_and(|e| !e.authorization)
+        {
+            let mut legacy = config.clone();
+            legacy.transport = crate::mcp::Transport::Sse;
+            // Only connection negotiation falls back. A tools/call is never replayed.
+            return Box::pin(Self::open(&legacy, project, credentials_fallback)).await;
         }
+        result
     }
 
     pub fn close(&self) {
@@ -239,11 +316,14 @@ impl Connection {
     }
 
     pub async fn tools(&self) -> anyhow::Result<Vec<Value>> {
+        if !self.supports("tools") {
+            return Ok(vec![]);
+        }
         let _serial = self.serial.lock().await;
         let mut cursor = None;
         let mut seen = std::collections::HashSet::new();
         let mut tools = Vec::new();
-        loop {
+        for _ in 0..limits::get().extensions.list_pages.value {
             let params = cursor
                 .clone()
                 .map(|cursor| serde_json::from_value(json!({"cursor": cursor})))
@@ -257,20 +337,82 @@ impl Connection {
             }
             cursor = page.next_cursor;
             match &cursor {
-                None => break,
+                None => return Ok(tools),
                 Some(next) if !seen.insert(next.clone()) => {
                     bail!("MCP server repeated a pagination cursor")
                 }
                 _ => {}
             }
         }
-        Ok(tools)
+        bail!("MCP server exceeded its pagination limit")
     }
 
     pub async fn call(
         self: Arc<Self>,
         name: String,
         args: Value,
+        timeout: Duration,
+        cancel: CancellationToken,
+    ) -> anyhow::Result<Value> {
+        self.request(
+            "tools/call",
+            json!({"name":name,"arguments":args}),
+            timeout,
+            cancel,
+        )
+        .await
+    }
+
+    pub async fn prompts(self: Arc<Self>, timeout: Duration) -> anyhow::Result<Vec<Value>> {
+        if !self.supports("prompts") {
+            return Ok(vec![]);
+        }
+        let mut params = json!({});
+        let mut items = Vec::new();
+        let mut seen = std::collections::HashSet::new();
+        for _ in 0..limits::get().extensions.list_pages.value {
+            let result = self
+                .clone()
+                .request(
+                    "prompts/list",
+                    params.clone(),
+                    timeout,
+                    CancellationToken::new(),
+                )
+                .await?;
+            let page = result["prompts"]
+                .as_array()
+                .context("Malformed MCP prompt list")?;
+            items.extend(page.iter().cloned());
+            if items.len() > limits::get().extensions.tool_count.value {
+                bail!("MCP prompt list exceeds its limit");
+            }
+            let Some(cursor) = result["nextCursor"].as_str() else {
+                return Ok(items);
+            };
+            if !seen.insert(cursor.to_owned()) {
+                bail!("MCP prompt list repeated its cursor");
+            }
+            params["cursor"] = json!(cursor);
+        }
+        bail!("MCP prompt list exceeds its page limit")
+    }
+
+    pub fn supports(&self, capability: &str) -> bool {
+        self.service
+            .peer_info()
+            .and_then(|p| serde_json::to_value(p.as_ref()).ok())
+            .is_some_and(|p| {
+                p["capabilities"]
+                    .get(capability)
+                    .is_some_and(|v| !v.is_null())
+            })
+    }
+
+    pub async fn request(
+        self: Arc<Self>,
+        method: &'static str,
+        params: Value,
         timeout: Duration,
         cancel: CancellationToken,
     ) -> anyhow::Result<Value> {
@@ -282,9 +424,10 @@ impl Connection {
         tokio::spawn(async move {
             let _serial = serial;
             if cancel.is_cancelled() || self.closed() { bail!(text().cancelled.clone()); }
-            let request: ClientRequest = serde_json::from_value(json!({"method":"tools/call", "params":{"name":name,"arguments":args}}))?;
+            let request: ClientRequest = serde_json::from_value(json!({"method":method, "params":params}))?;
             let peer = self.service.peer();
-            let handle = peer.send_cancellable_request(request, PeerRequestOptions::with_timeout(timeout)).await?;
+            let options = PeerRequestOptions::with_timeout(timeout).reset_timeout_on_progress().with_max_total_timeout(limits::get().extensions.call_max_secs.secs());
+            let handle = peer.send_cancellable_request(request, options).await?;
             let id = handle.id.clone();
             tokio::select! {
                 result = handle.await_response() => {
@@ -341,5 +484,7 @@ impl From<rmcp::transport::auth::AuthError> for ConnectError {
     }
 }
 
+#[cfg(test)]
+mod sse_tests;
 #[cfg(test)]
 mod tests;

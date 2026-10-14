@@ -43,6 +43,7 @@ pub const PLAN_EXIT: Permission = permission("plan_exit", Effect::Other);
 /// The same call repeated; asked by the agent, not a tool.
 pub const DOOM_LOOP: Permission = permission("doom_loop", Effect::Other);
 pub const MCP: Permission = permission("mcp", Effect::Other);
+pub const SKILL: Permission = permission("skill", Effect::Other);
 pub const MCP_WRITE: Permission = permission("mcp_write", Effect::ChangesFiles);
 
 /// Every permission above; a new one goes here too, so the tests see it.
@@ -63,6 +64,7 @@ const ALL: &[Permission] = &[
     PLAN_EXIT,
     DOOM_LOOP,
     MCP,
+    SKILL,
     MCP_WRITE,
 ];
 

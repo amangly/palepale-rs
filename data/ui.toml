@@ -30,6 +30,7 @@ declined = "Stopped: you declined a call."
 cut_off = "The reply hit the configured backend output limit."
 ctrl_c_again = "Press Ctrl+C again to quit"
 unknown_command = "Unknown command {command}. {help} lists them."
+command_quote = "Close the quoted argument and try again."
 more_lines = { one = "… {n} more line", many = "… {n} more lines" }
 elsewhere = "{command} only works as {places}."
 more_below = "↓ {n} more · PgDn"

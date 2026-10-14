@@ -2296,7 +2296,7 @@ checksum = "1a80800c0488c3a21695ea981a54918fbb37abf04f4d0720c453632255e2ff0e"
 
 [[package]]
 name = "palepale"
-version = "0.1.10"
+version = "0.1.11"
 dependencies = [
  "anyhow",
  "arboard",
@@ -2330,6 +2330,7 @@ dependencies = [
  "serde_yaml_ng",
  "sha2 0.11.0",
  "similar 3.2.0",
+ "sse-stream",
  "syntect",
  "tempfile",
  "thiserror 2.0.21",

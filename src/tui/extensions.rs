@@ -114,8 +114,9 @@ pub fn run(
             match job {
                 Job::Load => {
                     app.mcp.reload(app)?;
+                    skills::refresh(app).await?;
                 }
-                Job::AddSkill { path, scope } => skills::add(app, &path, scope)?,
+                Job::AddSkill { path, scope } => skills::add_source(app, &path, scope).await?,
                 Job::ToggleSkill(skill) => skills::toggle(app, &skill)?,
                 Job::PreviewSkill(skill) => {
                     let body = tokio::task::spawn_blocking(move || {
@@ -611,6 +612,7 @@ impl Manager {
                     ),
                     server.config.address(),
                     server.config.args.join(" "),
+                    server.capabilities.join(" · "),
                 ];
                 if let Some(error) = &server.message {
                     lines.push(error.clone());
@@ -812,6 +814,7 @@ mod tests {
             state: mcp::State::Connected,
             message: None,
             tools: vec![],
+            capabilities: vec![],
         }]);
         let screen = card
             .render(64, 24)

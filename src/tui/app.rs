@@ -67,7 +67,7 @@ struct Turns<'a> {
 /// What the loop should do after an input.
 enum Step<'a> {
     Continue,
-    Send(String),
+    Send(Vec<Part>),
     Quit,
     /// Start network work for the card on screen.
     Job(BoxFuture<'a, Done>),
@@ -369,11 +369,11 @@ impl<'a> Tui<'a> {
         let mut turn: Option<Turn<'a>> = None;
         let mut job: Option<BoxFuture<'a, Done>> = None;
         let mut work: FuturesUnordered<BoxFuture<'a, Work>> = FuturesUnordered::new();
-        if !self.app.mcp.list().is_empty() && settings::env("PALEPALE_OFFLINE").is_none() {
+        {
             let app = self.app;
             work.push(Box::pin(async move {
                 app.mcp.start_enabled(app).await;
-                Work::ExtensionsReady
+                Work::ExtensionsReady(commands::discovered::list(app).await)
             }));
         }
         if self.app.api.is_configured() && settings::env("PALEPALE_NO_AUTO_LOGIN").is_none() {
@@ -418,6 +418,8 @@ impl<'a> Tui<'a> {
                     transcript = Some(owned);
                     self.progress = None;
                     self.queue.clear();
+                    let app = self.app;
+                    work.push(Box::pin(async move { Work::ExtensionsReady(commands::discovered::list(app).await) }));
                     while let Ok(event) = events.try_recv() {
                         self.agent(event);
                     }
@@ -425,9 +427,19 @@ impl<'a> Tui<'a> {
                 }
                 done = async { job.as_mut().expect("guarded by the branch condition").await }, if job.is_some() => {
                     job = None;
+                    if matches!(&done, Done::Extensions(extension_ui::Done::Loaded { .. })) {
+                        let app = self.app;
+                        work.push(Box::pin(async move { Work::ExtensionsReady(commands::discovered::list(app).await) }));
+                    }
                     self.job_done(done)
                 }
-                Some(done) = work.next(), if !work.is_empty() => self.finish(done),
+                Some(done) = work.next(), if !work.is_empty() => {
+                    if matches!(&done, Work::Command(Ok(_))) {
+                        let app = self.app;
+                        work.push(Box::pin(async move { Work::ExtensionsReady(commands::discovered::list(app).await) }));
+                    }
+                    self.finish(done)
+                },
                 // Frames tick while the intro, a turn, or a toast moves.
                 _ = tick.tick(), if turn.is_some() || self.toast.is_some() || self.intro.is_some() => {
                     self.advance_intro();
@@ -439,7 +451,7 @@ impl<'a> Tui<'a> {
                 Step::Quit => break,
                 Step::Job(run) => job = Some(run),
                 Step::Work(run) => work.push(run),
-                Step::Send(text) => {
+                Step::Send(parts) => {
                     let Some(model) = self.model.clone() else {
                         self.feed.notice(&models_note(&self.catalog), "warn");
                         continue;
@@ -452,7 +464,6 @@ impl<'a> Tui<'a> {
                     let progress = Progress::start(clock::instant(), self.last_verb, &mut self.rng);
                     self.last_verb = Some(progress.verb());
                     self.progress = Some(progress);
-                    let parts = vec![Part::Text { text }];
                     let (app, tools, emit) = (self.app, turns.tools, turns.emit);
                     let plan_file = tools::plan_file(&app.paths, &owned.id());
                     let system = self.system.clone();
@@ -982,7 +993,7 @@ impl<'a> Tui<'a> {
         }
         let text = self.editor.take();
         self.feed.user(&text);
-        Step::Send(text)
+        Step::Send(vec![Part::Text { text }])
     }
 
     /// Hands typed text to the run: steering lands after the current tools, a queued message
@@ -1029,7 +1040,7 @@ impl<'a> Tui<'a> {
     /// Completes a slash command name when only one fits.
     fn complete(&mut self) {
         let text = self.editor.text();
-        if let [only] = palette::matches(&text).as_slice() {
+        if let [only] = self.palette.matches(&text).as_slice() {
             self.editor
                 .set_text(&Scope::Session.invoke(&format!("{} ", only.name)));
         }
@@ -1060,7 +1071,9 @@ impl<'a> Tui<'a> {
     /// Applies what a command finished with.
     fn finish(&mut self, done: Work) -> Step<'a> {
         let outcome: CommandOutcome = match done {
-            Work::ExtensionsReady => {
+            Work::ExtensionsReady(discovered) => {
+                self.palette
+                    .set_discovered(discovered.into_iter().map(|d| d.spec).collect());
                 if let Some(manager) = &mut self.extensions {
                     manager.sync_servers(self.app.mcp.list());
                 }
@@ -1170,6 +1183,22 @@ impl<'a> Tui<'a> {
                         extension_ui::Job::Load,
                     )));
                 }
+                Effect::McpAuth(name) => {
+                    self.extension_id = self.extension_id.wrapping_add(1);
+                    self.extensions = Some(Manager::new(
+                        self.extension_id,
+                        crate::extensions::Kind::Mcp,
+                    ));
+                    return self.extension_next(extension_ui::Next::Run(Box::new(
+                        extension_ui::Job::Login(name),
+                    )));
+                }
+                Effect::McpPrompt(request) => {
+                    return Step::Send(vec![Part::McpPrompt {
+                        request: serde_json::from_str(&request)
+                            .expect("MCP prompt arguments serialize"),
+                    }]);
+                }
                 Effect::Forums { login } => match crate::forums::store::load(&self.app.paths) {
                     Ok(list) => self.forums = Some(Forums::new(list, login.as_deref())),
                     Err(e) => self.feed.notice(&format!("{e:#}"), "error"),
@@ -1189,7 +1218,7 @@ impl<'a> Tui<'a> {
                     ),
                     None => self.feed.notice(&models_note(&self.catalog), "warn"),
                 },
-                Effect::Send(text) => return Step::Send(text),
+                Effect::Send(text) => return Step::Send(vec![Part::Text { text }]),
                 Effect::CopyLastReply => match self.feed.last_reply() {
                     Some(text) => self.copy(&text),
                     None => self.feed.notice(&ui::get().text.nothing_to_copy, "muted"),

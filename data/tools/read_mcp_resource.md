@@ -1,0 +1,1 @@
+Read one resource URI from a connected MCP server. Text reaches the model directly; supported images, audio, and PDFs arrive as attachments. Use list_mcp_resources or list_mcp_resource_templates to discover URIs first.

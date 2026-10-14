@@ -1,0 +1,5 @@
+data: {"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"install-skill","type":"function","function":{"name":"write","arguments":"{\"path\":\"{home}/config.toml\",\"content\":\"[skills]\\nurls = ['{base}/skills']\\n\"}"}}]}}]}
+
+data: {"choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}
+
+data: [DONE]

@@ -285,6 +285,7 @@ mod tests {
             call_id: "c".into(),
             name: "x".into(),
             content: content.into(),
+            attachments: vec![],
             is_error,
             details,
             asks: Vec::new(),

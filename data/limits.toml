@@ -309,12 +309,42 @@ reason = "Keep skill metadata from occupying the conversation."
 [extensions.skill_count]
 value = 512
 reason = "Bound discovery work in registered folders."
+[extensions.skill_depth]
+value = 8
+reason = "Find grouped skill folders without traversing an arbitrary filesystem tree."
+[extensions.skill_support_files]
+value = 10
+reason = "Show a small sample of references and scripts when a skill loads."
+[extensions.skill_asset_bytes]
+value = 16777216
+reason = "Bound each downloaded skill asset and MCP attachment."
+[extensions.skill_source_bytes]
+value = 67108864
+reason = "Bound one skill-source download before publishing its cache manifest."
+[extensions.skill_source_files]
+value = 128
+reason = "Bound files in one remotely distributed skill."
+[extensions.skill_source_cache_secs]
+value = 60
+reason = "Reuse remote indexes between model requests; explicit refresh can check immediately."
+[extensions.list_pages]
+value = 128
+reason = "Empty pages with distinct cursors must not keep discovery running forever."
 [extensions.connect_timeout_secs]
 value = 20
 reason = "A missing server must not hold up a connection job indefinitely."
 [extensions.call_timeout_secs]
 value = 60
 reason = "Tools have a separate limit from server startup."
+[extensions.call_max_secs]
+value = 3600
+reason = "Matching progress can extend the idle timeout, but no remote call runs indefinitely."
+[extensions.sse_reconnect_attempts]
+value = 3
+reason = "Restore a legacy SSE receive stream without repeating any posted request."
+[extensions.sse_reconnect_ms]
+value = 250
+reason = "Back off between legacy SSE reconnect attempts."
 [extensions.oauth_timeout_secs]
 value = 180
 reason = "Allow time for browser sign-in, with cancellation available."

@@ -207,6 +207,7 @@ pub struct Text {
     pub cut_off: String,
     pub ctrl_c_again: String,
     pub unknown_command: String,
+    pub command_quote: String,
     /// Under a card cut to fit: how many lines it left out.
     pub more_lines: Plural,
     pub elsewhere: String,

@@ -19,6 +19,11 @@ pub enum Message {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Part {
+    /// Resolved through the native MCP gate before this turn is recorded.
+    McpPrompt {
+        request: serde_json::Value,
+    },
+    Attachment(Attachment),
     Text {
         text: String,
     },
@@ -47,6 +52,8 @@ pub struct ToolResult {
     pub name: String,
     /// What the model sees.
     pub content: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub attachments: Vec<Attachment>,
     #[serde(default)]
     pub is_error: bool,
     /// For display only (diffs, exit codes, spill paths); never sent to the model.
@@ -59,6 +66,14 @@ pub struct ToolResult {
     /// `check` when the tool's own check refused it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub refused: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Attachment {
+    pub mime_type: String,
+    pub data: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub filename: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

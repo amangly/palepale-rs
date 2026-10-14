@@ -1,5 +1,6 @@
 //! MCP configuration, connection state, and the agent's dynamic tool catalog.
 
+mod catalog;
 mod tool;
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
@@ -22,6 +23,15 @@ fn yes() -> bool {
     true
 }
 
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum Transport {
+    #[default]
+    Auto,
+    Http,
+    Sse,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct Config {
@@ -30,7 +40,13 @@ pub struct Config {
     #[serde(default)]
     pub args: Vec<String>,
     #[serde(default)]
+    pub cwd: Option<PathBuf>,
+    #[serde(default)]
+    pub environment: BTreeMap<String, String>,
+    #[serde(default)]
     pub url: Option<String>,
+    #[serde(default)]
+    pub transport: Transport,
     #[serde(default = "yes")]
     pub enabled: bool,
     #[serde(default)]
@@ -38,7 +54,17 @@ pub struct Config {
     #[serde(default)]
     pub bearer_token_env_var: Option<String>,
     #[serde(default)]
+    pub http_headers: BTreeMap<String, String>,
+    #[serde(default)]
+    pub env_http_headers: BTreeMap<String, String>,
+    #[serde(default = "yes")]
+    pub oauth: bool,
+    #[serde(default)]
     pub client_id: Option<String>,
+    #[serde(default)]
+    pub client_secret_env_var: Option<String>,
+    #[serde(default)]
+    pub oauth_callback_port: Option<u16>,
     #[serde(default)]
     pub scopes: Vec<String>,
     #[serde(default)]
@@ -54,11 +80,19 @@ impl Default for Config {
         Self {
             command: None,
             args: vec![],
+            cwd: None,
+            environment: BTreeMap::new(),
             url: None,
+            transport: Transport::Auto,
             enabled: true,
             env_vars: vec![],
             bearer_token_env_var: None,
+            http_headers: BTreeMap::new(),
+            env_http_headers: BTreeMap::new(),
+            oauth: true,
             client_id: None,
+            client_secret_env_var: None,
+            oauth_callback_port: None,
             scopes: vec![],
             startup_timeout_secs: None,
             tool_timeout_secs: None,
@@ -69,6 +103,55 @@ impl Default for Config {
 
 impl Config {
     pub fn validate(&self) -> anyhow::Result<()> {
+        if self.oauth_callback_port == Some(0) {
+            bail!("OAuth callback port must be between 1 and 65535");
+        }
+        if self.client_secret_env_var.is_some() && self.client_id.is_none() {
+            bail!("A client secret requires client_id");
+        }
+        for name in self.environment.keys().chain(self.env_vars.iter()) {
+            if name.to_ascii_uppercase().starts_with("PALEPALE_") {
+                bail!("Palepale credentials cannot be inherited by MCP servers");
+            }
+        }
+        for name in self
+            .environment
+            .keys()
+            .chain(self.env_vars.iter())
+            .chain(self.bearer_token_env_var.iter())
+            .chain(self.client_secret_env_var.iter())
+            .chain(self.env_http_headers.values())
+        {
+            if name.is_empty() || name.contains(['=', '\0']) {
+                bail!("MCP environment variable names cannot be empty or contain = or NUL");
+            }
+        }
+        let mut headers = BTreeSet::new();
+        for name in self.http_headers.keys().chain(self.env_http_headers.keys()) {
+            let name = reqwest::header::HeaderName::from_bytes(name.as_bytes())?;
+            if matches!(
+                name.as_str(),
+                "host"
+                    | "content-length"
+                    | "transfer-encoding"
+                    | "connection"
+                    | "mcp-session-id"
+                    | "mcp-protocol-version"
+                    | "accept"
+                    | "content-type"
+            ) {
+                bail!("MCP header {name} is reserved by the transport");
+            }
+            if !headers.insert(name.as_str().to_owned()) {
+                bail!("MCP header is configured more than once");
+            }
+        }
+        for value in self.http_headers.values() {
+            reqwest::header::HeaderValue::from_str(value)?;
+        }
+        if self.bearer_token_env_var.is_some() && headers.contains("authorization") {
+            bail!("Set either an Authorization header or bearer_token_env_var");
+        }
         if self.command.is_some() == self.url.is_some() {
             bail!("Set either command or url for an MCP server");
         }
@@ -110,6 +193,14 @@ impl Config {
             self.command.clone().unwrap_or_default()
         }
     }
+}
+
+pub fn valid_name(name: &str) -> bool {
+    !name.is_empty()
+        && name.len() <= 64
+        && name
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-'))
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -159,6 +250,7 @@ pub struct View {
     pub state: State,
     pub message: Option<String>,
     pub tools: Vec<(String, String)>,
+    pub capabilities: Vec<String>,
 }
 
 #[derive(Default)]
@@ -181,8 +273,18 @@ fn reviewed(paths: &Paths) -> anyhow::Result<BTreeSet<String>> {
 }
 
 pub fn credential_path(paths: &Paths, config: &Config) -> PathBuf {
-    let identity = serde_json::to_vec(&(&config.url, &config.client_id, &config.scopes))
-        .expect("identity serializes");
+    let identity = if config.client_secret_env_var.is_some() {
+        serde_json::to_vec(&(
+            &config.url,
+            &config.client_id,
+            &config.scopes,
+            &config.client_secret_env_var,
+        ))
+    } else {
+        // Existing public-client sessions keep their credential identity.
+        serde_json::to_vec(&(&config.url, &config.client_id, &config.scopes))
+    }
+    .expect("identity serializes");
     paths
         .home
         .join("mcp/auth")
@@ -190,6 +292,9 @@ pub fn credential_path(paths: &Paths, config: &Config) -> PathBuf {
 }
 
 impl Runtime {
+    pub fn catalog_tools(self: &Arc<Self>) -> Vec<Arc<dyn crate::tools::Tool>> {
+        catalog::tools(self)
+    }
     pub fn reload(&self, app: &App) -> anyhow::Result<()> {
         let mut definitions: BTreeMap<_, _> =
             settings::load(&app.paths, &settings::Overrides::default())?
@@ -241,7 +346,7 @@ impl Runtime {
             {
                 connection.close();
             }
-            let invalid = if !crate::skills::valid_name(&name) {
+            let invalid = if !valid_name(&name) {
                 Some("Invalid MCP server name".into())
             } else {
                 config.validate().err().map(|e| e.to_string())
@@ -294,6 +399,11 @@ impl Runtime {
                     server.state
                 },
                 message: server.message.clone(),
+                capabilities: ["tools", "resources", "prompts"]
+                    .into_iter()
+                    .filter(|name| server.connection.as_ref().is_some_and(|c| c.supports(name)))
+                    .map(str::to_owned)
+                    .collect(),
                 tools: server
                     .tools
                     .iter()
@@ -421,30 +531,13 @@ impl Runtime {
         };
         match result {
             Ok((connection, tools)) => {
-                let mut errors = Vec::new();
-                let mut names = BTreeSet::new();
-                server.tools = tools
-                    .into_iter()
-                    .filter_map(|value| {
-                        match Remote::new(name, &config, generation, connection.clone(), value) {
-                            Ok(tool) if names.insert(tool.remote_name.clone()) => {
-                                Some(Arc::new(tool))
-                            }
-                            Ok(tool) => {
-                                errors.push(format!("Duplicate tool: {}", tool.remote_name));
-                                None
-                            }
-                            Err(e) => {
-                                errors.push(e.to_string());
-                                None
-                            }
-                        }
-                    })
-                    .collect();
+                let (tools, message) =
+                    adapt_tools(name, &config, generation, connection.clone(), tools);
+                server.tools = tools;
                 server.connection = Some(connection);
                 server.state = State::Connected;
                 server.challenge = None;
-                server.message = (!errors.is_empty()).then(|| errors.join("\n"));
+                server.message = message;
                 Ok(())
             }
             Err(error) => {
@@ -483,18 +576,59 @@ impl Runtime {
         }
     }
 
-    pub async fn refresh_changed(self: &Arc<Self>, app: &App) {
-        let names: Vec<_> = self
+    pub async fn refresh_changed(self: &Arc<Self>, _: &App) {
+        let pending: Vec<_> = self
             .servers
             .read()
             .unwrap()
             .iter()
             .filter(|(_, s)| s.connection.as_ref().is_some_and(|c| c.changed()))
-            .map(|(n, _)| n.clone())
+            .filter_map(|(name, server)| {
+                server.connection.clone().map(|connection| {
+                    (
+                        name.clone(),
+                        server.config.clone(),
+                        server.generation,
+                        connection,
+                    )
+                })
+            })
             .collect();
-        for name in names {
-            self.disconnect(&name);
-            let _ = self.connect(app, &name, false).await;
+        for (name, config, previous, connection) in pending {
+            let timeout = config
+                .startup_timeout_secs
+                .unwrap_or(limits::get().extensions.connect_timeout_secs.value);
+            let result =
+                tokio::time::timeout(std::time::Duration::from_secs(timeout), connection.tools())
+                    .await;
+            let mut servers = self.servers.write().unwrap();
+            let Some(server) = servers
+                .get_mut(&name)
+                .filter(|s| s.generation == previous && s.state == State::Connected)
+            else {
+                continue;
+            };
+            match result {
+                Ok(Ok(values)) => {
+                    let generation = self.revision.fetch_add(1, Ordering::Relaxed);
+                    let (tools, message) =
+                        adapt_tools(&name, &config, generation, connection, values);
+                    server.tools = tools;
+                    server.message = message;
+                    server.generation = generation;
+                }
+                error => {
+                    server.message = Some(redact(
+                        &config,
+                        &match error {
+                            Ok(Err(e)) => e.to_string(),
+                            _ => "MCP tool discovery timed out".into(),
+                        },
+                    ));
+                    server.tools.clear();
+                    server.generation = self.revision.fetch_add(1, Ordering::Relaxed);
+                }
+            }
         }
     }
 
@@ -543,9 +677,17 @@ impl Runtime {
                 .and_then(|c| c.instructions())
                 .unwrap_or_default();
             let row = format!(
-                "- {name}: {} ({} tools)\n{instructions}\n",
+                "- {name}: {} ({} tools; {})\n{instructions}\n",
                 server.state.label(),
-                server.tools.len()
+                server.tools.len(),
+                ["tools", "resources", "prompts"]
+                    .into_iter()
+                    .filter(|feature| server
+                        .connection
+                        .as_ref()
+                        .is_some_and(|c| c.supports(feature)))
+                    .collect::<Vec<_>>()
+                    .join(", ")
             );
             let remaining = limits::get()
                 .extensions
@@ -617,6 +759,72 @@ impl Runtime {
             .get(name)
             .and_then(|s| s.challenge.clone())
     }
+
+    pub async fn prompts(&self) -> Vec<(String, serde_json::Value)> {
+        let connections: Vec<_> = self
+            .servers
+            .read()
+            .unwrap()
+            .iter()
+            .filter(|(_, s)| s.state == State::Connected)
+            .filter_map(|(name, s)| {
+                s.connection
+                    .clone()
+                    .filter(|c| c.supports("prompts"))
+                    .map(|c| {
+                        (
+                            name.clone(),
+                            s.generation,
+                            s.config
+                                .startup_timeout_secs
+                                .unwrap_or(limits::get().extensions.connect_timeout_secs.value),
+                            c,
+                        )
+                    })
+            })
+            .collect();
+        let mut found = Vec::new();
+        for (name, generation, timeout, connection) in connections {
+            if let Ok(Ok(prompts)) = tokio::time::timeout(
+                std::time::Duration::from_secs(timeout),
+                connection.prompts(std::time::Duration::from_secs(timeout)),
+            )
+            .await
+                && self.active(&name, generation)
+            {
+                found.extend(prompts.into_iter().map(|p| (name.clone(), p)));
+            }
+        }
+        found
+    }
+}
+
+fn adapt_tools(
+    name: &str,
+    config: &Config,
+    generation: u64,
+    connection: Arc<io::mcp::Connection>,
+    values: Vec<serde_json::Value>,
+) -> (Vec<Arc<Remote>>, Option<String>) {
+    let mut errors = Vec::new();
+    let mut names = BTreeSet::new();
+    let tools = values
+        .into_iter()
+        .filter_map(|value| {
+            match Remote::new(name, config, generation, connection.clone(), value) {
+                Ok(tool) if names.insert(tool.remote_name.clone()) => Some(Arc::new(tool)),
+                Ok(tool) => {
+                    errors.push(format!("Duplicate tool: {}", tool.remote_name));
+                    None
+                }
+                Err(error) => {
+                    errors.push(error.to_string());
+                    None
+                }
+            }
+        })
+        .collect();
+    (tools, (!errors.is_empty()).then(|| errors.join("\n")))
 }
 
 struct Pending {
@@ -636,8 +844,8 @@ impl Drop for Pending {
 }
 
 pub fn save(app: &App, name: &str, config: &Config, scope: Scope) -> anyhow::Result<()> {
-    if !crate::skills::valid_name(name) {
-        bail!("Server names use lowercase letters, digits and single hyphens (1–64 characters)");
+    if !valid_name(name) {
+        bail!("Server names use letters, digits, underscores or hyphens (1–64 characters)");
     }
     config.validate()?;
     let source = toml::to_string(config)?;
@@ -663,12 +871,30 @@ pub fn remove(app: &App, name: &str, scope: Scope) -> anyhow::Result<()> {
 }
 
 pub fn redact(config: &Config, source: &str) -> String {
-    let mut text = source.to_owned();
-    for name in config.bearer_token_env_var.iter().chain(&config.env_vars) {
+    let mut text = match &config.url {
+        Some(url) => source.replace(url, &config.address()),
+        None => source.to_owned(),
+    };
+    for name in config
+        .bearer_token_env_var
+        .iter()
+        .chain(&config.env_vars)
+        .chain(&config.client_secret_env_var)
+        .chain(config.env_http_headers.values())
+    {
         if let Some(value) = settings::env(name)
             && !value.is_empty()
         {
             text = text.replace(&value, "[redacted]");
+        }
+    }
+    for value in config
+        .environment
+        .values()
+        .chain(config.http_headers.values())
+    {
+        if !value.is_empty() {
+            text = text.replace(value, "[redacted]");
         }
     }
     text

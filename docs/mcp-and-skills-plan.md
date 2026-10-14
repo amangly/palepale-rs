@@ -2,6 +2,8 @@
 
 Proposal, 14 October 2026.
 
+Historical design proposal. The implementation and current OpenCode comparison are documented in [MCP and skills](mcp-and-skills.md).
+
 Add two compact managers to Palepale's existing slash menu. `/mcp` connects external tools; `/skills` finds and selects reusable workflows. Both run inside the Rust CLI and use its current agent, permission prompts, and terminal components. This feature needs no backend or AWS changes.
 
 Claude Code and Codex both expose `/mcp`. Codex also uses `/skills` and `$skill-name` for explicit skill selection. These are familiar starting points for Palepale's interface. [Claude Code MCP](https://code.claude.com/docs/en/mcp), [Codex MCP](https://developers.openai.com/codex/mcp), [Codex skills](https://developers.openai.com/codex/skills).
