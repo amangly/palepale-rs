@@ -23,6 +23,45 @@ const POLL: Duration = Duration::from_millis(50);
 const KEY_GAP: Duration = Duration::from_millis(30);
 
 #[tokio::test(flavor = "multi_thread")]
+async fn model_cooldown_retries_in_the_open_terminal_and_can_be_cancelled() {
+    let fake = Fake::start().await;
+    fake.script([
+        Reply::Error {
+            status: 503,
+            kind: "model_busy",
+            retry_after: Some(1),
+        },
+        Reply::sse("hello.sse"),
+        Reply::Error {
+            status: 503,
+            kind: "model_busy",
+            retry_after: Some(59),
+        },
+    ]);
+    let sandbox = Sandbox::default();
+    let url = fake.url.clone();
+    let recorded = fake.clone();
+    tokio::task::spawn_blocking(move || {
+        let mut session = Session::start_sized(&sandbox, &url, Some(ENV_KEY), &[], 30, 100, false);
+        session.wait_for("palepale v");
+        session.type_text("hello");
+        session.send("\r");
+        session.wait_for("Hello there!");
+        assert_eq!(recorded.chat_bodies().len(), 2);
+        session.type_text("hello again");
+        session.send("\r");
+        session.wait_for("This model needs a moment");
+        session.send("\x03");
+        session.wait_gone("This model needs a moment");
+        session.send("\x04");
+        assert!(session.wait_exit());
+    })
+    .await
+    .unwrap();
+    assert_eq!(fake.chat_bodies().len(), 3);
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn discovered_mcp_prompt_slash_commands_resolve_arguments_before_sending() {
     let fake = Fake::start().await;
     fake.script([Reply::sse("hello.sse")]);

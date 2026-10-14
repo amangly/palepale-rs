@@ -9,6 +9,9 @@ pub fn delay(error: &ErrorInfo, retry_after: Option<Duration>, attempt: u32) -> 
     if attempt >= policy.max_attempts.value || !retryable(error) {
         return None;
     }
+    if error.entry().retry_after_required && retry_after.is_none() {
+        return None;
+    }
     if let Some(wait) = retry_after {
         return (wait <= policy.max_retry_after_secs.secs()).then_some(wait);
     }
@@ -25,6 +28,10 @@ pub fn delay(error: &ErrorInfo, retry_after: Option<Duration>, attempt: u32) -> 
 /// The catalog's flag, where it has one; otherwise rate limits and server errors are worth
 /// another try, and client errors would fail the same way again.
 pub fn retryable(error: &ErrorInfo) -> bool {
+    // Only the HTTP admission refusal proves this turn was never dispatched.
+    if error.entry().retry_after_required && !matches!(error.status, Some(429 | 500..=599)) {
+        return false;
+    }
     error
         .entry()
         .retry
@@ -69,6 +76,26 @@ mod tests {
             Some(Duration::from_secs(4))
         );
         assert_eq!(delay(&err, Some(Duration::from_secs(3600)), 1), None);
+    }
+
+    #[test]
+    fn model_cooldown_waits_only_after_http_admission_refusal() {
+        let wait = Duration::from_secs(59);
+        assert_eq!(
+            delay(&error("model_busy", Some(503)), Some(wait), 1),
+            Some(wait)
+        );
+        assert!(delay(&error("model_busy", None), Some(wait), 1).is_none());
+        assert!(delay(&error("model_busy", Some(503)), None, 1).is_none());
+        assert!(delay(&error("model_busy", Some(400)), Some(wait), 1).is_none());
+        assert!(
+            delay(
+                &error("model_busy", Some(503)),
+                Some(Duration::from_secs(121)),
+                1
+            )
+            .is_none()
+        );
     }
 
     #[test]

@@ -23,6 +23,9 @@ pub struct Entry {
     /// Whether it is worth trying again; `None` leaves that to the status.
     #[serde(default)]
     pub retry: Option<bool>,
+    /// Retry only an HTTP refusal with a bounded Retry-After header.
+    #[serde(default)]
+    pub retry_after_required: bool,
 }
 
 /// An error as stored in sessions and shown to the user. `kind` is palepale's `error.type`, or

@@ -98,8 +98,9 @@ retry = false
 
 [model_busy]
 title = "This model needs a moment"
-hint = "Keep this conversation and retry after the stated wait, or use /models to switch."
-retry = false
+hint = "Keep this conversation. If automatic retries finish, try again or use /models to switch."
+retry = true
+retry_after_required = true
 
 [profile_unavailable]
 title = "This coding profile is unavailable"
