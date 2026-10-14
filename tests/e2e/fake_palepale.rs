@@ -87,6 +87,7 @@ impl Fake {
         let inner: Shared = Arc::default();
         let app = Router::new()
             .route("/v1/models", get(models))
+            .route("/v1/agent-profiles", get(agent_profiles))
             .route("/v1/chat/completions", post(chat))
             .route("/api/me", get(me))
             .route("/api/me/overview", get(overview))
@@ -209,6 +210,14 @@ async fn skill_index() -> impl IntoResponse {
     axum::Json(
         json!({"skills":[{"name":"native-check","version":"1","files":["SKILL.md","references/guide.md"]}]}),
     )
+}
+
+async fn agent_profiles() -> impl IntoResponse {
+    axum::Json(json!({"object":"list","data":[
+        {"id":"direct","name":"Direct","description":"Concise answers and focused edits"},
+        {"id":"deep","name":"Deep","description":"Careful implementation and verification"},
+        {"id":"review","name":"Review","description":"Evidence-led code review"}
+    ]}))
 }
 
 async fn skill_body() -> &'static str {

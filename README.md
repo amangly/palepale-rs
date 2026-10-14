@@ -29,6 +29,7 @@ After installing, open a new terminal in your project folder and run `palepale`.
 | Shift+Tab | Switch MANUAL, PLAN, and AUTO modes |
 | `/models` | Refresh the list and pick a model |
 | `/effort` | Choose reasoning effort for the current model |
+| `/godmode` | Choose a server coding profile for this conversation |
 | `/status` | Open session details, balance, and account usage |
 | `/mcp` | Add and manage MCP servers and inspect their tools |
 | `/skills` | Search, preview, and select reusable workflows |
@@ -43,6 +44,8 @@ Opening `/models` fetches the latest catalog. If the server is unavailable, it s
 The opening screen reveals the Palepale logo with a brief Matrix effect from [ttfx](https://github.com/omacom/ttfx). The SVG becomes colored block pixels, keeping its shape and green gradient in Windows Terminal and other terminals. Typing skips the animation and keeps your input. `PALEPALE_NO_ANIMATION=1` skips it too. `NO_COLOR` shows the same shape without color.
 
 `/effort` shows the levels reported by the model catalog. Choose `default` to reset it, or set a level directly with `/effort low`.
+
+`/godmode` fetches the current coding profiles from Palepale and opens a picker. Choose one to apply it to the next model request, or use `/godmode off` to clear it. `/godmode status` shows the current choice. The server owns the profile text; the CLI sends its id with each request. A new conversation clears the choice.
 
 Use `/logout` then `/login` to connect another account. Changing the browser account does not switch an already paired CLI.
 

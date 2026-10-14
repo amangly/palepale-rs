@@ -1,6 +1,7 @@
 //! palepale's HTTP surface: endpoint catalog, typed errors, and one call path for every request.
 
 pub mod account;
+pub mod agent_profiles;
 pub mod assemble;
 pub mod chat;
 pub mod endpoints;

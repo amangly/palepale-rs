@@ -1,0 +1,15 @@
+name = "godmode"
+summary = "Choose a server coding profile for this conversation"
+usage = "godmode [profile|off|status]"
+scope = ["session"]
+
+[text]
+title = "Coding profile"
+off = "off"
+off_summary = "Use the usual coding instructions"
+status = "Coding profile: {profile}"
+badge = "profile {profile}"
+label = "Profile"
+unknown = "Unknown coding profile `{profile}`; open /godmode to see choices."
+no_profiles = "No coding profiles are available."
+unavailable = "Coding profiles are unavailable on this server."

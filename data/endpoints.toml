@@ -17,6 +17,11 @@ origin = "api"
 method = "GET"
 path = "/v1/models"
 
+[endpoints.agent_profiles]
+origin = "api"
+method = "GET"
+path = "/v1/agent-profiles"
+
 [endpoints.chat]
 origin = "api"
 method = "POST"

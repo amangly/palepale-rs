@@ -2,6 +2,7 @@
 //! status, right-aligned: the mode, model and effort, context use and cost (order in
 //! data/ui.toml). When the terminal is narrow the dashes shrink before any item is cut.
 
+use crate::commands::godmode;
 use crate::effort;
 use crate::mode::Mode;
 use crate::text::styled::{Line, Style};
@@ -16,6 +17,7 @@ const TAIL: usize = 2;
 pub struct Info<'a> {
     pub model: &'a str,
     pub effort: Option<&'a str>,
+    pub agent_profile: Option<&'a str>,
     /// Share of the context window the last request used.
     pub context_pct: Option<u64>,
     pub cost_micros: u64,
@@ -62,6 +64,13 @@ fn item_line(mode: &Mode, info: &Info<'_>, item: &str) -> Option<Line> {
     let muted = Style::fg("muted");
     Some(match item {
         "mode" => Line::styled(&mode.label, Style::fg(&mode.color).bold()),
+        "profile" => Line::styled(
+            crate::text::template::fill(
+                &godmode::text().badge,
+                &[("profile", info.agent_profile?)],
+            ),
+            Style::fg("accent"),
+        ),
         "model" => {
             let mut line = Line::styled(info.model, muted.clone());
             if let Some(id) = info.effort {
@@ -95,6 +104,7 @@ mod tests {
         Info {
             model: "demo-2",
             effort: Some("high"),
+            agent_profile: None,
             context_pct: Some(12),
             cost_micros: 42_000,
         }

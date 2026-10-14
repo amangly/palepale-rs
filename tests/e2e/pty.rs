@@ -1407,6 +1407,40 @@ async fn slash_effort_sets_what_the_next_requests_carry() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn slash_godmode_selects_server_profile_and_clears_it() {
+    let fake = Fake::start().await;
+    fake.script([Reply::sse("hello.sse"), Reply::sse("hello.sse")]);
+    in_session(&fake, Sandbox::default(), Some(ENV_KEY), |s| {
+        s.type_text("/godmode");
+        s.send("\r");
+        s.wait_for("╭ Coding profile");
+        s.wait_for("Deep");
+        s.send("\x1b[B");
+        s.wait_for("│ › Direct");
+        s.send("\x1b[B");
+        s.wait_for("│ › Deep");
+        s.send("\r");
+        s.wait_for("Coding profile: deep");
+        s.type_text("first");
+        s.send("\r");
+        s.wait_for("Hello there!");
+        s.type_text("/godmode off");
+        s.send("\r");
+        s.wait_for("Coding profile: off");
+        s.type_text("second");
+        s.send("\r");
+        s.poll(WAIT, "second response", |s| {
+            (s.contents().matches("Hello there!").count() == 2).then_some(())
+        });
+    })
+    .await;
+    assert_eq!(fake.hits("/v1/agent-profiles"), 1);
+    let requests = fake.chat_bodies();
+    assert_eq!(requests[0]["agent_profile"], "deep");
+    assert!(requests[1].get("agent_profile").is_none());
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn choosing_a_model_then_effort_keeps_refresh_responsive_and_forwards_the_choice() {
     let fake = Fake::start().await;
     fake.model_delays([Duration::ZERO, Duration::from_secs(2)]);

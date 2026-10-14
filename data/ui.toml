@@ -14,7 +14,7 @@ tips = [
 [footer]
 # All the status, right-aligned on the rule under the message bar, in this order; effort rides
 # with the model. The rule above the bar is plain, in the mode's colour.
-items = ["mode", "model", "context"]
+items = ["mode", "profile", "model", "context"]
 separator = " · "
 
 [text]

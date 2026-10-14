@@ -41,6 +41,7 @@ use crate::tui::effort as effort_picker;
 use crate::tui::extensions::{self as extension_ui, Manager};
 use crate::tui::feed::{Block, Feed};
 use crate::tui::forums::{self, Forums};
+use crate::tui::godmode as godmode_picker;
 use crate::tui::keymap::{self, Action};
 use crate::tui::login::{self, Login};
 use crate::tui::matrix;
@@ -161,6 +162,7 @@ struct Tui<'a> {
     /// The `/models` card, likewise.
     picker: Option<Picker>,
     effort_picker: Option<effort_picker::Picker>,
+    godmode_picker: Option<godmode_picker::Picker>,
     dashboard: Option<Dashboard>,
     dashboard_id: u64,
     session_usage: Usage,
@@ -228,6 +230,7 @@ impl<'a> Tui<'a> {
             login: None,
             picker: None,
             effort_picker: None,
+            godmode_picker: None,
             dashboard: None,
             dashboard_id: 0,
             session_usage: Usage::default(),
@@ -293,6 +296,7 @@ impl<'a> Tui<'a> {
                 .and_then(|m| m.effort(self.effort.as_deref()))
                 .map(str::to_owned),
             mode: self.shared.mode().label.clone(),
+            agent_profile: self.shared.agent_profile(),
             context_pct: self.context_pct(),
         }
     }
@@ -564,6 +568,7 @@ impl<'a> Tui<'a> {
                 if self.extensions.is_none()
                     && (self.picker.is_some()
                         || self.effort_picker.is_some()
+                        || self.godmode_picker.is_some()
                         || self.dashboard.is_some()) =>
             {
                 Step::Continue
@@ -595,6 +600,10 @@ impl<'a> Tui<'a> {
             }
             Input::Key(key) if self.effort_picker.is_some() => {
                 self.effort_key(&key);
+                Step::Continue
+            }
+            Input::Key(key) if self.godmode_picker.is_some() => {
+                self.godmode_key(&key);
                 Step::Continue
             }
             Input::Key(key) if self.dashboard.is_some() => self.dashboard_key(&key),
@@ -800,6 +809,35 @@ impl<'a> Tui<'a> {
                 self.set_effort(id);
             }
         }
+    }
+
+    fn godmode_key(&mut self, key: &crate::io::term::KeyEvent) {
+        let action = keymap::get().action(key);
+        let Some(picker) = &mut self.godmode_picker else {
+            return;
+        };
+        match picker.key(action) {
+            godmode_picker::Step::Stay => {}
+            godmode_picker::Step::Close => self.godmode_picker = None,
+            godmode_picker::Step::Pick(id) => {
+                self.godmode_picker = None;
+                self.set_agent_profile(id);
+            }
+        }
+    }
+
+    fn set_agent_profile(&mut self, id: Option<String>) {
+        self.shared.set_agent_profile(id.clone());
+        self.feed.notice(
+            &template::fill(
+                &commands::godmode::text().status,
+                &[(
+                    "profile",
+                    id.as_deref().unwrap_or(&commands::godmode::text().off),
+                )],
+            ),
+            "done",
+        );
     }
 
     fn refresh_status(&mut self) -> Step<'a> {
@@ -1165,6 +1203,13 @@ impl<'a> Tui<'a> {
                         self.shared.set_mode(mode);
                     }
                 }
+                Effect::PickAgentProfile(profiles) => {
+                    self.godmode_picker = Some(godmode_picker::Picker::new(
+                        profiles,
+                        self.shared.agent_profile().as_deref(),
+                    ));
+                }
+                Effect::SetAgentProfile(id) => self.set_agent_profile(id),
                 Effect::Login { number: None } => self.login = Some(Login::new()),
                 Effect::Login {
                     number: Some(number),
@@ -1304,6 +1349,8 @@ impl<'a> Tui<'a> {
             Some(picker.render(width))
         } else if let Some(picker) = &self.effort_picker {
             Some(picker.render(width))
+        } else if let Some(picker) = &self.godmode_picker {
+            Some(picker.render(width))
         } else if let Some(card) = &mut self.dashboard {
             Some(card.render(
                 &dashboard::Info {
@@ -1349,6 +1396,7 @@ impl<'a> Tui<'a> {
                     .model
                     .as_ref()
                     .and_then(|m| m.effort(self.effort.as_deref())),
+                agent_profile: self.shared.agent_profile().as_deref(),
                 context_pct: self.context_pct(),
                 cost_micros: self.cost_micros,
             },

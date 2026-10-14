@@ -14,6 +14,7 @@ mod extensions;
 mod feed;
 mod forums;
 mod frame;
+mod godmode;
 mod header;
 mod keymap;
 mod layout;

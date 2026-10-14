@@ -175,6 +175,9 @@ impl Dashboard {
                 label(&labels.mode, &info.session.mode),
                 label(&labels.requests, &info.requests.to_string()),
             ));
+            if let Some(profile) = &info.session.agent_profile {
+                body.push(label(&crate::commands::godmode::text().label, profile));
+            }
             body.push(match info.session.context_pct {
                 Some(pct) => chart::meter(&labels.context, pct, 100, inner),
                 None => label(&labels.context, &words.no_context),
@@ -338,6 +341,7 @@ mod tests {
             model: "gpt-6-astra".into(),
             effort: None,
             mode: "MANUAL".into(),
+            agent_profile: None,
             context_pct: Some(8),
         };
         let info = Info {
@@ -392,6 +396,7 @@ mod tests {
             model: "demo".into(),
             effort: None,
             mode: "MANUAL".into(),
+            agent_profile: None,
             context_pct: Some(120),
         };
         let info = Info {

@@ -18,6 +18,7 @@ use crate::limits;
 pub struct Turn<'a> {
     pub model: &'a Model,
     pub effort: Option<&'a str>,
+    pub agent_profile: Option<&'a str>,
     pub system: &'a str,
     pub messages: &'a [Message],
     pub tools: &'a [serde_json::Value],
@@ -198,6 +199,7 @@ fn request(turn: &Turn<'_>) -> wire::Request {
             include_usage: true,
         },
         reasoning_effort: turn.model.effort(turn.effort).map(str::to_owned),
+        agent_profile: turn.agent_profile.map(str::to_owned),
     }
 }
 
@@ -287,6 +289,7 @@ mod tests {
         let turn = Turn {
             model: &m,
             effort: Some("high"),
+            agent_profile: None,
             system: "sys",
             messages: &[],
             tools: &[],

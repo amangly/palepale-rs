@@ -113,9 +113,11 @@ pub async fn run(
             let tools = registry.wire();
 
             let messages = context::build(&transcript.messages);
+            let agent_profile = shared.agent_profile();
             let turn = Turn {
                 model: cx.model,
                 effort: cx.effort,
+                agent_profile: agent_profile.as_deref(),
                 system: cx.system,
                 messages: &messages,
                 tools: &tools,
@@ -431,6 +433,42 @@ mod tests {
             .last()
             .unwrap()
             .clone()
+    }
+
+    #[tokio::test]
+    async fn profile_change_reaches_the_next_model_request_only() {
+        let h = Harness::new(vec![
+            reply(
+                "",
+                &[("r", "read", json!({"path":"note.txt"}))],
+                "tool_calls",
+            ),
+            text("done"),
+            text("again"),
+        ])
+        .await;
+        h.write("note.txt", "hello");
+        let shared = shared("auto");
+        shared.set_agent_profile(Some("direct".into()));
+        let (outcome, _, _) = h
+            .run(&shared, |event, shared| {
+                if matches!(event, AgentEvent::MessageEnd { .. }) {
+                    shared.set_agent_profile(Some("deep".into()));
+                }
+            })
+            .await;
+        assert_eq!(outcome, Outcome::Done);
+        shared.set_agent_profile(None);
+        h.run(&shared, |_, _| {}).await;
+        let requests = h.requests();
+        assert_eq!(requests[0]["agent_profile"], "direct");
+        assert_eq!(requests[1]["agent_profile"], "deep");
+        assert!(requests[2].get("agent_profile").is_none());
+        assert_eq!(shared.mode().id, "auto");
+        shared.set_agent_profile(Some("review".into()));
+        shared.start_over();
+        assert!(shared.agent_profile().is_none());
+        assert_eq!(shared.mode().id, "auto");
     }
 
     #[tokio::test]

@@ -30,6 +30,7 @@ pub struct Shared {
     asks: Mutex<HashMap<u64, (bool, oneshot::Sender<Reply>)>>,
     next_ask: AtomicU64,
     mode: Mutex<&'static Mode>,
+    agent_profile: Mutex<Option<String>>,
     /// The mode the model was last told about.
     reminded: Mutex<Option<&'static Mode>>,
     pub files: Files,
@@ -44,6 +45,7 @@ impl Shared {
             asks: Mutex::default(),
             next_ask: AtomicU64::new(1),
             mode: Mutex::new(mode),
+            agent_profile: Mutex::default(),
             reminded: Mutex::default(),
             files: Files::default(),
         }
@@ -62,6 +64,14 @@ impl Shared {
 
     pub fn mode(&self) -> &'static Mode {
         *self.mode.lock().unwrap()
+    }
+
+    pub fn agent_profile(&self) -> Option<String> {
+        self.agent_profile.lock().unwrap().clone()
+    }
+
+    pub fn set_agent_profile(&self, id: Option<String>) {
+        *self.agent_profile.lock().unwrap() = id;
     }
 
     /// Switching into a mode that allows everything also approves permission prompts already
@@ -112,6 +122,7 @@ impl Shared {
 
     /// A new conversation: the model has been told nothing, read nothing, and nothing waits.
     pub fn start_over(&self) {
+        self.set_agent_profile(None);
         *self.reminded.lock().unwrap() = None;
         self.steer.lock().unwrap().clear();
         self.follow.lock().unwrap().clear();

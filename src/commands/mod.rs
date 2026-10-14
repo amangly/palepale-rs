@@ -8,6 +8,7 @@ pub mod discovered;
 mod effort;
 mod extensions;
 pub mod forums;
+pub mod godmode;
 mod help;
 mod init;
 mod install;
@@ -127,6 +128,7 @@ pub struct Session {
     /// The effort each request carries: none for a model that does not reason.
     pub effort: Option<String>,
     pub mode: String,
+    pub agent_profile: Option<String>,
     /// Share of the context window the last request used.
     pub context_pct: Option<u64>,
 }
@@ -164,6 +166,10 @@ pub enum Effect {
     SetEffort(Option<String>),
     /// Choose from the selected model's supported reasoning levels.
     PickEffort,
+    /// Open the server's current coding profile list.
+    PickAgentProfile(Vec<crate::api::agent_profiles::Profile>),
+    /// Apply a server-owned coding profile to future requests.
+    SetAgentProfile(Option<String>),
     /// Put the model's last reply on the clipboard.
     CopyLastReply,
     /// Send this to the model as the user's next message (the transcript shows the command).
@@ -229,6 +235,7 @@ pub static COMMANDS: &[&dyn Command] = &[
     &forums::Forums,
     &mode::Mode,
     &effort::Effort,
+    &godmode::Godmode,
     &copy::Copy,
     &init::Init,
     &new::New,
