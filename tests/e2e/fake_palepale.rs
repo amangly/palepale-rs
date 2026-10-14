@@ -216,7 +216,8 @@ async fn agent_profiles() -> impl IntoResponse {
     axum::Json(json!({"object":"list","data":[
         {"id":"direct","name":"Direct","description":"Concise answers and focused edits"},
         {"id":"deep","name":"Deep","description":"Careful implementation and verification"},
-        {"id":"review","name":"Review","description":"Evidence-led code review"}
+        {"id":"review","name":"Review","description":"Evidence-led code review"},
+        {"id":"unlisted","name":"Unlisted profile","description":"Not supported by this release"}
     ]}))
 }
 

@@ -199,7 +199,10 @@ fn request(turn: &Turn<'_>) -> wire::Request {
             include_usage: true,
         },
         reasoning_effort: turn.model.effort(turn.effort).map(str::to_owned),
-        agent_profile: turn.agent_profile.map(str::to_owned),
+        agent_profile: turn
+            .agent_profile
+            .filter(|id| crate::api::agent_profiles::supported(id))
+            .map(str::to_owned),
     }
 }
 
@@ -302,5 +305,24 @@ mod tests {
         let turn = Turn { model: &m, ..turn };
         assert_eq!(request(&turn).reasoning_effort.as_deref(), Some("high"));
         assert_eq!(recorded(&turn).as_deref(), Some("high"));
+    }
+
+    #[test]
+    fn request_sends_only_supported_profiles() {
+        let m = model(false);
+        let turn = Turn {
+            model: &m,
+            effort: None,
+            agent_profile: Some("deep"),
+            system: "sys",
+            messages: &[],
+            tools: &[],
+        };
+        assert_eq!(request(&turn).agent_profile.as_deref(), Some("deep"));
+        let unlisted = Turn {
+            agent_profile: Some("unlisted"),
+            ..turn
+        };
+        assert_eq!(request(&unlisted).agent_profile, None);
     }
 }

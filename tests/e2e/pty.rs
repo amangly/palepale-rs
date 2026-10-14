@@ -1415,6 +1415,7 @@ async fn slash_godmode_selects_server_profile_and_clears_it() {
         s.send("\r");
         s.wait_for("╭ Coding profile");
         s.wait_for("Deep");
+        assert!(!s.contents().contains("Unlisted profile"));
         s.send("\x1b[B");
         s.wait_for("│ › Direct");
         s.send("\x1b[B");

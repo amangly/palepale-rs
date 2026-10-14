@@ -45,7 +45,7 @@ The opening screen reveals the Palepale logo with a brief Matrix effect from [tt
 
 `/effort` shows the levels reported by the model catalog. Choose `default` to reset it, or set a level directly with `/effort low`.
 
-`/godmode` fetches the current coding profiles from Palepale and opens a picker. Choose one to apply it to the next model request, or use `/godmode off` to clear it. `/godmode status` shows the current choice. The server owns the profile text; the CLI sends its id with each request. A new conversation clears the choice.
+`/godmode` fetches the supported coding profiles from Palepale and opens a picker: Direct, Deep, and Review. Choose one to apply it to the next model request, or use `/godmode off` to clear it. `/godmode status` shows the current choice. The server owns the profile text; the CLI sends its id with each request. A new conversation clears the choice.
 
 Use `/logout` then `/login` to connect another account. Changing the browser account does not switch an already paired CLI.
 
