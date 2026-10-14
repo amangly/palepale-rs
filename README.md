@@ -100,6 +100,8 @@ Settings live in `~/.palepale/config.toml`. Set `auto_update = false` to disable
 
 See [Contributing](CONTRIBUTING.md) for builds, checks, configuration, and the source layout. Maintainers can find publishing instructions in [Releases](docs/releases.md).
 
+The [v0.2.0 roadmap](docs/roadmap-v0.2.0.md) tracks session recovery, context compaction, file input, reusable commands, and change review.
+
 ## License
 
 Licensed under [Apache-2.0](LICENSE-APACHE). Copyright 2026 amangly. See [NOTICE](NOTICE).
