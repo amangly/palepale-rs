@@ -167,7 +167,11 @@ async fn a_mid_stream_error_keeps_the_partial_reply() {
     let run = sandbox.run(&fake.url, &["-p", "hi"], WITH_KEY).await;
     assert_eq!(run.code(), Some(1));
     assert_eq!(run.stdout(), "Partial answ\n");
-    assert!(run.stderr().contains("vendor refused"), "{}", run.stderr());
+    assert!(
+        run.stderr().contains("model response failed"),
+        "{}",
+        run.stderr()
+    );
     // Output already streamed (and billed), so it is not retried.
     assert_eq!(fake.hits("/v1/chat/completions"), 1);
 }

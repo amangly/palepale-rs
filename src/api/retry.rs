@@ -85,6 +85,9 @@ mod tests {
     fn the_catalog_flag_decides_and_the_status_only_fills_in() {
         assert!(!retryable(&error("pow_required", Some(428))));
         assert!(!retryable(&error("no_provider", Some(503))));
+        assert!(!retryable(&error("model_unavailable", Some(503))));
+        assert!(!retryable(&error("output_limit_exceeded", Some(503))));
+        assert!(!retryable(&error("upstream_error", None)));
         assert!(retryable(&error("upstream_unavailable", Some(503))));
         assert!(retryable(&error("network", None)));
         assert!(retryable(&error("a_kind_from_a_newer_palepale", Some(503))));

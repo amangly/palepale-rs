@@ -91,9 +91,19 @@ title = "The model's upstream is unavailable"
 hint = "palepale's side, not yours; try again or pick another model."
 retry = true
 
-# The vendor's own status passes through, so a 400 is final and a 429 or 5xx is not.
+[model_unavailable]
+title = "No compatible route is available for this request"
+hint = "Pick another model, or start a new conversation with less context."
+retry = false
+
+# An accepted streaming failure has no retryable status; never assume refusal.
 [upstream_error]
-title = "The model's vendor refused the request"
+title = "The model response failed"
+
+[output_limit_exceeded]
+title = "The model exceeded the request's output limit"
+hint = "The request was stopped; billing is pending review."
+retry = false
 
 [content_filter]
 title = "The model's content filter stopped the reply"
