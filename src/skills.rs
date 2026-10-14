@@ -432,6 +432,7 @@ pub async fn expand(
                         tool: format!("skill:{name}"),
                         asks,
                         preview: Some(target.shown),
+                        confirm: false,
                     };
                     if prompt::ask(shared, emit, &format!("skill:{name}"), prompt, cancel).await
                         != Some(Reply::Yes)

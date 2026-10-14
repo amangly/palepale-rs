@@ -167,6 +167,7 @@ pub async fn prompt(args: Value, cx: &ToolCx<'_>) -> crate::tools::Output {
                     tool: "mcp_prompts".into(),
                     asks: check.asks,
                     preview: check.preview,
+                    confirm: check.confirm,
                 })
                 .await;
             if approved != Some(crate::agent::prompt::Reply::Yes) {

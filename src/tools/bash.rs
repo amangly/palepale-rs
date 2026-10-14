@@ -14,8 +14,6 @@ use super::{Check, Output, Refusal, Spec, Tool, ToolCx, parse, parse_or_fail};
 use crate::io::shell::{self, Ended, ShellCommand};
 use crate::io::{self, fs::Access};
 use crate::limits;
-use crate::permission::gate::Ask;
-use crate::permission::{filter, shell_split, workdir};
 use crate::text::controls;
 
 static SPEC: LazyLock<Spec> = LazyLock::new(|| {
@@ -43,16 +41,6 @@ impl Bash {
     }
 }
 
-/// What reading `files` asks for, or `None` when one of them cannot be resolved.
-fn read_asks(files: &[String], cx: &ToolCx<'_>) -> Option<Vec<Ask>> {
-    let mut asks = Vec::new();
-    for file in files {
-        let target = target::resolve(&cx.app.paths, file).ok()?;
-        asks.extend(target::asks(permissions::READ.name, &target));
-    }
-    Some(asks)
-}
-
 impl Tool for Bash {
     fn spec(&self) -> &Spec {
         &SPEC
@@ -63,55 +51,10 @@ impl Tool for Bash {
         if args.command.trim().is_empty() {
             return Err(Refusal::InvalidArgs("`command` is empty".into()));
         }
-        let split = shell_split::split(&args.command);
-        // A reader (`grep -n x src/a.rs`) asks as the read tool would of each file it names, so
-        // the read rules, secrets included, hold for it; past a `cd` its files are elsewhere.
-        let mut reads = Vec::new();
-        let mut commands = Vec::new();
-        let mut moved = false;
-        for command in &split.commands {
-            let Some(command) = workdir::strip(command, &cx.app.paths.project) else {
-                continue;
-            };
-            moved |= workdir::moves(&command);
-            let read = filter::reads_files(&command)
-                .filter(|_| !moved)
-                .and_then(|files| read_asks(&files, cx));
-            match read {
-                Some(asks) => reads.extend(asks),
-                None => commands.push(command),
-            }
-        }
-        // A filter at the end of a pipe (`| tail -30`) reads only what the command before it
-        // writes, so it asks for nothing of its own while something feeds it.
-        let fed: Vec<String> = commands
-            .iter()
-            .filter(|c| !filter::reads_only_input(c))
-            .cloned()
-            .collect();
-        let patterns = if fed.is_empty() && reads.is_empty() {
-            commands
-        } else {
-            fed
-        };
-        let mut asks = reads;
-        if !patterns.is_empty() {
-            asks.push(Ask {
-                permission: permissions::BASH.name.into(),
-                patterns,
-            });
-        }
-        // What runs cannot be read off a substitution, and a redirect writes files: both get
-        // their own permission so read-only allowances never cover them.
-        if split.complex {
-            asks.push(Ask::new(
-                permissions::BASH_COMPLEX.name,
-                args.command.trim(),
-            ));
-        }
-        if split.writes {
-            asks.push(Ask::new(permissions::BASH_WRITE.name, args.command.trim()));
-        }
+        let asks = crate::permission::bash::asks(&args.command, &cx.app.paths.project, &|file| {
+            let target = target::resolve(&cx.app.paths, file).ok()?;
+            Some(target::asks(permissions::READ.name, &target))
+        });
         Ok(Check::new(asks).with_preview(format!("$ {}", args.command.trim())))
     }
 
@@ -343,6 +286,7 @@ fn prune_spills(dir: &std::path::Path) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::permission::gate::Ask;
     use crate::tools::shell;
     use crate::tools::testing::Project;
 

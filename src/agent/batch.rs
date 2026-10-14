@@ -15,7 +15,7 @@ use crate::agent::prompt::{self, Prompt, Reply};
 use crate::agent::run::RunCtx;
 use crate::agent::state::Shared;
 use crate::limits;
-use crate::mode::{DoomLoop, Mode};
+use crate::mode::DoomLoop;
 use crate::permission::gate::{self, Ask, Decision, Policy};
 use crate::text::template::fill;
 use crate::tools::{Output, Refusal, Tool, ToolCx, permissions};
@@ -58,6 +58,8 @@ impl Refused {
     }
 }
 
+type Slot = Result<Cleared, Refused>;
+
 pub async fn run<'a>(
     cx: &'a RunCtx<'a>,
     history: &[Message],
@@ -65,8 +67,6 @@ pub async fn run<'a>(
     shared: &'a Shared,
     cancel: &'a CancellationToken,
 ) -> Batch {
-    let mode = shared.mode();
-
     let mut cleared = Vec::with_capacity(calls.len());
     let mut stop = false;
     for (i, call) in calls.iter().enumerate() {
@@ -74,17 +74,48 @@ pub async fn run<'a>(
             Err(Refused::new("rejected", model_text::get().rejected.clone()))
         } else {
             let repeats = doom_loop::repeats(history, calls, i);
-            clear(cx, shared, cancel, mode, repeats, call).await
+            clear(cx, shared, cancel, repeats, call).await
         };
         if let Err(refused) = &slot {
             stop |= refused.stop;
         }
         cleared.push(slot);
     }
+    Batch {
+        results: settle(cx, calls, cleared, shared, cancel).await,
+        stop,
+    }
+}
 
+/// Refused calls still emit their lifecycle events and record why they did not run.
+pub async fn refuse_all(
+    cx: &RunCtx<'_>,
+    calls: &[ToolCall],
+    shared: &Shared,
+    cancel: &CancellationToken,
+    kind: &'static str,
+    why: &str,
+) -> Batch {
+    let slots = calls
+        .iter()
+        .map(|_| Err(Refused::new(kind, why.to_owned())))
+        .collect();
+    Batch {
+        results: settle(cx, calls, slots, shared, cancel).await,
+        stop: false,
+    }
+}
+
+async fn settle(
+    cx: &RunCtx<'_>,
+    calls: &[ToolCall],
+    slots: Vec<Slot>,
+    shared: &Shared,
+    cancel: &CancellationToken,
+) -> Vec<ToolResult> {
     // Polled in order, so tools start, and results come back, in the order they were called.
     // A refused call gets its start and end too, so a frontend shows every call's fate.
-    let results = join_all(cleared.into_iter().zip(calls).map(|(slot, call)| async move {
+    join_all(slots.into_iter().zip(calls).map(|(slot, call)| async move {
         (cx.emit)(AgentEvent::ToolStart {
             call_id: call.id.clone(),
             name: call.name.clone(),
@@ -113,20 +144,20 @@ pub async fn run<'a>(
         });
         done
     }))
-    .await;
-    Batch { results, stop }
+    .await
 }
 
 /// Everything a call must pass before it runs, in order: not cancelled, a known tool, valid
 /// JSON, not a loop, the tool's own check, then the permission policy (asking if it says so).
+/// Read the mode per call so a change at one prompt governs the remaining calls.
 async fn clear<'a>(
     cx: &'a RunCtx<'a>,
     shared: &'a Shared,
     cancel: &'a CancellationToken,
-    mode: &Mode,
     repeats: usize,
     call: &'a ToolCall,
 ) -> Result<Cleared, Refused> {
+    let mode = shared.mode();
     let text = model_text::get();
     if cancel.is_cancelled() {
         return Err(Refused::new("cancelled", text.cancelled.clone()));
@@ -183,7 +214,11 @@ async fn clear<'a>(
         args,
         asks,
     };
-    match policy.decide(&asks) {
+    let decision = match policy.decide(&asks) {
+        Decision::Allow if check.confirm => Decision::Ask,
+        decision => decision,
+    };
+    match decision {
         Decision::Allow => Ok(cleared(asks)),
         Decision::Deny(what) => {
             Err(Refused::new("denied", fill(&text.denied, &[("what", &what)])).asked(asks))
@@ -193,6 +228,7 @@ async fn clear<'a>(
                 tool: call.name.clone(),
                 asks: asks.clone(),
                 preview: check.preview,
+                confirm: check.confirm,
             };
             let reply = prompt::ask(shared, cx.emit, &call.id, prompt, cancel).await;
             let refused = match reply {
@@ -207,10 +243,14 @@ async fn clear<'a>(
                         ..Refused::new("rejected", text.rejected.clone())
                     }
                 }
-                Some(Reply::Unavailable) => Refused::new(
-                    "non_interactive",
-                    fill(&text.non_interactive, &[("what", &gate::describe(&asks))]),
-                ),
+                Some(Reply::Unavailable) => {
+                    let (kind, why) = if check.confirm {
+                        ("unconfirmed", &text.unconfirmed)
+                    } else {
+                        ("non_interactive", &text.non_interactive)
+                    };
+                    Refused::new(kind, fill(why, &[("what", &gate::describe(&asks))]))
+                }
                 None => Refused::new("cancelled", text.cancelled.clone()),
             };
             Err(refused.asked(asks))
@@ -231,17 +271,6 @@ fn tool_cx<'a>(
         call_id,
         plan_file: &cx.plan_file,
         cancel: cancel.clone(),
-    }
-}
-
-/// Every call failed with the same message, e.g. when the reply was cut off mid-arguments.
-pub fn fail_all(calls: &[ToolCall], why: &str) -> Batch {
-    Batch {
-        results: calls
-            .iter()
-            .map(|c| result(c, Output::error(why)))
-            .collect(),
-        stop: false,
     }
 }
 

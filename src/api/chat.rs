@@ -52,7 +52,7 @@ pub async fn stream(
                 error,
             });
             tokio::select! {
-                () = tokio::time::sleep(delay) => {}
+                () = crate::io::clock::sleep(delay) => {}
                 () = cancel.cancelled() => return message(turn, Vec::new(), Finish::Aborted, None, None, None),
             }
             attempt += 1;

@@ -9,7 +9,7 @@ mod fs;
 mod glob;
 mod grep;
 mod many;
-pub mod permissions;
+pub use crate::permission::catalog as permissions;
 mod plan_exit;
 mod question;
 mod read;
@@ -59,6 +59,8 @@ impl Spec {
 pub struct Check {
     pub asks: Vec<Ask>,
     pub preview: Option<String>,
+    /// Requires a direct answer even when the current mode allows the action.
+    pub confirm: bool,
 }
 
 impl Check {
@@ -66,11 +68,17 @@ impl Check {
         Self {
             asks,
             preview: None,
+            confirm: false,
         }
     }
 
     pub fn with_preview(mut self, preview: impl Into<String>) -> Self {
         self.preview = Some(preview.into());
+        self
+    }
+
+    pub fn with_confirmation(mut self) -> Self {
+        self.confirm = true;
         self
     }
 }

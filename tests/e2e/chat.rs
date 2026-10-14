@@ -183,6 +183,62 @@ async fn a_length_stop_explains_the_cut() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn truncated_tool_calls_record_refusals_and_complete_json_events_without_writing_files() {
+    let fake = Fake::start().await;
+    fake.script([Reply::sse("truncated-tools.sse"), Reply::sse("hello.sse")]);
+    let sandbox = Sandbox::default();
+    let run = sandbox
+        .run(&fake.url, &["--json", "--mode", "auto", "do it"], WITH_KEY)
+        .await;
+    let stdout = run.success().stdout();
+    let events: Vec<Value> = stdout
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect();
+    for id in ["cut-a", "cut-b"] {
+        let starts: Vec<_> = events
+            .iter()
+            .filter(|e| e["type"] == "tool_start" && e["call_id"] == id)
+            .collect();
+        let ends: Vec<_> = events
+            .iter()
+            .filter(|e| e["type"] == "tool_end" && e["result"]["call_id"] == id)
+            .collect();
+        assert_eq!(starts.len(), 1);
+        assert_eq!(ends.len(), 1);
+        assert_eq!(ends[0]["result"]["refused"], "truncated_tool_call");
+        assert_eq!(ends[0]["result"]["is_error"], true);
+    }
+    for file in ["cut-a.txt", "cut-b.txt"] {
+        assert!(!sandbox.project.path().join(file).exists());
+    }
+    let session = std::fs::read_to_string(&sandbox.sessions()[0]).unwrap();
+    let records: Vec<Value> = session
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect();
+    let results: Vec<_> = records
+        .iter()
+        .filter(|r| r["message"]["role"] == "tool")
+        .collect();
+    assert_eq!(results.len(), 2);
+    assert!(
+        results
+            .iter()
+            .all(|r| r["message"]["refused"] == "truncated_tool_call")
+    );
+    let bodies = fake.chat_bodies();
+    assert_eq!(bodies.len(), 2);
+    let replayed = bodies[1]["messages"].as_array().unwrap();
+    assert_eq!(replayed.iter().filter(|m| m["role"] == "tool").count(), 2);
+    assert!(
+        replayed
+            .iter()
+            .filter(|m| m["role"] == "tool")
+            .all(|m| m.get("refused").is_none())
+    );
+}
+#[tokio::test(flavor = "multi_thread")]
 async fn effort_is_forwarded_and_validated() {
     let fake = Fake::start().await;
     fake.script([Reply::sse("hello.sse"), Reply::sse("hello.sse")]);

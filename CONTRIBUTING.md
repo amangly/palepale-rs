@@ -51,6 +51,8 @@ The opening logo comes from `data/palepale-logo.svg`. After changing it, run `no
 
 Runs save sessions, tool permissions, diffs, and check results under `bench/runs/`. Run `palepale battery report <run-directory>` to generate a report, or add `--against <earlier-run-directory>` to compare runs. Limits in `bench/battery.toml` stop tasks after observed usage; requests already in flight can exceed the threshold. Keep results and cached repositories out of Git.
 
+The full external corpus also needs Git, Python 3, and Node 18.12 or later with Corepack. The pinned pnpm used by the UFO tasks refuses older Node versions. Its setup uses a Unix shell and `ln -s`; run it on Linux or macOS. `make battery-setup` installs dependencies and checks that untouched repositories pass and planted bugs fail, without calling a model.
+
 ## Configuration
 
 User settings live in `~/.palepale/config.toml`; a project can add `.palepale/config.toml`. Settings that increase project permissions require trust. Sessions are saved under the CLI home after the first backend turn starts.

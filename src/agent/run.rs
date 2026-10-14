@@ -146,20 +146,28 @@ pub async fn run(
             }
 
             if !calls.is_empty() {
+                let round = RunCtx {
+                    app: cx.app,
+                    model: cx.model,
+                    effort: cx.effort,
+                    system: cx.system,
+                    tools: &registry,
+                    plan_file: cx.plan_file.clone(),
+                    emit: cx.emit,
+                };
                 let batch = if finish == Finish::Length {
                     // A reply cut off mid-call may carry truncated arguments; never run those.
-                    batch::fail_all(&calls, &model_text::get().truncated_tool_call)
+                    batch::refuse_all(
+                        &round,
+                        &calls,
+                        shared,
+                        &cancel,
+                        "truncated_tool_call",
+                        &model_text::get().truncated_tool_call,
+                    )
+                    .await
                 } else {
                     let history = &transcript.messages[..transcript.messages.len() - 1];
-                    let round = RunCtx {
-                        app: cx.app,
-                        model: cx.model,
-                        effort: cx.effort,
-                        system: cx.system,
-                        tools: &registry,
-                        plan_file: cx.plan_file.clone(),
-                        emit: cx.emit,
-                    };
                     batch::run(&round, history, &calls, shared, &cancel).await
                 };
                 let Batch { results, stop } = batch;
@@ -645,22 +653,152 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn mode_changes_at_a_prompt_apply_to_later_calls_in_the_same_batch() {
+        for next in ["auto", "plan"] {
+            let h = Harness::new(vec![
+                reply(
+                    "",
+                    &[
+                        ("c1", "bash", json!({"command": "printf hi"})),
+                        ("c2", "write", json!({"path": "next.txt", "content": "x"})),
+                    ],
+                    "tool_calls",
+                ),
+                text("done"),
+            ])
+            .await;
+            let (outcome, transcript, events) = h
+                .run(&shared("manual"), |event, shared| {
+                    if let AgentEvent::Prompt { id, .. } = event {
+                        shared.set_mode(mode::get(next).unwrap());
+                        shared.answer(*id, Reply::Yes);
+                    }
+                })
+                .await;
+            assert_eq!(outcome, Outcome::Done);
+            assert_eq!(
+                events.iter().filter(|e| *e == "prompt").count(),
+                1,
+                "{next}"
+            );
+            let result = transcript.messages.iter().find_map(|m| match m {
+                Message::Tool(r) if r.call_id == "c2" => Some(r),
+                _ => None,
+            });
+            let result = result.unwrap();
+            assert_eq!(
+                result.refused.as_deref(),
+                (next == "plan").then_some("denied")
+            );
+            let path = h.app.paths.project.join("next.txt");
+            assert_eq!(
+                crate::io::fs::read_string(&path).unwrap().as_deref(),
+                (next == "auto").then_some("x"),
+                "{next}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn mandatory_confirmation_stays_pending_when_switching_to_auto() {
+        use crate::forums::{Forum, store};
+
+        for mode in ["manual", "auto"] {
+            let h = Harness::new(vec![
+                reply(
+                    "",
+                    &[("post", "forum_post", json!({
+                        "forum": "fixture", "section": "1", "subject": "Draft", "body": "Review me"
+                    }))],
+                    "tool_calls",
+                ),
+                text("done"),
+            ])
+            .await;
+            store::add(
+                &h.app.paths,
+                Forum {
+                    id: "fixture".into(),
+                    name: "Fixture".into(),
+                    base_url: "http://127.0.0.1:1".into(),
+                    kind: "mobiquo".into(),
+                    ..Forum::default()
+                },
+            )
+            .unwrap();
+            let (_, transcript, events) = h
+                .run(&shared(mode), |event, shared| {
+                    if let AgentEvent::Prompt { id, prompt, .. } = event {
+                        let crate::agent::prompt::Prompt::Permission {
+                            confirm, preview, ..
+                        } = prompt
+                        else {
+                            panic!("{prompt:?}");
+                        };
+                        assert!(confirm);
+                        assert!(preview.as_ref().unwrap().contains("Review me"));
+                        shared.set_mode(crate::mode::get("auto").unwrap());
+                        assert!(shared.waiting(*id));
+                        assert!(shared.answer(*id, Reply::Unavailable));
+                    }
+                })
+                .await;
+            assert_eq!(events.iter().filter(|e| *e == "prompt").count(), 1);
+            let result = transcript
+                .messages
+                .iter()
+                .find_map(|m| match m {
+                    Message::Tool(r) => Some(r),
+                    _ => None,
+                })
+                .unwrap();
+            assert_eq!(result.refused.as_deref(), Some("unconfirmed"));
+            assert_eq!(
+                result.asks,
+                [crate::permission::gate::Ask::new("forum_post", "127.0.0.1")]
+            );
+        }
+    }
+
+    #[tokio::test]
     async fn calls_in_a_cut_off_reply_are_never_run() {
         let h = Harness::new(vec![
             reply(
                 "",
-                &[("c1", "write", json!({"path": "new.txt", "content": "x"}))],
+                &[
+                    ("c1", "write", json!({"path": "new.txt", "content": "x"})),
+                    ("c2", "write", json!({"path": "other.txt", "content": "y"})),
+                ],
                 "length",
             ),
             text("ok"),
         ])
         .await;
-        let (outcome, _, _) = h.run(&shared("auto"), |_, _| {}).await;
+        let (outcome, transcript, events) = h.run(&shared("auto"), |_, _| {}).await;
         assert_eq!(outcome, Outcome::Done);
-        assert_eq!(
-            crate::io::fs::kind(&h.app.paths.project.join("new.txt")).unwrap(),
-            crate::io::fs::Kind::Missing
-        );
+        for path in ["new.txt", "other.txt"] {
+            assert_eq!(
+                crate::io::fs::kind(&h.app.paths.project.join(path)).unwrap(),
+                crate::io::fs::Kind::Missing
+            );
+        }
+        let results: Vec<_> = transcript
+            .messages
+            .iter()
+            .filter_map(|m| match m {
+                Message::Tool(r) => Some(r),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(results.len(), 2);
+        for result in results {
+            assert_eq!(result.refused.as_deref(), Some("truncated_tool_call"));
+            assert!(result.is_error);
+            assert!(result.asks.is_empty());
+        }
+        for event in ["tool_start", "tool_end"] {
+            assert_eq!(events.iter().filter(|e| *e == event).count(), 2, "{event}");
+        }
         let result = last_message(&h.requests()[1]);
         assert_eq!(result["role"], "tool");
         assert!(result["content"].as_str().unwrap().contains("output limit"));

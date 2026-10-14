@@ -18,6 +18,8 @@ pub enum Prompt {
         /// What the call would do: a diff, a command.
         #[serde(skip_serializing_if = "Option::is_none")]
         preview: Option<String>,
+        #[serde(skip_serializing_if = "std::ops::Not::not")]
+        confirm: bool,
     },
     /// The model asks the user to choose; several questions share one card.
     Question { questions: Vec<Question> },
@@ -102,7 +104,8 @@ pub async fn ask(
     prompt: Prompt,
     cancel: &CancellationToken,
 ) -> Option<Reply> {
-    let (id, reply) = shared.register_ask(matches!(prompt, Prompt::Permission { .. }));
+    let (id, reply) =
+        shared.register_ask(matches!(prompt, Prompt::Permission { confirm: false, .. }));
     emit(AgentEvent::Prompt {
         id,
         call_id: call_id.to_owned(),
