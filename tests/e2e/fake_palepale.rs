@@ -214,10 +214,7 @@ async fn skill_index() -> impl IntoResponse {
 
 async fn agent_profiles() -> impl IntoResponse {
     axum::Json(json!({"object":"list","data":[
-        {"id":"direct","name":"Direct","description":"Concise answers and focused edits"},
-        {"id":"deep","name":"Deep","description":"Careful implementation and verification"},
-        {"id":"review","name":"Review","description":"Evidence-led code review"},
-        {"id":"jb-1","name":"jb-1","description":"jb-1"},
+        {"id":"jb-1","name":"jb-1","description":"GLM 5.3"},
         {"id":"jb-2","name":"CINDER","description":"CINDER"},
         {"id":"jb-3","name":"XYRO","description":"XYRO"}
     ]}))

@@ -10,6 +10,8 @@ use crate::limits;
 pub struct Profile {
     pub id: String,
     pub name: String,
+    #[serde(default)]
+    pub description: String,
 }
 
 #[derive(Deserialize)]
