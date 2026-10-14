@@ -1,6 +1,6 @@
 # Palepale-rs
 
-Run a coding agent against your local Palepale API. Read code, edit files, run commands, and switch models in your project.
+Run a coding agent with Palepale. Read code, edit files, run commands, and switch models in your project.
 
 ## Get started
 
@@ -14,7 +14,9 @@ Run it from your project folder:
 
 On macOS/Linux, run `chmod +x palepale` once, then `./palepale`.
 
-Start the local backend and website first. From the workspace root on Windows, run `.\palepale-server\scripts\start-local.ps1`. The CLI connects to `http://127.0.0.1:8080` and opens the local pairing page at `http://127.0.0.1:3000/pair`. Sign in there, match the code shown in your terminal, and choose **Connect CLI**. Later launches use your saved login. Pair again if your saved login belongs to the old public API. Set `PALEPALE_API_URL` and `PALEPALE_CHAT_URL` to use different addresses.
+The CLI connects to `https://api.palepale.tech`. Enter your account number, or pair the device at `https://palepale.tech/pair`: sign in, match the terminal code, and choose **Connect CLI**. Later launches use your saved login. Credentials are bound to the selected API address.
+
+For local development, run `.\palepale-server\scripts\start-local.ps1` from the workspace root. Set `PALEPALE_API_URL=http://127.0.0.1:8080` and `PALEPALE_CHAT_URL=http://127.0.0.1:3000` in that terminal before starting the CLI. These overrides leave the hosted defaults unchanged.
 
 Run `palepale install` to add the CLI to your user PATH. Before installation, use `./palepale install` or `.\palepale.exe install`.
 
@@ -42,7 +44,7 @@ Opening `/models` fetches the latest catalog. If the server is unavailable, it s
 
 The opening screen reveals the Palepale logo with a brief Matrix effect from [ttfx](https://github.com/omacom/ttfx). The SVG becomes colored block pixels, keeping its shape and green gradient in Windows Terminal and other terminals. Typing skips the animation and keeps your input. `PALEPALE_NO_ANIMATION=1` skips it too. `NO_COLOR` shows the same shape without color.
 
-Reasoning follows the selected route's server default. The CLI fetches model capabilities and context windows from the local API at startup and after each turn.
+Reasoning follows the selected route's server default. The CLI fetches model capabilities and context windows from the API at startup and after each turn.
 
 `/godmode` fetches the current profile names from Palepale and opens a picker. Choose one to apply it to the next model request, or use `/godmode off` to clear it. `/godmode status` shows the current choice. The server owns the profile text; the CLI sends its id with each request. A new conversation clears the choice.
 

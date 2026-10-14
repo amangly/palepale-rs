@@ -122,6 +122,33 @@ async fn rate_limits_are_retried_before_anything_streams() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn model_cooldown_continues_the_same_conversation_without_restart() {
+    let fake = Fake::start().await;
+    fake.script([
+        Reply::Error {
+            status: 503,
+            kind: "model_busy",
+            retry_after: Some(1),
+        },
+        Reply::sse("hello.sse"),
+    ]);
+    let sandbox = Sandbox::default();
+    let run = sandbox.run(&fake.url, &["-p", "hi"], WITH_KEY).await;
+    assert_eq!(run.success().stdout(), "Hello there!\n");
+    assert!(run.stderr().contains("retrying"));
+    let requests = fake.chat_bodies();
+    assert_eq!(requests.len(), 2);
+    assert_eq!(requests[0], requests[1]);
+    let lines: Vec<Value> = std::fs::read_to_string(&sandbox.sessions()[0])
+        .unwrap()
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect();
+    assert_eq!(lines.len(), 3);
+    assert_eq!(lines[2]["message"]["finish"], "done");
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn billing_errors_fail_with_a_hint_and_no_retry() {
     let fake = Fake::start().await;
     fake.script([Reply::Error {

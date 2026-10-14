@@ -46,6 +46,7 @@ struct Inner {
     paths: Vec<String>,
     chat_bodies: Vec<Value>,
     model_lists: VecDeque<String>,
+    agent_profile_lists: VecDeque<String>,
     model_delays: VecDeque<std::time::Duration>,
     overview_errors: VecDeque<u16>,
     overview_delays: VecDeque<std::time::Duration>,
@@ -127,6 +128,14 @@ impl Fake {
             .lock()
             .unwrap()
             .model_lists
+            .extend(lists.into_iter().map(|list| list.to_string()));
+    }
+
+    pub fn agent_profile_lists(&self, lists: impl IntoIterator<Item = Value>) {
+        self.inner
+            .lock()
+            .unwrap()
+            .agent_profile_lists
             .extend(lists.into_iter().map(|list| list.to_string()));
     }
 
@@ -212,12 +221,12 @@ async fn skill_index() -> impl IntoResponse {
     )
 }
 
-async fn agent_profiles() -> impl IntoResponse {
+async fn agent_profiles(State(state): State<Shared>) -> impl IntoResponse {
+    if let Some(catalog) = state.lock().unwrap().agent_profile_lists.pop_front() {
+        return axum::Json(serde_json::from_str::<Value>(&catalog).unwrap());
+    }
     axum::Json(json!({"object":"list","data":[
-        {"id":"direct","name":"Direct","description":"Concise answers and focused edits"},
-        {"id":"deep","name":"Deep","description":"Careful implementation and verification"},
-        {"id":"review","name":"Review","description":"Evidence-led code review"},
-        {"id":"jb-1","name":"jb-1","description":"jb-1"},
+        {"id":"jb-1","name":"jb-1","description":"GLM 5.3"},
         {"id":"jb-2","name":"CINDER","description":"CINDER"},
         {"id":"jb-3","name":"XYRO","description":"XYRO"}
     ]}))

@@ -25,7 +25,10 @@ impl Picker {
         let words = godmode::text();
         let mut rows = vec![Line::plain(format!("{}  {}", words.off, words.off_summary))];
         for profile in profiles {
-            let row = Line::styled(&profile.name, Style::fg("accent"));
+            let mut row = Line::styled(&profile.name, Style::fg("accent"));
+            if !profile.description.is_empty() && profile.description != profile.name {
+                row.push(format!("  ({})", profile.description), Style::fg("muted"));
+            }
             ids.push(Some(profile.id));
             rows.push(row);
         }

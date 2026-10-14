@@ -84,9 +84,9 @@ mod tests {
     }
 
     #[test]
-    fn local_workspace_is_the_default_origin() {
-        assert_eq!(CATALOG.origins["api"].url, "http://127.0.0.1:8080");
-        assert_eq!(CATALOG.origins["chat"].url, "http://127.0.0.1:3000");
+    fn hosted_service_is_the_default_origin() {
+        assert_eq!(CATALOG.origins["api"].url, "https://api.palepale.tech");
+        assert_eq!(CATALOG.origins["chat"].url, "https://palepale.tech");
     }
 
     #[test]

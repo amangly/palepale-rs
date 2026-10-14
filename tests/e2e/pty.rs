@@ -23,6 +23,45 @@ const POLL: Duration = Duration::from_millis(50);
 const KEY_GAP: Duration = Duration::from_millis(30);
 
 #[tokio::test(flavor = "multi_thread")]
+async fn model_cooldown_retries_in_the_open_terminal_and_can_be_cancelled() {
+    let fake = Fake::start().await;
+    fake.script([
+        Reply::Error {
+            status: 503,
+            kind: "model_busy",
+            retry_after: Some(1),
+        },
+        Reply::sse("hello.sse"),
+        Reply::Error {
+            status: 503,
+            kind: "model_busy",
+            retry_after: Some(59),
+        },
+    ]);
+    let sandbox = Sandbox::default();
+    let url = fake.url.clone();
+    let recorded = fake.clone();
+    tokio::task::spawn_blocking(move || {
+        let mut session = Session::start_sized(&sandbox, &url, Some(ENV_KEY), &[], 30, 100, false);
+        session.wait_for("palepale v");
+        session.type_text("hello");
+        session.send("\r");
+        session.wait_for("Hello there!");
+        assert_eq!(recorded.chat_bodies().len(), 2);
+        session.type_text("hello again");
+        session.send("\r");
+        session.wait_for("This model needs a moment");
+        session.send("\x03");
+        session.wait_gone("This model needs a moment");
+        session.send("\x04");
+        assert!(session.wait_exit());
+    })
+    .await
+    .unwrap();
+    assert_eq!(fake.chat_bodies().len(), 3);
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn discovered_mcp_prompt_slash_commands_resolve_arguments_before_sending() {
     let fake = Fake::start().await;
     fake.script([Reply::sse("hello.sse")]);
@@ -1376,17 +1415,11 @@ async fn slash_godmode_selects_server_profile_and_clears_it() {
         s.type_text("/godmode");
         s.send("\r");
         s.wait_for("╭ Coding profile");
-        s.wait_for("Deep");
+        s.wait_for("jb-1  (GLM 5.3)");
         s.wait_for("CINDER");
         s.wait_for("XYRO");
         s.send("\x1b[B");
-        s.wait_for("│ › Direct");
-        s.send("\x1b[B");
-        s.wait_for("│ › Deep");
-        s.send("\x1b[B");
-        s.wait_for("│ › Review");
-        s.send("\x1b[B");
-        s.wait_for("│ › jb-1");
+        s.wait_for("│ › jb-1  (GLM 5.3)");
         s.send("\x1b[B");
         s.wait_for("│ › CINDER");
         s.send("\r");
@@ -1408,6 +1441,30 @@ async fn slash_godmode_selects_server_profile_and_clears_it() {
     let requests = fake.chat_bodies();
     assert_eq!(requests[0]["agent_profile"], "jb-2");
     assert!(requests[1].get("agent_profile").is_none());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn slash_godmode_refetches_edited_admin_labels() {
+    let fake = Fake::start().await;
+    fake.agent_profile_lists([
+        serde_json::json!({"data":[{"id":"jb-1","name":"jb-1","description":"GLM 5.3"}]}),
+        serde_json::json!({"data":[{"id":"jb-1","name":"GLM","description":"Updated in admin"}]}),
+    ]);
+    in_session(&fake, Sandbox::default(), Some(ENV_KEY), |s| {
+        s.type_text("/godmode");
+        s.send("\r");
+        s.wait_for("jb-1  (GLM 5.3)");
+        s.send("\x1b");
+        s.wait_gone("╭ Coding profile");
+        s.type_text("/godmode");
+        s.send("\r");
+        s.wait_for("GLM  (Updated in admin)");
+        s.send("\x1b[B");
+        s.send("\r");
+        s.wait_for("Coding profile: jb-1");
+    })
+    .await;
+    assert_eq!(fake.hits("/v1/agent-profiles"), 2);
 }
 
 #[tokio::test(flavor = "multi_thread")]
