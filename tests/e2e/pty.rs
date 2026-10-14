@@ -1444,6 +1444,30 @@ async fn slash_godmode_selects_server_profile_and_clears_it() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn slash_godmode_refetches_edited_admin_labels() {
+    let fake = Fake::start().await;
+    fake.agent_profile_lists([
+        serde_json::json!({"data":[{"id":"jb-1","name":"jb-1","description":"GLM 5.3"}]}),
+        serde_json::json!({"data":[{"id":"jb-1","name":"GLM","description":"Updated in admin"}]}),
+    ]);
+    in_session(&fake, Sandbox::default(), Some(ENV_KEY), |s| {
+        s.type_text("/godmode");
+        s.send("\r");
+        s.wait_for("jb-1  (GLM 5.3)");
+        s.send("\x1b");
+        s.wait_gone("╭ Coding profile");
+        s.type_text("/godmode");
+        s.send("\r");
+        s.wait_for("GLM  (Updated in admin)");
+        s.send("\x1b[B");
+        s.send("\r");
+        s.wait_for("Coding profile: jb-1");
+    })
+    .await;
+    assert_eq!(fake.hits("/v1/agent-profiles"), 2);
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn choosing_a_model_keeps_refresh_responsive_and_uses_server_reasoning() {
     let fake = Fake::start().await;
     fake.model_delays([Duration::ZERO, Duration::from_secs(2)]);
