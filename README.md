@@ -1,4 +1,4 @@
-# Palepale-rs
+# Palepale
 
 <p align="center"><img src="data/palepale-logo.svg" alt="Palepale logo" width="160"></p>
 
