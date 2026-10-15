@@ -33,12 +33,5 @@ pub async fn load(api: &Api) -> Result<Vec<Profile>, ApiError> {
             &crate::commands::godmode::text().no_profiles,
         )
     })?;
-    if listing.data.is_empty() {
-        return Err(ErrorInfo::local(
-            "empty_profile_catalog",
-            &crate::commands::godmode::text().no_profiles,
-        )
-        .into());
-    }
     Ok(listing.data)
 }
