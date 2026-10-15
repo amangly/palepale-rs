@@ -31,13 +31,26 @@ pub enum Entry {
         ts: Timestamp,
         message: Message,
     },
+    /// The selected branch and frontend settings; older message records stay untouched.
+    State {
+        #[serde(default)]
+        head: Option<String>,
+        #[serde(default)]
+        model: String,
+        #[serde(default)]
+        mode: String,
+        #[serde(default)]
+        effort: Option<String>,
+        #[serde(default)]
+        agent_profile: Option<String>,
+        #[serde(default)]
+        system_prompt: String,
+    },
 }
 
-/// Short random ids, readable in a file.
-/// CEILING: 32 random bits, ~1% chance of a repeat in a 9k-entry file. Upgrade: a per-file
-/// counter or u64 once a reader follows parents.
+/// 128 random bits; old eight-character IDs remain readable.
 pub fn new_id() -> String {
-    format!("{:08x}", fastrand::u32(..))
+    format!("{:032x}", fastrand::u128(..))
 }
 
 #[cfg(test)]

@@ -33,6 +33,19 @@ pub async fn run(
     prompt: Vec<Part>,
 ) -> Outcome {
     let cancel = shared.begin_run();
+    let state = crate::session::store::SavedState {
+        model: cx.model.id.clone(),
+        mode: shared.mode().id.clone(),
+        effort: transcript.state.effort.clone(),
+        agent_profile: shared.agent_profile(),
+        system_prompt: transcript.state.system_prompt.clone(),
+    };
+    if let Err(error) = transcript.save_state(state) {
+        (cx.emit)(AgentEvent::Unsaved {
+            path: error.path.display().to_string(),
+            error: error.error,
+        });
+    }
     let mut parts = with_reminder(cx, shared, prompt);
     if !crate::commands::discovered::expand_prompts(cx, shared, &cancel, &mut parts).await {
         record(cx, transcript, Message::User { parts });
@@ -110,6 +123,20 @@ pub async fn run(
             }
             let registry = cx.tools.snapshot();
             let tools = registry.wire();
+
+            if let Some(instructions) =
+                crate::agent::instructions::current(&cx.app.paths, &transcript.messages)
+                && crate::skills::last_catalog(&transcript.messages, "<active_instructions>")
+                    != Some(&instructions)
+            {
+                record(
+                    cx,
+                    transcript,
+                    Message::User {
+                        parts: vec![Part::Reminder { text: instructions }],
+                    },
+                );
+            }
 
             let messages = context::build(&transcript.messages);
             let agent_profile = shared.agent_profile();
@@ -258,6 +285,10 @@ fn with_reminder(cx: &RunCtx<'_>, shared: &Shared, mut parts: Vec<Part>) -> Vec<
         Some(Reminder::Left { now }) => {
             Some(fill(&model_text::get().mode_left, &[("mode", &now.label)]))
         }
+        Some(Reminder::Restored { now }) => Some(fill(
+            &model_text::get().mode_restored,
+            &[("mode", &now.label)],
+        )),
         None => None,
     };
     if let Some(text) = text {
@@ -351,9 +382,12 @@ mod tests {
                     output_per_1m_usd: 2.0,
                 },
                 capabilities: Capabilities {
+                    streaming: true,
                     tool_calling: true,
                     ..Capabilities::default()
                 },
+                input_modalities: None,
+                capability_source: None,
                 reasoning_efforts: None,
                 default_reasoning_effort: None,
             };

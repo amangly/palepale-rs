@@ -8,14 +8,13 @@ use std::pin::Pin;
 use std::process::ExitCode;
 use std::time::Instant;
 
-use anyhow::anyhow;
 use futures_util::future::BoxFuture;
 use futures_util::stream::FuturesUnordered;
 use futures_util::{FutureExt, StreamExt};
 use tokio::sync::mpsc;
 
 use crate::agent::event::{AgentEvent, Outcome};
-use crate::agent::message::{Part, Usage};
+use crate::agent::message::{Message, Part, Usage};
 use crate::agent::run::{self, RunCtx};
 use crate::agent::state::Shared;
 use crate::agent::system_prompt;
@@ -49,6 +48,7 @@ use crate::tui::paste::Burst;
 use crate::tui::picker::{self, Picker};
 use crate::tui::queue::{self, Kind};
 use crate::tui::screen::Screen;
+use crate::tui::sessions as session_picker;
 use crate::tui::status::{self, Progress};
 use crate::tui::toast::Toast;
 use crate::tui::view::View;
@@ -73,6 +73,7 @@ enum Step<'a> {
     Job(BoxFuture<'a, Done>),
     /// Put the conversation away and start a fresh one.
     NewConversation,
+    ResumeSession(String),
     /// Run beside input: a session command, or what one of them asked for.
     Work(BoxFuture<'a, Work>),
 }
@@ -84,20 +85,31 @@ enum Done {
     Extensions(extension_ui::Done),
 }
 
-pub async fn run(app: &App, initial: Option<String>) -> anyhow::Result<ExitCode> {
+pub async fn run(
+    app: &App,
+    initial: Option<String>,
+    start: &crate::session::Start,
+) -> anyhow::Result<ExitCode> {
     let catalog = models::load(app, true).await;
+    let transcript = Transcript::open(&app.paths, &start.selection)?;
     // An explicit model must match the configured backend catalog.
     let model = if app.api.is_configured() && !catalog.models.is_empty() {
-        Some(catalog.selected(&app.settings.model)?.clone())
+        Some(
+            catalog
+                .selected(start.model(app, &transcript.state))?
+                .clone(),
+        )
     } else {
         None
     };
-    let mode = mode::get(&app.settings.mode).ok_or_else(|| anyhow!("mode was validated"))?;
+    let mode = start.mode(app, &transcript.state)?;
     let registry = Registry::builtin(app);
-    let store = Store::create(&app.paths);
-    let session_file = store.path.display().to_string();
-    let transcript = Transcript::new(Some(store));
+    let session_file = transcript.file().display().to_string();
     let shared = Shared::new(mode);
+    shared.set_agent_profile(transcript.state.agent_profile.clone());
+    if !matches!(start.selection, crate::session::store::Selection::New) {
+        shared.resumed();
+    }
     let (tx, rx) = mpsc::unbounded_channel();
     let emit = move |event: AgentEvent| {
         let _ = tx.send(event);
@@ -109,6 +121,13 @@ pub async fn run(app: &App, initial: Option<String>) -> anyhow::Result<ExitCode>
 
     let raw = term::Raw::fullscreen()?;
     let mut tui = Tui::new(app, catalog, model, &shared, initial, session_file);
+    tui.selected_prompt = start.prompt(app, &transcript.state).to_owned();
+    if let Some(model) = &tui.model {
+        tui.system = system_prompt::selected(app, model, &tui.selected_prompt)?;
+    }
+    if !matches!(start.selection, crate::session::store::Selection::New) {
+        tui.restore_feed(&transcript);
+    }
     // Startup already finished updating; consume its saved notice once.
     if let Ok(exe) = crate::io::proc::current_exe() {
         crate::io::fs::sweep_replaced(&exe);
@@ -141,6 +160,8 @@ struct Tui<'a> {
     /// The model for the next turn, and the system prompt written for it.
     model: Option<Model>,
     system: String,
+    selected_prompt: String,
+    required_inputs: Vec<Message>,
     shared: &'a Shared,
     screen: Screen,
     feed: Feed,
@@ -159,6 +180,7 @@ struct Tui<'a> {
     /// The `/models` card, likewise.
     picker: Option<Picker>,
     godmode_picker: Option<godmode_picker::Picker>,
+    sessions_picker: Option<session_picker::Picker>,
     dashboard: Option<Dashboard>,
     dashboard_id: u64,
     session_usage: Usage,
@@ -205,6 +227,8 @@ impl<'a> Tui<'a> {
                 .map(|model| system_prompt::build(&app.paths, model))
                 .unwrap_or_default(),
             model,
+            selected_prompt: app.settings.system_prompt.clone(),
+            required_inputs: Vec::new(),
             shared,
             screen: Screen::new(width, height, theme::get(), term::color_depth()),
             feed: Feed::new(),
@@ -219,6 +243,7 @@ impl<'a> Tui<'a> {
             login: None,
             picker: None,
             godmode_picker: None,
+            sessions_picker: None,
             dashboard: None,
             dashboard_id: 0,
             session_usage: Usage::default(),
@@ -311,11 +336,14 @@ impl<'a> Tui<'a> {
         let store = Store::create(&self.app.paths);
         let put_away = std::mem::replace(&mut self.session_file, store.path.display().to_string());
         self.shared.start_over();
+        self.required_inputs.clear();
         // AGENTS.md may have changed (/init writes it), and the prompt is read at a start.
         self.system = self
             .model
             .as_ref()
-            .map(|model| system_prompt::build(&self.app.paths, model))
+            .map(|model| {
+                system_prompt::selected(self.app, model, &self.selected_prompt).unwrap_or_default()
+            })
             .unwrap_or_default();
         self.feed = Feed::new();
         let welcome = self.welcome();
@@ -337,6 +365,53 @@ impl<'a> Tui<'a> {
             None => self.feed.notice(&text.new_conversation, "muted"),
         }
         Transcript::new(Some(store))
+    }
+
+    fn restore_feed(&mut self, transcript: &Transcript) {
+        self.feed = Feed::new();
+        self.feed.push(Block::Welcome(self.welcome()));
+        self.feed.restore(&transcript.messages);
+        self.feed.notice(
+            &template::fill(
+                &crate::session::text::get().resumed,
+                &[("id", &transcript.id())],
+            ),
+            "done",
+        );
+        self.required_inputs = crate::api::models::input_requirements(&transcript.messages);
+        self.session_usage = Usage::default();
+        self.session_requests = 0;
+        for message in &transcript.messages {
+            if let Message::Assistant(reply) = message
+                && let Some(usage) = reply.usage
+            {
+                self.session_requests += 1;
+                self.session_usage.input = self.session_usage.input.saturating_add(usage.input);
+                self.session_usage.output = self.session_usage.output.saturating_add(usage.output);
+                self.session_usage.cached = self.session_usage.cached.saturating_add(usage.cached);
+                self.session_usage.reasoning =
+                    self.session_usage.reasoning.saturating_add(usage.reasoning);
+                self.session_usage.cost_micros = self
+                    .session_usage
+                    .cost_micros
+                    .saturating_add(usage.cost_micros);
+                self.context_tokens = Some(usage.input);
+            }
+        }
+        self.cost_micros = self.session_usage.cost_micros;
+        self.view = View::default();
+    }
+
+    fn restore_draft(&mut self, parts: &[Part]) {
+        let draft = parts
+            .iter()
+            .filter_map(|part| match part {
+                Part::Text { text } => Some(text.as_str()),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        self.editor.set_text(&draft);
     }
 
     /// Runs until the user quits; returns what the session spent, in micro-dollars, and the
@@ -398,6 +473,7 @@ impl<'a> Tui<'a> {
                 (owned, _) = async { turn.as_mut().expect("guarded by the branch condition").await }, if turn.is_some() => {
                     turn = None;
                     transcript = Some(owned);
+                    self.required_inputs = crate::api::models::input_requirements(&transcript.as_ref().expect("restored").messages);
                     self.progress = None;
                     self.queue.clear();
                     let app = self.app;
@@ -444,6 +520,42 @@ impl<'a> Tui<'a> {
                         self.feed.notice(&ui::get().text.busy, "warn");
                         continue;
                     };
+                    let system =
+                        match system_prompt::selected(self.app, &model, &self.selected_prompt) {
+                            Ok(system) => system,
+                            Err(error) => {
+                                self.feed.notice(&error.to_string(), "error");
+                                self.restore_draft(&parts);
+                                transcript = Some(owned);
+                                continue;
+                            }
+                        };
+                    let mut proposed = crate::agent::context::build(&owned.messages);
+                    proposed.push(Message::User {
+                        parts: parts.clone(),
+                    });
+                    if let Some(text) =
+                        crate::agent::instructions::current(&self.app.paths, &proposed)
+                    {
+                        proposed.push(Message::User {
+                            parts: vec![Part::Reminder { text }],
+                        });
+                    }
+                    let proposed = crate::agent::context::build(&proposed);
+                    if let Err(error) = crate::api::preflight::check(&crate::api::chat::Turn {
+                        model: &model,
+                        system: &system,
+                        messages: &proposed,
+                        tools: &turns.tools.wire(),
+                        agent_profile: None,
+                    }) {
+                        self.feed.notice(&error.to_string(), "error");
+                        self.restore_draft(&parts);
+                        transcript = Some(owned);
+                        continue;
+                    }
+                    self.system = system;
+                    owned.state.system_prompt = self.selected_prompt.clone();
                     let progress = Progress::start(clock::instant(), self.last_verb, &mut self.rng);
                     self.last_verb = Some(progress.verb());
                     self.progress = Some(progress);
@@ -468,6 +580,69 @@ impl<'a> Tui<'a> {
                     Some(old) => transcript = Some(self.fresh(old)),
                     None => self.feed.notice(&ui::get().text.busy, "warn"),
                 },
+                Step::ResumeSession(id) => {
+                    if transcript.is_none() {
+                        self.feed.notice(&ui::get().text.busy, "warn");
+                        continue;
+                    }
+                    match Transcript::open(
+                        &self.app.paths,
+                        &crate::session::store::Selection::Id(id),
+                    ) {
+                        Ok(loaded) => {
+                            let start = crate::session::Start::default();
+                            let selected_prompt = start.prompt(self.app, &loaded.state).to_owned();
+                            let restored = self
+                                .catalog
+                                .selected(start.model(self.app, &loaded.state))
+                                .cloned();
+                            let restored_mode = start.mode(self.app, &loaded.state);
+                            match (restored, restored_mode) {
+                                (Ok(model), Ok(mode)) => match system_prompt::selected(
+                                    self.app,
+                                    &model,
+                                    &selected_prompt,
+                                ) {
+                                    Ok(system) => {
+                                        self.shared.start_over();
+                                        self.shared.set_mode(mode);
+                                        self.shared.resumed();
+                                        self.shared
+                                            .set_agent_profile(loaded.state.agent_profile.clone());
+                                        self.model = Some(model);
+                                        self.system = system;
+                                        self.selected_prompt = selected_prompt;
+                                        self.session_file = loaded.file().display().to_string();
+                                        self.restore_feed(&loaded);
+                                        self.queue.clear();
+                                        self.cards.clear();
+                                        transcript = Some(loaded);
+                                    }
+                                    Err(error) => self.feed.notice(&error.to_string(), "error"),
+                                },
+                                (Err(error), _) | (_, Err(error)) => {
+                                    self.feed.notice(&error.to_string(), "error")
+                                }
+                            }
+                        }
+                        Err(error) => self.feed.notice(&error.to_string(), "error"),
+                    }
+                }
+            }
+            if let Some(transcript) = transcript.as_mut() {
+                let state = crate::session::store::SavedState {
+                    model: self
+                        .model
+                        .as_ref()
+                        .map_or_else(String::new, |model| model.id.clone()),
+                    mode: self.shared.mode().id.clone(),
+                    effort: transcript.state.effort.clone(),
+                    agent_profile: self.shared.agent_profile(),
+                    system_prompt: self.selected_prompt.clone(),
+                };
+                if let Err(error) = transcript.save_state(state) {
+                    self.feed.notice(&error.error, "error");
+                }
             }
             // Closing a card drops whatever it was waiting on.
             if self.login.is_none() && self.forums.is_none() && self.extensions.is_none() {
@@ -545,6 +720,7 @@ impl<'a> Tui<'a> {
                 if self.extensions.is_none()
                     && (self.picker.is_some()
                         || self.godmode_picker.is_some()
+                        || self.sessions_picker.is_some()
                         || self.dashboard.is_some()) =>
             {
                 Step::Continue
@@ -577,6 +753,24 @@ impl<'a> Tui<'a> {
             Input::Key(key) if self.godmode_picker.is_some() => {
                 self.godmode_key(&key);
                 Step::Continue
+            }
+            Input::Key(key) if self.sessions_picker.is_some() => {
+                match self
+                    .sessions_picker
+                    .as_mut()
+                    .expect("guarded")
+                    .key(keymap::get().action(&key))
+                {
+                    session_picker::Step::Stay => Step::Continue,
+                    session_picker::Step::Close => {
+                        self.sessions_picker = None;
+                        Step::Continue
+                    }
+                    session_picker::Step::Resume(id) => {
+                        self.sessions_picker = None;
+                        Step::ResumeSession(id)
+                    }
+                }
             }
             Input::Key(key) if self.dashboard.is_some() => self.dashboard_key(&key),
             Input::Key(key) if !self.cards.is_empty() => {
@@ -839,6 +1033,10 @@ impl<'a> Tui<'a> {
         let Some(model) = self.catalog.get(id).cloned() else {
             return;
         };
+        if let Err(error) = model.preflight(&self.required_inputs, 0) {
+            self.feed.notice(&error.to_string(), "error");
+            return;
+        }
         self.replace_model(model);
         let text = template::fill(&ui::get().picker.switched, &[("model", id)]);
         self.feed.notice(&text, "done");
@@ -1128,6 +1326,16 @@ impl<'a> Tui<'a> {
                     ));
                 }
                 Effect::SetAgentProfile(id) => self.set_agent_profile(id),
+                Effect::SetSystemPrompt(id) => {
+                    self.selected_prompt = id;
+                }
+                Effect::PickSession => match crate::session::store::list(&self.app.paths) {
+                    Ok(sessions) => {
+                        self.sessions_picker = Some(session_picker::Picker::new(sessions))
+                    }
+                    Err(error) => self.feed.notice(&error.to_string(), "error"),
+                },
+                Effect::ResumeSession(id) => return Step::ResumeSession(id),
                 Effect::Login { number: None } => self.login = Some(Login::new()),
                 Effect::Login {
                     number: Some(number),
@@ -1252,6 +1460,8 @@ impl<'a> Tui<'a> {
         } else if let Some(picker) = &self.picker {
             Some(picker.render(width))
         } else if let Some(picker) = &self.godmode_picker {
+            Some(picker.render(width))
+        } else if let Some(picker) = &self.sessions_picker {
             Some(picker.render(width))
         } else if let Some(card) = &mut self.dashboard {
             Some(card.render(

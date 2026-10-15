@@ -23,6 +23,62 @@ const POLL: Duration = Duration::from_millis(50);
 const KEY_GAP: Duration = Duration::from_millis(30);
 
 #[tokio::test(flavor = "multi_thread")]
+async fn saved_session_picker_restores_history_and_its_writer_lock_at_64_columns() {
+    let fake = Fake::start().await;
+    fake.script([Reply::sse("hello.sse"), Reply::sse("hello.sse")]);
+    let sandbox = Sandbox::default();
+    sandbox
+        .run(
+            &fake.url,
+            &["--mode", "plan", "-p", "resume-marker"],
+            crate::WITH_KEY,
+        )
+        .await
+        .success();
+    let url = fake.url.clone();
+    tokio::task::spawn_blocking(move || {
+        let mut session = Session::start_sized(&sandbox, &url, Some(ENV_KEY), &[], 30, 64, false);
+        session.wait_for("palepale v");
+        session.type_text("/sessions");
+        session.send("\r");
+        session.wait_for("Saved sessions");
+        session.wait_for("resume-marker");
+        session.send("\r");
+        session.wait_gone("Saved sessions");
+        session.wait_for("PLAN");
+        session.wait_for("Hello there!");
+        let mut check = std::process::Command::new(crate::binary());
+        check
+            .args(["--continue", "-p", "must not run"])
+            .current_dir(sandbox.project.path())
+            .stdin(std::process::Stdio::null());
+        for name in CLEARED {
+            check.env_remove(name);
+        }
+        check.envs(launch_env(sandbox.home(), &url, Some(ENV_KEY)));
+        let refused = check.output().unwrap();
+        assert!(!refused.status.success());
+        assert!(String::from_utf8_lossy(&refused.stderr).contains("another process"));
+        session.type_text("follow-up-marker");
+        session.send("\r");
+        session.wait_for("follow-up-marker");
+        session.poll(WAIT, "the follow-up reply did not finish", |s| {
+            (s.contents().matches("Hello there!").count() >= 2).then_some(())
+        });
+        session.send("\x04");
+        assert!(session.wait_exit());
+    })
+    .await
+    .unwrap();
+    assert_eq!(fake.chat_bodies().len(), 2);
+    assert!(
+        fake.chat_bodies()[1]["messages"]
+            .to_string()
+            .contains("resume-marker")
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn model_cooldown_retries_in_the_open_terminal_and_can_be_cancelled() {
     let fake = Fake::start().await;
     fake.script([
@@ -1580,15 +1636,13 @@ async fn slash_init_asks_for_an_agents_md_that_the_next_conversation_reads() {
     })
     .await;
     let bodies = fake.chat_bodies();
-    let asked = bodies[0]["messages"]
-        .as_array()
-        .unwrap()
-        .last()
-        .unwrap()
-        .to_string();
+    let asked = bodies[0]["messages"].to_string();
     assert!(asked.contains("Write an AGENTS.md"), "{asked}");
-    let system = bodies[1]["messages"][0]["content"].to_string();
-    assert!(system.contains("Run make test before a push."), "{system}");
+    let current = bodies[1]["messages"].to_string();
+    assert!(
+        current.contains("Run make test before a push."),
+        "{current}"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]

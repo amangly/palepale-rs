@@ -17,9 +17,7 @@ use crate::api::models;
 use crate::app::App;
 use crate::io::term;
 use crate::limits;
-use crate::mode;
 use crate::permission::gate;
-use crate::session::store::Store;
 use crate::session::transcript::Transcript;
 use crate::text::shorten;
 use crate::tools::{self, Registry};
@@ -33,18 +31,29 @@ pub enum Format {
     Json,
 }
 
-pub async fn run(app: &App, prompt: String, format: Format) -> anyhow::Result<ExitCode> {
+pub async fn run(
+    app: &App,
+    prompt: String,
+    format: Format,
+    start: &crate::session::Start,
+) -> anyhow::Result<ExitCode> {
     if !app.api.is_configured() {
         anyhow::bail!(crate::backend::text().unavailable.clone());
     }
     let catalog = models::load(app, true).await;
+    let mut transcript = Transcript::open(&app.paths, &start.selection)?;
     // An explicit model must match the configured backend catalog.
-    let model = catalog.selected(&app.settings.model)?;
-    let mode = mode::get(&app.settings.mode).ok_or_else(|| anyhow!("mode was validated"))?;
-    let system = system_prompt::build(&app.paths, model);
+    let model = catalog.selected(start.model(app, &transcript.state))?;
+    let mode = start.mode(app, &transcript.state)?;
+    let selected_prompt = start.prompt(app, &transcript.state).to_owned();
+    let system = system_prompt::selected(app, model, &selected_prompt)?;
     let registry = Registry::builtin(app);
-    let mut transcript = Transcript::new(Some(Store::create(&app.paths)));
     let shared = Shared::new(mode);
+    shared.set_agent_profile(transcript.state.agent_profile.clone());
+    if !matches!(start.selection, crate::session::store::Selection::New) {
+        shared.resumed();
+    }
+    transcript.state.system_prompt = selected_prompt;
     let plan_file = tools::plan_file(&app.paths, &transcript.id());
 
     let out = Printer {
@@ -70,6 +79,24 @@ pub async fn run(app: &App, prompt: String, format: Format) -> anyhow::Result<Ex
         std::future::pending::<()>().await;
     };
     let prompt = vec![Part::Text { text: prompt }];
+    let mut proposed = transcript.messages.clone();
+    proposed.push(crate::agent::message::Message::User {
+        parts: prompt.clone(),
+    });
+    if let Some(text) = crate::agent::instructions::current(&app.paths, &proposed) {
+        proposed.push(crate::agent::message::Message::User {
+            parts: vec![Part::Reminder { text }],
+        });
+    }
+    let proposed = crate::agent::context::build(&proposed);
+    crate::api::preflight::check(&crate::api::chat::Turn {
+        model,
+        system: &system,
+        messages: &proposed,
+        tools: &registry.wire(),
+        agent_profile: None,
+    })
+    .map_err(|error| anyhow!(error.to_string()))?;
     let outcome = tokio::select! {
         outcome = run::run(&cx, &mut transcript, &shared, prompt) => outcome,
         () = interrupt => unreachable!("the interrupt future never finishes"),
@@ -129,15 +156,28 @@ impl Printer<'_> {
                 self.note(&format!("  ✗ {}", shorten::line(first, NOTE_CHARS)));
             }
             AgentEvent::Prompt {
-                prompt: Prompt::Permission { tool, asks, .. },
+                prompt:
+                    Prompt::Permission {
+                        tool,
+                        asks,
+                        confirm,
+                        ..
+                    },
                 call_id,
                 ..
             } => {
                 self.declined.lock().unwrap().push(call_id.clone());
-                self.note(&format!(
-                    "  ✗ {tool} needs permission ({}); rerun with --mode auto to allow it",
-                    shorten::line(&gate::describe(asks), NOTE_CHARS)
-                ));
+                let what = shorten::line(&gate::describe(asks), NOTE_CHARS);
+                if *confirm {
+                    self.note(&crate::text::template::fill(
+                        &crate::session::text::get().confirmation_required,
+                        &[("tool", tool), ("what", &what)],
+                    ));
+                } else {
+                    self.note(&format!(
+                        "  ✗ {tool} needs permission ({what}); rerun with --mode auto to allow it"
+                    ));
+                }
             }
             AgentEvent::Retry {
                 delay_ms, error, ..

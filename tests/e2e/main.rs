@@ -10,6 +10,7 @@ mod models;
 mod offline;
 mod pty;
 mod scenarios;
+mod sessions;
 mod signup;
 mod update;
 
@@ -99,6 +100,10 @@ impl Sandbox {
                 found.push(file.path());
             }
         }
+        found.retain(|path| {
+            path.extension()
+                .is_some_and(|extension| extension == "jsonl")
+        });
         found
     }
 }

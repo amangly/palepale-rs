@@ -1,0 +1,18 @@
+list_title = "Saved sessions"
+empty = "No saved sessions for this project."
+picker_hint = "↑↓ choose · Enter resume · Esc close"
+resumed = "Resumed {id}. Completed tools will not run again."
+locked = "This session is open in another process. Close it there before resuming."
+missing = "No saved session matches `{id}` in this project. Use palepale sessions to list them."
+different_project = "This session belongs to another project. Open its original folder to resume."
+interrupted = "The previous process stopped before recording this tool's result. Its outcome is unknown. Do not repeat this external action without explicit confirmation; inspect the current state first."
+confirmation_required = "{tool} requires direct confirmation ({what}); rerun interactively to approve it."
+history_error = "Cannot resume this session: {error}"
+
+[max_bytes]
+value = 67108864
+reason = "Bound JSONL reads and graph reconstruction to 64 MiB per session."
+
+[list_count]
+value = 100
+reason = "Keep the session picker and terminal output bounded."

@@ -1,0 +1,3 @@
+name = "sessions"
+summary = "List and resume saved conversations for this project"
+usage = "sessions [id]"

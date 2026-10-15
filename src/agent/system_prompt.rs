@@ -5,27 +5,14 @@ use std::sync::LazyLock;
 use serde::Deserialize;
 
 use crate::api::models::Model;
+use crate::io;
 use crate::paths::Paths;
 use crate::text::template;
-use crate::{io, limits};
 
 const BASE: &str = include_str!("../../data/prompts/system.md");
 const CHAT_ONLY: &str = include_str!("../../data/prompts/chat_only.md");
 const ENV: &str = include_str!("../../data/prompts/env.md");
 const EXTENSIONS: &str = include_str!("../../data/prompts/extensions.md");
-
-static PROJECT: LazyLock<Project> = LazyLock::new(|| {
-    toml::from_str(include_str!("../../data/prompts/project.toml"))
-        .expect("data/prompts/project.toml is checked by tests")
-});
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct Project {
-    files: Vec<String>,
-    frame: String,
-    cut: String,
-}
 
 static FORUMS: LazyLock<Forums> = LazyLock::new(|| {
     toml::from_str(include_str!("../../data/prompts/forums.toml"))
@@ -45,6 +32,25 @@ const REMINDERS: &[(&str, &str)] =
     &[("plan_mode", include_str!("../../data/prompts/plan_mode.md"))];
 
 pub fn build(paths: &Paths, model: &Model) -> String {
+    build_with_base(
+        paths,
+        model,
+        if model.capabilities.tool_calling {
+            BASE
+        } else {
+            CHAT_ONLY
+        },
+    )
+}
+
+pub fn selected(app: &crate::app::App, model: &Model, id: &str) -> anyhow::Result<String> {
+    match crate::commands::prompt::body(app, id)? {
+        Some(base) => Ok(build_with_base(&app.paths, model, &base)),
+        None => Ok(build(&app.paths, model)),
+    }
+}
+
+fn build_with_base(paths: &Paths, model: &Model, base: &str) -> String {
     let cwd = paths.project.display().to_string();
     let date = io::clock::today();
     let env = template::fill(
@@ -57,15 +63,7 @@ pub fn build(paths: &Paths, model: &Model) -> String {
         ],
     );
     let parts = [
-        Some(
-            if model.capabilities.tool_calling {
-                BASE
-            } else {
-                CHAT_ONLY
-            }
-            .trim_end()
-            .to_owned(),
-        ),
+        Some(base.trim_end().to_owned()),
         model.capabilities.tool_calling.then(|| {
             template::fill(
                 EXTENSIONS,
@@ -88,7 +86,6 @@ pub fn build(paths: &Paths, model: &Model) -> String {
             .to_owned()
         }),
         forums(paths),
-        project(paths),
         Some(env.trim_end().to_owned()),
     ];
     parts.into_iter().flatten().collect::<Vec<_>>().join("\n\n")
@@ -124,32 +121,6 @@ fn forums(paths: &Paths) -> Option<String> {
     )
 }
 
-/// The first instructions file the project has, framed, within `agent.instructions_bytes`.
-fn project(paths: &Paths) -> Option<String> {
-    let (file, text) = PROJECT.files.iter().find_map(|file| {
-        let text = io::fs::read_string(&paths.project.join(file))
-            .ok()
-            .flatten()?;
-        Some((file, text)).filter(|(_, t)| !t.trim().is_empty())
-    })?;
-    let max = limits::get().agent.instructions_bytes.value;
-    let mut text = text.trim_end().to_owned();
-    if text.len() > max {
-        let end = (0..=max)
-            .rev()
-            .find(|&i| text.is_char_boundary(i))
-            .unwrap_or(0);
-        text.truncate(end);
-        let cut = template::fill(&PROJECT.cut, &[("file", file), ("max", &max.to_string())]);
-        text = format!("{text}\n{cut}");
-    }
-    Some(
-        template::fill(&PROJECT.frame, &[("file", file), ("text", &text)])
-            .trim()
-            .to_owned(),
-    )
-}
-
 pub fn reminder(name: &str) -> Option<&'static str> {
     REMINDERS
         .iter()
@@ -175,6 +146,8 @@ mod tests {
                 output_per_1m_usd: 2.0,
             },
             capabilities: Capabilities::default(),
+            input_modalities: None,
+            capability_source: None,
             reasoning_efforts: None,
             default_reasoning_effort: None,
         }
@@ -194,36 +167,6 @@ mod tests {
         assert!(prompt.contains(".agents/skills") && prompt.contains("startup_timeout_secs"));
         model.capabilities.tool_calling = false;
         assert!(!build(&paths, &model).contains("<palepale_setup>"));
-    }
-
-    #[test]
-    fn the_projects_instructions_join_the_prompt_before_the_environment() {
-        let root = tempfile::tempdir().unwrap();
-        let paths = Paths::at(root.path().join("home"), root.path().join("proj"));
-        let write = |name: &str, text: &str| {
-            io::fs::write_atomic(
-                &paths.project.join(name),
-                text.as_bytes(),
-                io::fs::Access::Shared,
-            )
-            .unwrap();
-        };
-        let bare = build(&paths, &model());
-        assert!(!bare.contains("<project-instructions"));
-        write("CLAUDE.md", "Use tabs.");
-        assert!(build(&paths, &model()).contains("file=\"CLAUDE.md\">\nUse tabs."));
-        write("AGENTS.md", "Run make test.");
-        let prompt = build(&paths, &model());
-        assert!(
-            prompt.contains("Run make test.") && !prompt.contains("Use tabs."),
-            "{prompt}"
-        );
-        assert!(prompt.find("Run make test.") < prompt.find("<env>"));
-        let max = limits::get().agent.instructions_bytes.value;
-        write("AGENTS.md", &"é".repeat(max));
-        let prompt = build(&paths, &model());
-        assert!(prompt.contains("is left out"), "the cut is not said");
-        assert!(prompt.len() < bare.len() + max + 1000);
     }
 
     #[test]

@@ -7,7 +7,11 @@ use crate::agent::message::{Assistant, Finish, Message, Part, ToolResult};
 use crate::agent::model_text;
 
 pub fn build(messages: &[Message]) -> Vec<Message> {
-    let catalogs = ["<available_skills>", "<mcp_servers>"];
+    let catalogs = [
+        "<available_skills>",
+        "<mcp_servers>",
+        "<active_instructions>",
+    ];
     let latest: Vec<_> = catalogs.iter().map(|prefix| messages.iter().rposition(|m| matches!(m,
         Message::User { parts } if parts.iter().any(|p| matches!(p, Part::Reminder { text } if text.starts_with(prefix)))
     ))).collect();

@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use crate::agent::message::Message;
-use crate::session::store::Store;
+use crate::session::store::{SavedState, Selection, Store};
 
 /// The conversation in memory, mirrored to its session file when it has one.
 pub struct Transcript {
@@ -9,6 +9,8 @@ pub struct Transcript {
     store: Option<Store>,
     /// A write failed; the file stopped being written and no longer holds everything.
     unsaved: bool,
+    pub state: SavedState,
+    written_state: Option<SavedState>,
 }
 
 /// Why the session file stopped being written.
@@ -23,7 +25,69 @@ impl Transcript {
             messages: Vec::new(),
             store,
             unsaved: false,
+            state: SavedState::default(),
+            written_state: None,
         }
+    }
+
+    pub fn open(paths: &crate::paths::Paths, selection: &Selection) -> anyhow::Result<Self> {
+        if matches!(selection, Selection::New) {
+            return Ok(Self::new(Some(Store::create(paths))));
+        }
+        let (store, loaded) = Store::open(paths, selection)?;
+        let mut transcript = Self {
+            messages: loaded.messages,
+            store: Some(store),
+            unsaved: false,
+            written_state: Some(loaded.state.clone()),
+            state: loaded.state,
+        };
+        // Recovery records uncertain outcomes; it never calls a tool again.
+        let mut pending = Vec::new();
+        for message in &transcript.messages {
+            match message {
+                Message::Assistant(reply) => pending.extend(reply.tool_calls().cloned()),
+                Message::Tool(result) => pending.retain(|call| call.id != result.call_id),
+                _ => {}
+            }
+        }
+        for call in pending {
+            transcript
+                .push(Message::Tool(crate::agent::message::ToolResult {
+                    call_id: call.id,
+                    name: call.name,
+                    content: crate::session::text::get().interrupted.clone(),
+                    attachments: Vec::new(),
+                    is_error: true,
+                    details: None,
+                    asks: Vec::new(),
+                    refused: Some("interrupted".into()),
+                }))
+                .map_err(|failure| anyhow::anyhow!(failure.error))?;
+        }
+        Ok(transcript)
+    }
+
+    pub fn save_state(&mut self, state: SavedState) -> Result<(), Unsaved> {
+        self.state = state;
+        if self.messages.is_empty()
+            || self.unsaved
+            || self.written_state.as_ref() == Some(&self.state)
+        {
+            return Ok(());
+        }
+        let result = match &mut self.store {
+            Some(store) => store.save_state(&self.state).map_err(|error| Unsaved {
+                path: store.path.clone(),
+                error: format!("{error:#}"),
+            }),
+            None => Ok(()),
+        };
+        self.unsaved |= result.is_err();
+        if result.is_ok() {
+            self.written_state = Some(self.state.clone());
+        }
+        result
     }
 
     /// The session file, once it exists and while it holds the whole conversation.
@@ -41,6 +105,10 @@ impl Transcript {
             .map_or_else(|| "unsaved".to_owned(), Store::stem)
     }
 
+    pub fn file(&self) -> &Path {
+        &self.store.as_ref().expect("stored transcript").path
+    }
+
     /// Keeps `message`, then writes it. The first failed write is returned and ends saving:
     /// later messages stay in memory only, so a full disk costs the file, not the conversation.
     pub fn push(&mut self, message: Message) -> Result<(), Unsaved> {
@@ -53,7 +121,8 @@ impl Transcript {
         };
         self.unsaved |= written.is_err();
         self.messages.push(message);
-        written
+        written?;
+        self.save_state(self.state.clone())
     }
 }
 

@@ -45,6 +45,8 @@ The server keeps profile instructions private. The CLI receives the profile ID, 
 | Command | Action |
 | --- | --- |
 | `/models` | Choose a model |
+| `/sessions` | Resume a saved conversation |
+| `/prompt` | List local system prompts and choose a default |
 | `/godmode` | Choose a coding profile |
 | `/godmode off` | Clear the profile |
 | `/status` | View session and usage |
@@ -55,6 +57,11 @@ The server keeps profile instructions private. The CLI receives the profile ID, 
 | `Ctrl+D` | Quit |
 
 New sessions start in AUTO. Use `/mode` or `Shift+Tab` to switch to MANUAL or PLAN.
+
+Use `palepale --continue` to reopen the latest project conversation, or
+`palepale --resume <id>` for a specific one. Local prompt files and `/godmode`
+profiles have separate selections. See [sessions and prompts](docs/reliable-sessions.md)
+for recovery, instruction scopes, and model compatibility checks.
 
 ## MCP and skills
 

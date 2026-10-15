@@ -36,6 +36,14 @@ struct Cli {
     #[arg(long)]
     json: bool,
 
+    /// Resume the latest saved conversation for this project.
+    #[arg(long = "continue", conflicts_with = "resume")]
+    continue_session: bool,
+
+    /// Resume a saved session by its ID (see palepale sessions).
+    #[arg(long)]
+    resume: Option<String>,
+
     #[command(subcommand)]
     command: Option<Sub>,
 }
@@ -93,6 +101,17 @@ pub async fn run() -> ExitCode {
 }
 
 async fn dispatch(cli: Cli) -> anyhow::Result<ExitCode> {
+    let start = crate::session::Start {
+        selection: if let Some(id) = cli.resume {
+            crate::session::store::Selection::Id(id)
+        } else if cli.continue_session {
+            crate::session::store::Selection::Latest
+        } else {
+            crate::session::store::Selection::New
+        },
+        model_override: cli.model.is_some(),
+        mode_override: cli.mode.is_some(),
+    };
     let flags = Overrides {
         model: cli.model,
         mode: cli.mode,
@@ -135,6 +154,9 @@ async fn dispatch(cli: Cli) -> anyhow::Result<ExitCode> {
         }
     }
     if let Some(command) = command {
+        if !matches!(start.selection, crate::session::store::Selection::New) {
+            bail!("resume flags cannot be combined with a CLI command");
+        }
         if command.spec().requires_backend && !app.api.is_configured() {
             bail!(
                 "{} {}",
@@ -161,7 +183,7 @@ async fn dispatch(cli: Cli) -> anyhow::Result<ExitCode> {
     // A person at a terminal gets the session, with any words already typed in for review.
     if session {
         let initial = (!prompt.trim().is_empty()).then_some(prompt);
-        return tui::run(&app, initial).await;
+        return tui::run(&app, initial, &start).await;
     }
 
     let mut prompt = prompt;
@@ -176,7 +198,7 @@ async fn dispatch(cli: Cli) -> anyhow::Result<ExitCode> {
         bail!("nothing to send; pass a prompt or pipe one in");
     }
     let format = if cli.json { Format::Json } else { Format::Text };
-    print::run(&app, prompt, format).await
+    print::run(&app, prompt, format, &start).await
 }
 
 /// Shows what the project's config would loosen and asks whether to trust the folder.

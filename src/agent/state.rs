@@ -3,7 +3,7 @@
 
 use std::collections::{HashMap, VecDeque};
 use std::sync::Mutex;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 use tokio::sync::oneshot;
 use tokio_util::sync::CancellationToken;
@@ -19,7 +19,12 @@ pub enum Reminder {
     /// A mode with instructions of its own.
     Entered(&'static Mode),
     /// Out of a mode with instructions, into one without, so they no longer hold.
-    Left { now: &'static Mode },
+    Left {
+        now: &'static Mode,
+    },
+    Restored {
+        now: &'static Mode,
+    },
 }
 
 pub struct Shared {
@@ -33,6 +38,7 @@ pub struct Shared {
     agent_profile: Mutex<Option<String>>,
     /// The mode the model was last told about.
     reminded: Mutex<Option<&'static Mode>>,
+    restored: AtomicBool,
     pub files: Files,
 }
 
@@ -47,6 +53,7 @@ impl Shared {
             mode: Mutex::new(mode),
             agent_profile: Mutex::default(),
             reminded: Mutex::default(),
+            restored: AtomicBool::new(false),
             files: Files::default(),
         }
     }
@@ -107,6 +114,14 @@ impl Shared {
     pub fn take_reminder(&self) -> Option<Reminder> {
         let mode = self.mode();
         let mut reminded = self.reminded.lock().unwrap();
+        if self.restored.swap(false, Ordering::AcqRel) {
+            *reminded = Some(mode);
+            return Some(if mode.reminder.is_some() {
+                Reminder::Entered(mode)
+            } else {
+                Reminder::Restored { now: mode }
+            });
+        }
         if reminded.is_some_and(|m| m.id == mode.id) {
             return None;
         }
@@ -127,6 +142,12 @@ impl Shared {
         self.steer.lock().unwrap().clear();
         self.follow.lock().unwrap().clear();
         self.files.forget_all();
+        self.restored.store(false, Ordering::Release);
+    }
+
+    pub fn resumed(&self) {
+        self.files.forget_all();
+        self.restored.store(true, Ordering::Release);
     }
 
     /// Delivered after the current tool calls finish.

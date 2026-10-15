@@ -111,16 +111,23 @@ fn cell(m: &Model, column: &str) -> String {
         "cached" => units::usd(m.pricing.cached_input_per_1m_usd),
         "output" => units::usd(m.pricing.output_per_1m_usd),
         "max_output" => units::tokens(m.max_output_tokens),
-        "capabilities" => [
-            ("reasoning", m.capabilities.reasoning),
-            ("tools", m.capabilities.tool_calling),
-            ("cache", m.capabilities.caching),
-        ]
-        .iter()
-        .filter(|(_, on)| *on)
-        .map(|(name, _)| *name)
-        .collect::<Vec<_>>()
-        .join(" "),
+        "capabilities" => format!(
+            "{} · {}",
+            [
+                ("reasoning", m.capabilities.reasoning),
+                ("tools", m.capabilities.tool_calling),
+                ("cache", m.capabilities.caching),
+            ]
+            .iter()
+            .filter(|(_, on)| *on)
+            .map(|(name, _)| *name)
+            .collect::<Vec<_>>()
+            .join(" "),
+            m.input_modalities.as_ref().map_or_else(
+                || crate::api::preflight::config().inputs_unknown.clone(),
+                |inputs| inputs.join("/")
+            )
+        ),
         other => {
             debug_assert!(
                 false,

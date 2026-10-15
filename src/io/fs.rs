@@ -115,6 +115,12 @@ pub fn read_bytes(path: &Path) -> io::Result<Vec<u8>> {
 }
 
 pub fn read_limited(path: &Path, max: usize) -> io::Result<Option<String>> {
+    read_bytes_limited(path, max)?
+        .map(|bytes| String::from_utf8(bytes).map_err(io::Error::other))
+        .transpose()
+}
+
+pub fn read_bytes_limited(path: &Path, max: usize) -> io::Result<Option<Vec<u8>>> {
     use std::io::Read;
     let file = match std::fs::File::open(path) {
         Ok(file) => file,
@@ -126,7 +132,32 @@ pub fn read_limited(path: &Path, max: usize) -> io::Result<Option<String>> {
     if bytes.len() > max {
         return Err(io::Error::other(format!("file exceeds {max} bytes")));
     }
-    String::from_utf8(bytes).map(Some).map_err(io::Error::other)
+    Ok(Some(bytes))
+}
+
+/// Bounded UTF-8 instruction input with an explicit truncation bit.
+pub fn read_prefix(path: &Path, max: usize) -> io::Result<Option<(String, bool)>> {
+    use std::io::Read;
+    let file = match std::fs::File::open(path) {
+        Ok(file) => file,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(error),
+    };
+    let mut bytes = Vec::new();
+    file.take(max as u64 + 1).read_to_end(&mut bytes)?;
+    let cut = bytes.len() > max;
+    bytes.truncate(max);
+    if cut {
+        while std::str::from_utf8(&bytes)
+            .err()
+            .is_some_and(|error| error.error_len().is_none())
+        {
+            bytes.pop();
+        }
+    }
+    String::from_utf8(bytes)
+        .map(|text| Some((text, cut)))
+        .map_err(io::Error::other)
 }
 
 pub fn home_dir() -> Option<PathBuf> {
@@ -255,7 +286,35 @@ pub fn append_line(path: &Path, line: &str) -> io::Result<()> {
         .create(true)
         .append(true)
         .open(path)?;
-    file.write_all(format!("{line}\n").as_bytes())
+    file.write_all(format!("{line}\n").as_bytes())?;
+    file.sync_data()
+}
+
+/// An OS-owned advisory lock is released even when the process crashes. Keep the sidecar;
+/// unlinking it would allow another process to lock a different inode for the same session.
+pub struct FileLock {
+    _file: std::fs::File,
+}
+
+pub fn lock(path: &Path) -> io::Result<FileLock> {
+    ensure_parent(path)?;
+    let mut options = std::fs::OpenOptions::new();
+    options.read(true).write(true).create(true).truncate(false);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let file = options.open(path)?;
+    file.try_lock().map_err(io::Error::other)?;
+    Ok(FileLock { _file: file })
+}
+
+/// Discard only the incomplete final JSONL record before a resumed writer appends.
+pub fn truncate(path: &Path, len: u64) -> io::Result<()> {
+    let file = std::fs::OpenOptions::new().write(true).open(path)?;
+    file.set_len(len)?;
+    file.sync_data()
 }
 
 /// Separate downloads from simultaneous startups never overwrite each other's staging file.

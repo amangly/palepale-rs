@@ -37,6 +37,7 @@ pub struct ModelText {
     pub plan_unavailable: String,
     pub plan_only: String,
     pub mode_left: String,
+    pub mode_restored: String,
 }
 
 pub fn get() -> &'static ModelText {

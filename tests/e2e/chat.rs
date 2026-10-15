@@ -70,9 +70,12 @@ async fn print_streams_the_reply_and_records_the_session() {
         .lines()
         .map(|l| serde_json::from_str(l).unwrap())
         .collect();
-    assert_eq!(lines.len(), 3);
     assert_eq!(lines[0]["type"], "session");
-    let reply = &lines[2]["message"];
+    assert!(lines.iter().any(|line| line["type"] == "state"));
+    let reply = &lines
+        .iter()
+        .find(|line| line["message"]["role"] == "assistant")
+        .unwrap()["message"];
     assert_eq!(reply["role"], "assistant");
     assert_eq!(reply["parts"][0]["type"], "reasoning");
     assert_eq!(reply["request_id"], "req_fake");
@@ -144,8 +147,14 @@ async fn model_cooldown_continues_the_same_conversation_without_restart() {
         .lines()
         .map(|line| serde_json::from_str(line).unwrap())
         .collect();
-    assert_eq!(lines.len(), 3);
-    assert_eq!(lines[2]["message"]["finish"], "done");
+    assert_eq!(
+        lines
+            .iter()
+            .filter(|line| line["message"]["role"] == "assistant")
+            .count(),
+        1
+    );
+    assert_eq!(lines.last().unwrap()["message"]["finish"], "done");
 }
 
 #[tokio::test(flavor = "multi_thread")]

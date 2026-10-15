@@ -1,0 +1,10 @@
+tools = "Model `{model}` does not support tool calling. Choose a tool-capable model."
+streaming = "Model `{model}` does not support the streaming required by this CLI. Choose another model."
+unknown = "Model `{model}` has unknown support for {kind} input. Choose a model with declared input capabilities; attachments were preserved."
+unsupported = "Model `{model}` does not support {kind} input. Choose a compatible model; attachments were preserved."
+limits = "Model `{model}` has invalid context or output limits. Refresh the catalog."
+context = "This request is estimated at {tokens} input tokens plus {output} output tokens, beyond model `{model}`'s {context} token window. Start a new session or choose a larger model."
+effort = "Model `{model}` has inconsistent reasoning metadata. Refresh the catalog."
+inputs_unknown = "inputs unknown"
+bytes_per_token = 3
+message_overhead_tokens = 16

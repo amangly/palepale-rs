@@ -5,7 +5,7 @@
 use std::time::{Duration, Instant};
 
 use crate::agent::event::{AgentEvent, DeltaKind, Outcome};
-use crate::agent::message::{Assistant, Finish, ToolResult};
+use crate::agent::message::{Assistant, Finish, Message, Part, ToolResult};
 use crate::api::error::ErrorInfo;
 use crate::limits;
 use crate::text::styled::{Line, Style};
@@ -121,6 +121,51 @@ impl Feed {
 
     pub fn user(&mut self, text: &str) {
         self.push(Block::User(text.to_owned()));
+    }
+
+    /// Restore display blocks without emitting lifecycle events or executing tools.
+    pub fn restore(&mut self, messages: &[Message]) {
+        let mut arguments = std::collections::HashMap::new();
+        for message in messages {
+            match message {
+                Message::User { parts } => {
+                    let text = parts
+                        .iter()
+                        .filter_map(|part| match part {
+                            Part::Text { text } => Some(text.as_str()),
+                            _ => None,
+                        })
+                        .collect::<Vec<_>>()
+                        .join("\n");
+                    if !text.is_empty() {
+                        self.user(&text);
+                    }
+                }
+                Message::Assistant(reply) => {
+                    for part in &reply.parts {
+                        match part {
+                            Part::Text { text } => self.push(Block::Reply {
+                                md: text.clone(),
+                                first: true,
+                            }),
+                            Part::Reasoning { text } => self.push(Block::Thinking {
+                                text: text.clone(),
+                                secs: 0,
+                            }),
+                            Part::ToolCall(call) => {
+                                arguments.insert(call.id.clone(), call.arguments.clone());
+                            }
+                            _ => {}
+                        }
+                    }
+                    self.outcome_of(reply);
+                }
+                Message::Tool(result) => self.push(Block::Tool {
+                    arguments: arguments.remove(&result.call_id).unwrap_or_default(),
+                    result: result.clone(),
+                }),
+            }
+        }
     }
 
     pub fn markdown(&mut self, md: &str) {

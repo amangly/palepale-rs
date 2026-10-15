@@ -18,7 +18,9 @@ mod mcp;
 mod mode;
 pub mod models;
 mod new;
+pub mod prompt;
 mod quit;
+mod sessions;
 mod signup;
 mod status;
 mod uninstall;
@@ -159,10 +161,13 @@ pub enum Effect {
     },
     /// Start a fresh conversation with a new session file.
     NewConversation,
+    PickSession,
+    ResumeSession(String),
     /// Open the server's current coding profile list.
     PickAgentProfile(Vec<crate::api::agent_profiles::Profile>),
     /// Apply a server-owned coding profile to future requests.
     SetAgentProfile(Option<String>),
+    SetSystemPrompt(String),
     /// Put the model's last reply on the clipboard.
     CopyLastReply,
     /// Send this to the model as the user's next message (the transcript shows the command).
@@ -228,9 +233,11 @@ pub static COMMANDS: &[&dyn Command] = &[
     &forums::Forums,
     &mode::Mode,
     &godmode::Godmode,
+    &prompt::Prompt,
     &copy::Copy,
     &init::Init,
     &new::New,
+    &sessions::Sessions,
     &quit::Quit,
     &keytest::KeyTest,
     &battery::Battery,

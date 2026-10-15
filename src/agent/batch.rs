@@ -74,7 +74,15 @@ pub async fn run<'a>(
             Err(Refused::new("rejected", model_text::get().rejected.clone()))
         } else {
             let repeats = doom_loop::repeats(history, calls, i);
-            clear(cx, shared, cancel, repeats, call).await
+            clear(
+                cx,
+                shared,
+                cancel,
+                repeats,
+                uncertain_repeat(history, call),
+                call,
+            )
+            .await
         };
         if let Err(refused) = &slot {
             stop |= refused.stop;
@@ -155,6 +163,7 @@ async fn clear<'a>(
     shared: &'a Shared,
     cancel: &'a CancellationToken,
     repeats: usize,
+    uncertain: bool,
     call: &'a ToolCall,
 ) -> Result<Cleared, Refused> {
     let mode = shared.mode();
@@ -190,7 +199,7 @@ async fn clear<'a>(
             DoomLoop::Ask => asks.push(Ask::new(permissions::DOOM_LOOP.name, call.name.clone())),
         }
     }
-    let check = tool
+    let mut check = tool
         .check(&args, &tool_cx(cx, shared, cancel, &call.id))
         .map_err(|refusal| match refusal {
             Refusal::InvalidArgs(error) => Refused::new(
@@ -202,6 +211,10 @@ async fn clear<'a>(
             ),
             Refusal::Refused(why) => Refused::new("check", why),
         })?;
+    if uncertain {
+        check.confirm = true;
+        check.preview = Some(crate::session::text::get().interrupted.clone());
+    }
     asks.extend(check.asks);
 
     let policy = Policy {
@@ -256,6 +269,36 @@ async fn clear<'a>(
             Err(refused.asked(asks))
         }
     }
+}
+
+/// A resumed action with no recorded outcome needs an explicit answer even in AUTO.
+fn uncertain_repeat(history: &[Message], proposed: &ToolCall) -> bool {
+    history.iter().any(|message| {
+        let Message::Tool(result) = message else {
+            return false;
+        };
+        if result.refused.as_deref() != Some("interrupted") {
+            return false;
+        }
+        history
+            .iter()
+            .filter_map(|message| match message {
+                Message::Assistant(reply) => Some(reply),
+                _ => None,
+            })
+            .flat_map(|reply| reply.tool_calls())
+            .any(|call| {
+                call.id == result.call_id
+                    && call.name == proposed.name
+                    && match (
+                        serde_json::from_str::<Value>(&call.arguments),
+                        serde_json::from_str::<Value>(&proposed.arguments),
+                    ) {
+                        (Ok(original), Ok(next)) => original == next,
+                        _ => call.arguments == proposed.arguments,
+                    }
+            })
+    })
 }
 
 fn tool_cx<'a>(

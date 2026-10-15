@@ -16,6 +16,7 @@ const DEFAULTS: &str = include_str!("../data/defaults.toml");
 #[serde(deny_unknown_fields)]
 pub struct Settings {
     pub model: String,
+    pub system_prompt: String,
     /// Accept older user settings while the server chooses reasoning automatically.
     #[serde(default, rename = "effort")]
     pub _legacy_effort: Option<String>,

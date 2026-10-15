@@ -2,6 +2,7 @@ pub mod batch;
 pub mod context;
 pub mod doom_loop;
 pub mod event;
+pub mod instructions;
 pub mod message;
 pub mod model_text;
 pub mod prompt;

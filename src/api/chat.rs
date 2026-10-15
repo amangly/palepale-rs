@@ -38,6 +38,9 @@ pub async fn stream(
     cancel: &CancellationToken,
     on: &mut (dyn FnMut(Event<'_>) + Send),
 ) -> Assistant {
+    if let Err(error) = crate::api::preflight::check(turn) {
+        return message(turn, Vec::new(), Finish::Error, None, Some(error), None);
+    }
     let body = serde_json::to_value(request(turn)).expect("chat requests serialize");
     let mut attempt = 1;
     loop {
@@ -198,6 +201,7 @@ fn request(turn: &Turn<'_>) -> wire::Request {
             include_usage: true,
         },
         agent_profile: turn.agent_profile.map(str::to_owned),
+        max_completion_tokens: crate::api::preflight::output_limit(turn.model),
     }
 }
 
@@ -264,6 +268,8 @@ mod tests {
                 reasoning,
                 ..Capabilities::default()
             },
+            input_modalities: None,
+            capability_source: None,
             reasoning_efforts: None,
             default_reasoning_effort: None,
         }

@@ -26,6 +26,7 @@ mod picker;
 mod questions;
 mod queue;
 mod screen;
+mod sessions;
 pub mod startup;
 mod status;
 mod toast;

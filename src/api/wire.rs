@@ -10,6 +10,7 @@ use crate::api::error::ErrorInfo;
 #[derive(Debug, Serialize)]
 pub struct Request {
     pub model: String,
+    pub max_completion_tokens: u64,
     pub messages: Vec<WireMessage>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub tools: Vec<serde_json::Value>,

@@ -5,6 +5,14 @@
 [unknown]
 title = "Request failed"
 
+[incompatible_request]
+title = "This model cannot accept the request"
+retry = false
+
+[context_budget]
+title = "This conversation exceeds the model context window"
+retry = false
+
 # Any status: a body that is not palepale's envelope (a proxy's page, say).
 [http_error]
 title = "palepale answered with an error"

@@ -21,11 +21,134 @@ pub struct Model {
     pub pricing: Pricing,
     #[serde(default)]
     pub capabilities: Capabilities,
+    /// Input kinds explicitly verified by the gateway. Missing means unknown, never "all".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub input_modalities: Option<Vec<String>>,
+    /// Optional provenance for capability metadata, kept public and non-sensitive.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub capability_source: Option<String>,
     /// Public request levels, not private provider tier mappings.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reasoning_efforts: Option<Vec<String>>,
     #[serde(default)]
     pub default_reasoning_effort: Option<String>,
+}
+
+impl Model {
+    /// Reject requests the catalog says this model cannot accept before opening the gateway.
+    /// Unknown attachment metadata stays distinguishable from an explicit refusal.
+    pub fn preflight(
+        &self,
+        messages: &[crate::agent::message::Message],
+        tool_count: usize,
+    ) -> anyhow::Result<()> {
+        if tool_count > 0 && !self.capabilities.tool_calling {
+            anyhow::bail!(crate::text::template::fill(
+                &crate::api::preflight::config().tools,
+                &[("model", &self.id)]
+            ));
+        }
+        let mut required = std::collections::BTreeSet::new();
+        for message in messages {
+            if self.input_modalities.is_some()
+                && matches!(message,
+                crate::agent::message::Message::User { parts } if parts.iter().any(|part|
+                    matches!(part, crate::agent::message::Part::Text { .. })))
+            {
+                required.insert("text".into());
+            }
+            let attachments = match message {
+                crate::agent::message::Message::User { parts } => parts
+                    .iter()
+                    .filter_map(|part| match part {
+                        crate::agent::message::Part::Attachment(attachment) => Some(attachment),
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>(),
+                crate::agent::message::Message::Tool(result) => result.attachments.iter().collect(),
+                crate::agent::message::Message::Assistant(_) => Vec::new(),
+            };
+            for attachment in attachments {
+                required.insert(modality(&attachment.mime_type));
+            }
+        }
+        if required.is_empty() {
+            return Ok(());
+        }
+        let Some(supported) = &self.input_modalities else {
+            anyhow::bail!(crate::text::template::fill(
+                &crate::api::preflight::config().unknown,
+                &[
+                    ("model", &self.id),
+                    (
+                        "kind",
+                        &required.iter().cloned().collect::<Vec<_>>().join(", ")
+                    )
+                ]
+            ));
+        };
+        for kind in required {
+            if !supported
+                .iter()
+                .any(|value| value.eq_ignore_ascii_case(&kind))
+            {
+                anyhow::bail!(crate::text::template::fill(
+                    &crate::api::preflight::config().unsupported,
+                    &[("model", &self.id), ("kind", &kind)]
+                ));
+            }
+        }
+        Ok(())
+    }
+}
+
+fn modality(mime: &str) -> String {
+    if mime.starts_with("image/") {
+        "image".into()
+    } else if mime.starts_with("audio/") {
+        "audio".into()
+    } else if mime == "application/pdf" {
+        "pdf".into()
+    } else {
+        "file".into()
+    }
+}
+
+/// Capability-only view for the model picker; retain MIME types without duplicating payloads.
+pub fn input_requirements(
+    messages: &[crate::agent::message::Message],
+) -> Vec<crate::agent::message::Message> {
+    use crate::agent::message::{Attachment, Message, Part};
+    let mut mimes = std::collections::BTreeSet::new();
+    for message in messages {
+        match message {
+            Message::User { parts } => {
+                for part in parts {
+                    if let Part::Attachment(attachment) = part {
+                        mimes.insert(attachment.mime_type.clone());
+                    }
+                }
+            }
+            Message::Tool(result) => {
+                for attachment in &result.attachments {
+                    mimes.insert(attachment.mime_type.clone());
+                }
+            }
+            _ => {}
+        }
+    }
+    vec![Message::User {
+        parts: mimes
+            .into_iter()
+            .map(|mime_type| {
+                Part::Attachment(Attachment {
+                    mime_type,
+                    data: String::new(),
+                    filename: None,
+                })
+            })
+            .collect(),
+    }]
 }
 
 /// USD per million tokens.
@@ -219,9 +342,18 @@ mod tests {
             .as_object_mut()
             .unwrap()
             .remove("reasoning_efforts");
+        value["data"][0]
+            .as_object_mut()
+            .unwrap()
+            .remove("input_modalities");
+        value["data"][0]
+            .as_object_mut()
+            .unwrap()
+            .remove("capability_source");
         let legacy: Model = serde_json::from_value(value["data"][0].clone()).unwrap();
         let cached: Model = serde_json::from_value(serde_json::to_value(&legacy).unwrap()).unwrap();
         assert!(cached.reasoning_efforts.is_none());
+        assert!(cached.input_modalities.is_none() && cached.capability_source.is_none());
         assert_eq!(
             cached.default_reasoning_effort,
             legacy.default_reasoning_effort

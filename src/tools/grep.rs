@@ -110,7 +110,7 @@ impl Tool for Grep {
             }
             let shown = |path: &Path| target::show(&base, path).0;
             let matched: usize = files.iter().map(|f| f.matched).sum();
-            let (mut out, details, unit) = match report {
+            let (mut out, mut details, unit) = match report {
                 Report::Lines { context } => (
                     lines(&files, context, &shown),
                     json!({ "matches": matched }),
@@ -130,6 +130,12 @@ impl Tool for Grep {
                     "files",
                 ),
             };
+            details["paths"] = json!(
+                files
+                    .iter()
+                    .map(|file| shown(&file.path))
+                    .collect::<Vec<_>>()
+            );
             if capped {
                 let _ = write!(out, "\n[Stopped at {max} {unit}; narrow the search.]");
             }
