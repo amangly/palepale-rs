@@ -1,5 +1,7 @@
 # Palepale-rs
 
+<p align="center"><img src="data/palepale-logo.svg" alt="Palepale logo" width="160"></p>
+
 Run a coding agent with Palepale. Read code, edit files, run commands, and switch models in your project.
 
 ## Get started
@@ -21,6 +23,14 @@ For local development, run `.\palepale-server\scripts\start-local.ps1` from the 
 Run `palepale install` to add the CLI to your user PATH. Before installation, use `./palepale install` or `.\palepale.exe install`.
 
 After installing, open a new terminal in your project folder and run `palepale`. Describe what you want to build or fix, then use `/models` to choose a model.
+
+## In the terminal
+
+Palepale opens with a compact status view and keeps the active coding profile visible while you work.
+
+![Palepale session view](docs/images/palepale-session.png)
+
+![Palepale godmode profile](docs/images/palepale-godmode.png)
 
 ## Use
 
