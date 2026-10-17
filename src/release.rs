@@ -132,7 +132,7 @@ mod tests {
             toml::from_str(include_str!("../data/endpoints.toml")).unwrap();
         assert_eq!(
             endpoints["origins"]["releases"]["url"].as_str().unwrap(),
-            "https://api.github.com/repos"
+            "https://api.palepale.tech/cli"
         );
         assert_eq!(
             endpoints["endpoints"]["latest_release"]["path"]

@@ -6,7 +6,7 @@ Palepale is a terminal coding agent. It reads code, edits files, runs commands, 
 
 ## Install
 
-Download the latest build for [Windows x64](https://github.com/amangly/palepale-rs/releases/latest), [macOS Apple Silicon](https://github.com/amangly/palepale-rs/releases/latest), or [Linux x64](https://github.com/amangly/palepale-rs/releases/latest).
+Download the latest build for [Windows x64](https://api.palepale.tech/cli/latest/palepale-x86_64-pc-windows-msvc.exe), [macOS Apple Silicon](https://api.palepale.tech/cli/latest/palepale-aarch64-apple-darwin), or [Linux x64](https://api.palepale.tech/cli/latest/palepale-x86_64-unknown-linux-musl).
 
 Run it from your project folder:
 

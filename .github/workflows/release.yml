@@ -28,7 +28,6 @@ jobs:
         run: |
           repo=$(sed -n 's/^repository = "\([^"]*\)"$/\1/p' data/release.toml)
           test "$repo" = "$GITHUB_REPOSITORY"
-          test "$(gh api "repos/$repo" --jq .private)" = false || { echo 'The download repository must be public.'; exit 1; }
       - id: tag
         env:
           GH_TOKEN: ${{ github.token }}

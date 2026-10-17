@@ -1,11 +1,12 @@
 # Releases
 
-Source, binaries, checksums, `LICENSE-APACHE`, and `NOTICE` live in `amangly/palepale-rs`.
+Source and build artifacts live in the private `amangly/palepale-rs` repository. Public binaries, checksums, `LICENSE-APACHE`, and `NOTICE` are served by the Azure gateway at `https://api.palepale.tech/cli/latest/`.
 
 ## Publishing
 
 1. Set the package version in `Cargo.toml` and `Cargo.lock`. Each release needs a new version.
 2. After an explicit release request, merge the reviewed `main` commit into `prod` and push `prod`.
+3. Publish the completed release to Azure with `deploy/publish-cli.py` in the server repository. It verifies all assets before atomically switching the public feed. A GitHub release alone does not update customers.
 
 The workflow uses GitHub's built-in token. Only the publishing job has Contents write permission; no personal release token is needed.
 
@@ -19,7 +20,9 @@ The repository is configured in `data/release.toml`; the API feed is in `data/en
 
 Release builds check before interactive startup and share a recent check for one minute. Download progress appears in the terminal. A successful checksum verification and replacement automatically reopen the CLI with the original arguments, environment, and working directory. Only a newer numeric version is installed; missing assets, invalid tags, or checksum failures keep the existing executable. Release-feed checks time out after five seconds, and Ctrl+C skips a pending check or download.
 
-Earlier `0.2.0-*` builds use a separate release repository and will not install `0.1.0` automatically. Download the new binary from this repository and replace the executable once. Keep the CLI home folder to retain account state, settings, and sessions. Later updates use this repository.
+Earlier `0.2.0-*` builds use a separate release repository and will not install `0.1.0` automatically. Download the new binary from the server and replace the executable once. Keep the CLI home folder to retain account state, settings, and sessions. Later updates use the server.
+
+Builds through v0.1.18 use GitHub by default. To migrate without replacing the binary manually, set `PALEPALE_RELEASES_URL=https://api.palepale.tech/cli` and run `palepale update`. Remove the override after installing v0.1.19 or later.
 
 Startup updates finish before a conversation begins. The optional `palepale update` command still installs an update without starting a session; its next launch uses the new binary. Account state, configuration, and sessions remain in the CLI home. The installation folder must be writable. Results are saved in `~/.palepale/update.json`.
 

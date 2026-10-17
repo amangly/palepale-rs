@@ -9,7 +9,7 @@ env = "PALEPALE_CHAT_URL"
 
 # Where palepale's own releases are listed, for the updater.
 [origins.releases]
-url = "https://api.github.com/repos"
+url = "https://api.palepale.tech/cli"
 env = "PALEPALE_RELEASES_URL"
 
 [endpoints.models]
