@@ -3,6 +3,7 @@ pub mod reader;
 pub mod store;
 pub mod text;
 pub mod transcript;
+pub mod workflow;
 
 #[derive(Default)]
 pub struct Start {

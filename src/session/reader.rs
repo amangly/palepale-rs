@@ -7,6 +7,9 @@ use crate::session::store::SavedState;
 
 /// A validated active branch, separate from the append-only physical record order.
 pub struct Loaded {
+    pub ids: Vec<String>,
+    pub snapshots: std::collections::HashMap<String, super::entry::Snapshot>,
+    pub compactions: Vec<super::entry::Compaction>,
     pub header: Entry,
     pub head: Option<String>,
     pub messages: Vec<Message>,
@@ -24,6 +27,8 @@ pub fn load(text: &str) -> anyhow::Result<Loaded> {
     let mut state = SavedState::default();
     let mut valid_bytes = 0;
     let mut activity = None;
+    let mut snapshots = HashMap::new();
+    let mut compactions = Vec::new();
     for (index, line) in text.split_inclusive('\n').enumerate() {
         let entry: Entry = match serde_json::from_str(line) {
             Ok(entry) => entry,
@@ -31,6 +36,29 @@ pub fn load(text: &str) -> anyhow::Result<Loaded> {
             Err(error) => anyhow::bail!("record {}: {error}", index + 1),
         };
         match &entry {
+            Entry::Snapshot { of, before, after } if header.is_some() => {
+                snapshots.insert(
+                    of.clone(),
+                    super::entry::Snapshot {
+                        before: before.clone(),
+                        after: after.clone(),
+                    },
+                );
+            }
+            Entry::Compaction {
+                head,
+                kept,
+                summary,
+                usage,
+            } if header.is_some() => {
+                compactions.push(super::entry::Compaction {
+                    head: head.clone(),
+                    kept: kept.clone(),
+                    summary: summary.clone(),
+                    usage: *usage,
+                });
+            }
+            Entry::Parent { .. } if header.is_some() => {}
             Entry::Session { v, created, .. } if index == 0 && *v == 1 => {
                 header = Some(entry.clone());
                 activity = Some(*created);
@@ -74,6 +102,7 @@ pub fn load(text: &str) -> anyhow::Result<Loaded> {
     }
     let header = header.ok_or_else(|| anyhow::anyhow!("missing session header"))?;
     let mut messages = Vec::new();
+    let mut ids = Vec::new();
     let mut visited = HashSet::new();
     let mut cursor = head.clone();
     while let Some(id) = cursor.take() {
@@ -84,9 +113,12 @@ pub fn load(text: &str) -> anyhow::Result<Loaded> {
             .get(&id)
             .ok_or_else(|| anyhow::anyhow!("missing active entry `{id}`"))?;
         messages.push(message.clone());
+        ids.push(id);
         cursor = parent.clone();
     }
     messages.reverse();
+    ids.reverse();
+    compactions.retain(|c| ids.contains(&c.head) && ids.contains(&c.kept));
     if state.model.is_empty() {
         state.model = messages
             .iter()
@@ -116,6 +148,9 @@ pub fn load(text: &str) -> anyhow::Result<Loaded> {
         })
         .unwrap_or_default();
     Ok(Loaded {
+        ids,
+        snapshots,
+        compactions,
         header,
         head,
         messages,
@@ -131,7 +166,7 @@ pub fn messages(text: &str) -> Vec<Message> {
         .filter_map(|line| serde_json::from_str::<Entry>(line).ok())
         .filter_map(|entry| match entry {
             Entry::Message { message, .. } => Some(message),
-            Entry::Session { .. } | Entry::State { .. } => None,
+            _ => None,
         })
         .collect()
 }

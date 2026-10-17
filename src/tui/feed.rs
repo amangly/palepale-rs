@@ -324,7 +324,18 @@ impl Feed {
                 }
             }
             AgentEvent::Delivered { text } => self.user(text),
-            AgentEvent::Prompt { .. } => {}
+            AgentEvent::CompactionStart { .. } => {
+                self.notice(&crate::session::workflow::text().compacting, "muted")
+            }
+            AgentEvent::CompactionEnd { changed, error, .. } => self.notice(
+                error.as_deref().unwrap_or(if *changed {
+                    &crate::session::workflow::text().compacted
+                } else {
+                    &crate::session::workflow::text().compact_empty
+                }),
+                if error.is_some() { "error" } else { "muted" },
+            ),
+            AgentEvent::Child { .. } | AgentEvent::Prompt { .. } => {}
         }
     }
 

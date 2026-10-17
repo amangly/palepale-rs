@@ -40,6 +40,18 @@ method = "GET"
 path = "/api/me/overview?days=0"
 auth = true
 
+[endpoints.keys]
+origin = "api"
+method = "GET"
+path = "/api/me/keys"
+auth = true
+
+[endpoints.revoke_key]
+origin = "api"
+method = "POST"
+path = "/api/me/keys/{ref}/revoke"
+auth = true
+
 [endpoints.pair_start]
 origin = "api"
 method = "POST"
@@ -57,12 +69,12 @@ method = "GET"
 path = "/pair"
 
 [endpoints.pow]
-origin = "chat"
+origin = "api"
 method = "GET"
 path = "/api/pow?kind={kind}"
 
 [endpoints.signup]
-origin = "chat"
+origin = "api"
 method = "POST"
 path = "/api/signup"
 

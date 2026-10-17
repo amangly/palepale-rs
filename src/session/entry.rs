@@ -4,7 +4,7 @@
 use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 
-use crate::agent::message::Message;
+use crate::agent::message::{Message, Usage};
 
 /// Bump only for a change old files can't load under; additions don't bump it.
 pub const FORMAT_VERSION: u32 = 1;
@@ -14,6 +14,22 @@ pub const FORMAT_VERSION: u32 = 1;
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Entry {
+    Snapshot {
+        of: String,
+        before: String,
+        after: Option<String>,
+    },
+    Compaction {
+        head: String,
+        kept: String,
+        summary: String,
+        usage: Option<Usage>,
+    },
+    Parent {
+        session: String,
+        call: String,
+        agent: String,
+    },
     /// First line of every file.
     Session {
         v: u32,
@@ -46,6 +62,20 @@ pub enum Entry {
         #[serde(default)]
         system_prompt: String,
     },
+}
+
+#[derive(Clone, Debug)]
+pub struct Snapshot {
+    pub before: String,
+    pub after: Option<String>,
+}
+
+#[derive(Clone, Debug)]
+pub struct Compaction {
+    pub head: String,
+    pub kept: String,
+    pub summary: String,
+    pub usage: Option<Usage>,
 }
 
 /// 128 random bits; old eight-character IDs remain readable.

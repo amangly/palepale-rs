@@ -91,6 +91,8 @@ impl Fake {
             .route("/v1/agent-profiles", get(agent_profiles))
             .route("/v1/chat/completions", post(chat))
             .route("/api/me", get(me))
+            .route("/api/me/keys", get(keys))
+            .route("/api/me/keys/{reference}/revoke", post(revoke_key))
             .route("/api/me/overview", get(overview))
             .route("/api/pair/start", post(pair_start))
             .route("/api/pair/{code}", get(pair_poll))
@@ -365,6 +367,23 @@ async fn me(State(inner): State<Shared>, headers: HeaderMap) -> Response {
         return error(401, "invalid_api_key", None);
     }
     axum::Json(json!({"account_hint": "3456", "balance_microdollars": 12_300_000, "available_microdollars": 12_300_000, "reserved_microdollars":0,"token_budget":100000,"used_tokens":25000,"reserved_tokens":0,"can_spend": true})).into_response()
+}
+
+async fn keys(headers: HeaderMap) -> Response {
+    if !authorized(&headers) {
+        return error(401, "invalid_api_key", None);
+    }
+    axum::Json(json!({"keys":[{"ref":"00000000-0000-0000-0000-000000000001", "name":"This terminal", "hint":"9999", "created_at":"2026-01-01T00:00:00Z", "expires_at":"2027-01-01T00:00:00Z", "revoked_at":null, "current":true}]})).into_response()
+}
+
+async fn revoke_key(Path(reference): Path<String>, headers: HeaderMap) -> Response {
+    if !authorized(&headers) {
+        return error(401, "invalid_api_key", None);
+    }
+    if reference.ends_with('1') {
+        return error(409, "cannot_revoke_current", None);
+    }
+    axum::Json(json!({"ok":true})).into_response()
 }
 
 async fn overview(State(inner): State<Shared>, headers: HeaderMap) -> Response {

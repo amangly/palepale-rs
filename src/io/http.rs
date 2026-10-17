@@ -154,10 +154,15 @@ impl Head {
 /// The URL is dropped from the message: a pairing poll's URL carries the live device code.
 fn classify(e: reqwest::Error) -> HttpError {
     let e = e.without_url();
-    if e.is_timeout() {
+    if e.is_connect() {
+        use std::error::Error;
+        let mut cause: &dyn Error = &e;
+        while let Some(source) = cause.source() {
+            cause = source;
+        }
+        HttpError::Connect(cause.to_string())
+    } else if e.is_timeout() {
         HttpError::Timeout
-    } else if e.is_connect() {
-        HttpError::Connect(e.to_string())
     } else {
         HttpError::Other(e.to_string())
     }

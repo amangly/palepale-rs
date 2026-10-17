@@ -90,6 +90,15 @@ mod tests {
     }
 
     #[test]
+    fn signup_uses_the_gateway_while_pairing_approval_uses_the_website() {
+        for id in ["pow", "signup"] {
+            assert_eq!(get(id).origin, "api");
+            assert!(!get(id).auth);
+        }
+        assert_eq!(get("pair_page").origin, "chat");
+    }
+
+    #[test]
     fn placeholders_are_filled() {
         let endpoint = Endpoint {
             origin: "api".into(),

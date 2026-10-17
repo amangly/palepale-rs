@@ -1,6 +1,7 @@
 //! MCP configuration, connection state, and the agent's dynamic tool catalog.
 
 mod catalog;
+pub mod discover;
 mod tool;
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};

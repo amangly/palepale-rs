@@ -3,6 +3,48 @@ use serde_json::Value;
 use crate::fake_palepale::{Fake, Reply};
 use crate::{Sandbox, WITH_KEY};
 
+#[tokio::test(flavor = "multi_thread")]
+async fn a_child_uses_restricted_tools_and_returns_to_the_parent() {
+    let fake = Fake::start().await;
+    fake.script([
+        Reply::sse("task.sse"),
+        Reply::sse("hello.sse"),
+        Reply::sse("hello.sse"),
+    ]);
+    let sandbox = Sandbox::default();
+    let run = sandbox
+        .run(
+            &fake.url,
+            &["--mode", "auto", "--json", "Inspect this project"],
+            WITH_KEY,
+        )
+        .await;
+    let output = run.success().stdout();
+    assert!(output.contains("\"type\":\"child\""));
+    let bodies = fake.chat_bodies();
+    assert_eq!(bodies.len(), 3);
+    let tools: Vec<_> = bodies[1]["tools"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|tool| tool["function"]["name"].as_str())
+        .collect();
+    assert!(tools.contains(&"read"));
+    assert!(!tools.contains(&"write"));
+    assert!(!tools.contains(&"bash"));
+    assert!(!tools.contains(&"task"));
+    assert!(
+        bodies[2]["messages"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|message| message["role"] == "tool"
+                && message["content"]
+                    .as_str()
+                    .is_some_and(|text| text.contains("Hello there!")))
+    );
+}
+
 fn chat_only_catalog(fake: &Fake) {
     let mut catalog: Value =
         serde_json::from_str(include_str!("../fixtures/api/models.json")).unwrap();
@@ -224,7 +266,9 @@ async fn truncated_tool_calls_record_refusals_and_complete_json_events_without_w
     let run = sandbox
         .run(&fake.url, &["--json", "--mode", "auto", "do it"], WITH_KEY)
         .await;
-    let stdout = run.success().stdout();
+    assert_eq!(run.code(), Some(1));
+    assert!(run.stderr().contains("output limit"));
+    let stdout = run.stdout();
     let events: Vec<Value> = stdout
         .lines()
         .map(|line| serde_json::from_str(line).unwrap())
@@ -262,15 +306,7 @@ async fn truncated_tool_calls_record_refusals_and_complete_json_events_without_w
             .all(|r| r["message"]["refused"] == "truncated_tool_call")
     );
     let bodies = fake.chat_bodies();
-    assert_eq!(bodies.len(), 2);
-    let replayed = bodies[1]["messages"].as_array().unwrap();
-    assert_eq!(replayed.iter().filter(|m| m["role"] == "tool").count(), 2);
-    assert!(
-        replayed
-            .iter()
-            .filter(|m| m["role"] == "tool")
-            .all(|m| m.get("refused").is_none())
-    );
+    assert_eq!(bodies.len(), 1);
 }
 #[tokio::test(flavor = "multi_thread")]
 async fn reasoning_uses_the_server_default() {

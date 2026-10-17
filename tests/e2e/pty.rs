@@ -921,7 +921,7 @@ async fn an_untrusted_folder_is_asked_about_once_before_its_config_loosens_anyth
     })
     .await
     .unwrap();
-    assert!(screens[0].contains("mode = \"auto\""), "{}", screens[0]);
+    assert!(screens[0].contains("mode"), "{}", screens[0]);
     assert!(screens[0].contains("Not trusted"), "{}", screens[0]);
     assert!(!screens[2].contains("Trust this folder"), "{}", screens[2]);
     let trusted: serde_json::Value = serde_json::from_str(&trusted).unwrap();

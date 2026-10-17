@@ -136,7 +136,10 @@ fn split_untrusted(layer: toml::Table) -> (toml::Table, Vec<String>) {
                     safe.insert(key, toml::Value::Array(denies));
                 }
             }
-            value => left_out.push(format!("{key} = {value}")),
+            toml::Value::Table(entries) => {
+                left_out.extend(entries.keys().map(|name| format!("[{key}.{name}]")));
+            }
+            _ => left_out.push(key),
         }
     }
     (safe, left_out)
@@ -328,9 +331,9 @@ mod tests {
     #[test]
     fn an_untrusted_project_cannot_loosen_anything() {
         for (config, left_out) in [
-            ("mode = 'auto'", "mode = \"auto\""),
+            ("mode = 'auto'", "mode"),
             (ALLOW_ALL, "[[permission]] * * allow"),
-            ("shell = '.palepale/sh'", "shell = \".palepale/sh\""),
+            ("shell = '.palepale/sh'", "shell"),
         ] {
             let (_root, paths) = project_with(config);
             io::fs::write_atomic(
@@ -352,6 +355,14 @@ mod tests {
             assert_eq!(untrusted.file, paths.project_config());
             assert_eq!(untrusted.keys, vec![left_out.to_owned()]);
         }
+    }
+
+    #[test]
+    fn trust_notices_never_include_server_secrets() {
+        let document: toml::Table = toml::from_str("[mcp_servers.private]\nurl = 'https://example.com/mcp'\n[mcp_servers.private.http_headers]\nAuthorization = 'secret-token'\n").unwrap();
+        let (_, omitted) = split_untrusted(document);
+        assert_eq!(omitted, ["[mcp_servers.private]"]);
+        assert!(!omitted.join(" ").contains("secret-token"));
     }
 
     #[test]

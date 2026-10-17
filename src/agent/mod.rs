@@ -1,4 +1,5 @@
 pub mod batch;
+pub mod compact;
 pub mod context;
 pub mod doom_loop;
 pub mod event;

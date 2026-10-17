@@ -26,3 +26,26 @@ Startup updates finish before a conversation begins. The optional `palepale upda
 `auto_update = false`, `PALEPALE_NO_UPDATE=1`, and offline mode disable automatic checks. Manual updates remain available outside offline mode. `PALEPALE_RELEASES_URL` overrides the feed for local testing.
 
 SHA-256 verifies downloads against the release checksum file; it is not an independent publisher signature.
+
+## Release signing setup
+
+The updater supports Minisign signatures over `SHA256SUMS`. Signing is not enabled until
+`signing.keys` in `data/release.toml` contains a public key. With an empty key list, updates
+still check SHA-256 checksums but do not authenticate the publisher.
+
+Generate the release key on a trusted machine with `minisign -G -W -p release.pub -s release.key`.
+Keep `release.key` out of the repository. This creates an unencrypted key for unattended CI;
+store its complete contents in the GitHub Actions secret `PALEPALE_SIGNING_KEY`. Put the
+base64 public-key line from `release.pub` first in `signing.keys` and commit that configuration.
+The publishing workflow refuses a mismatch between the public-key configuration and secret.
+
+The workflow signs the manifest with the trusted comment `palepale release <tag>` and verifies
+the result before publishing. Clients with a configured key reject missing signatures,
+altered manifests, unknown keys, and signatures for another release tag. CI secret access
+therefore grants release-signing authority.
+
+For rotation, ship a release accepting both keys before switching the signing secret. Keep
+the active signing key first in the list so CI can verify its output. Remove the old public
+key only after clients have had time to install a release that trusts the new key. Existing
+unsigned clients cannot authenticate the first transition to a signed build; distribute its
+checksum and public key through a trusted channel.

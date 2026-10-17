@@ -1,0 +1,15 @@
+name = "keys"
+summary = "List account keys or revoke another device key"
+usage = "keys [list | revoke <ref> --yes]"
+requires_backend = true
+
+[text]
+empty = "No account keys were returned."
+row = "{ref}  {name}  {hint}  {state}\n  created {created} · expires {expires}"
+current = "current"
+revoked = "revoked"
+active = "not revoked"
+limit = "The server returns up to 100 keys, including expired and revoked entries."
+confirm = "Revoke disconnects the selected device. Run keys revoke <ref> --yes to confirm."
+done = "Revoked key {ref}."
+bad_ref = "Use a complete key reference from keys list."

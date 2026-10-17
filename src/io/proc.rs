@@ -119,6 +119,18 @@ pub fn which(name: &str) -> Option<PathBuf> {
     })
 }
 
+pub fn find(candidates: &[String]) -> Option<PathBuf> {
+    candidates.iter().find_map(|candidate| {
+        let mut path = candidate.clone();
+        if let Some(rest) = path.strip_prefix('{')
+            && let Some((key, tail)) = rest.split_once('}')
+        {
+            path = format!("{}{tail}", crate::settings::env(key)?);
+        }
+        which(&path)
+    })
+}
+
 /// A file this user may execute; on Windows the extension decides, so any file is.
 fn runnable(path: &Path) -> bool {
     #[cfg(unix)]

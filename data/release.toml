@@ -4,6 +4,12 @@
 repository = "amangly/palepale-rs"
 sums = "SHA256SUMS"
 
+# Add a release public key before enabling signed publication; see docs/releases.md.
+[signing]
+file = "SHA256SUMS.minisig"
+keys = []
+comment = "palepale release {tag}"
+
 [[asset]]
 os = "linux"
 arch = "x86_64"

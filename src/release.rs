@@ -5,6 +5,8 @@ use std::sync::LazyLock;
 
 use serde::Deserialize;
 
+pub mod signature;
+
 static CATALOG: LazyLock<Catalog> = LazyLock::new(|| {
     toml::from_str(include_str!("../data/release.toml"))
         .expect("data/release.toml is checked by tests")
@@ -15,7 +17,20 @@ static CATALOG: LazyLock<Catalog> = LazyLock::new(|| {
 struct Catalog {
     repository: String,
     sums: String,
+    signing: Signing,
     asset: Vec<Asset>,
+}
+
+#[derive(Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Signing {
+    pub file: String,
+    pub keys: Vec<String>,
+    pub comment: String,
+}
+
+pub fn signing() -> &'static Signing {
+    &CATALOG.signing
 }
 
 #[derive(Deserialize)]

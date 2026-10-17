@@ -3,6 +3,7 @@
 
 pub mod clipboard;
 pub mod clock;
+pub mod exec;
 pub mod fetch;
 pub mod fs;
 pub mod http;
@@ -14,5 +15,6 @@ pub mod search;
 pub mod secret;
 pub mod shell;
 pub mod skill_cache;
+pub mod snapshot;
 pub mod term;
 pub mod user_path;

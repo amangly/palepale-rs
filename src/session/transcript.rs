@@ -5,6 +5,9 @@ use crate::session::store::{SavedState, Selection, Store};
 
 /// The conversation in memory, mirrored to its session file when it has one.
 pub struct Transcript {
+    pub ids: Vec<String>,
+    pub snapshots: std::collections::HashMap<String, super::entry::Snapshot>,
+    pub compactions: Vec<super::entry::Compaction>,
     pub messages: Vec<Message>,
     store: Option<Store>,
     /// A write failed; the file stopped being written and no longer holds everything.
@@ -22,6 +25,9 @@ pub struct Unsaved {
 impl Transcript {
     pub fn new(store: Option<Store>) -> Self {
         Self {
+            ids: Vec::new(),
+            snapshots: Default::default(),
+            compactions: Vec::new(),
             messages: Vec::new(),
             store,
             unsaved: false,
@@ -36,6 +42,9 @@ impl Transcript {
         }
         let (store, loaded) = Store::open(paths, selection)?;
         let mut transcript = Self {
+            ids: loaded.ids,
+            snapshots: loaded.snapshots,
+            compactions: loaded.compactions,
             messages: loaded.messages,
             store: Some(store),
             unsaved: false,
@@ -109,6 +118,10 @@ impl Transcript {
         &self.store.as_ref().expect("stored transcript").path
     }
 
+    pub fn stored_file(&self) -> Option<&Path> {
+        self.store.as_ref().map(|store| store.path.as_path())
+    }
+
     /// Keeps `message`, then writes it. The first failed write is returned and ends saving:
     /// later messages stay in memory only, so a full disk costs the file, not the conversation.
     pub fn push(&mut self, message: Message) -> Result<(), Unsaved> {
@@ -120,9 +133,156 @@ impl Transcript {
             _ => Ok(()),
         };
         self.unsaved |= written.is_err();
+        self.ids.push(
+            self.store
+                .as_ref()
+                .and_then(|s| s.last_id())
+                .filter(|_| written.is_ok())
+                .map(str::to_owned)
+                .unwrap_or_else(super::entry::new_id),
+        );
         self.messages.push(message);
         written?;
         self.save_state(self.state.clone())
+    }
+
+    pub fn context(&self) -> Vec<Message> {
+        let latest = self.compactions.iter().rev().find_map(|c| {
+            let head = self.ids.iter().position(|id| id == &c.head)?;
+            let kept = self.ids.iter().position(|id| id == &c.kept)?;
+            (kept <= head).then_some((c, kept))
+        });
+        let Some((summary, kept)) = latest else {
+            return crate::agent::context::build(&self.messages);
+        };
+        let mut messages = vec![Message::User {
+            parts: vec![crate::agent::message::Part::Reminder {
+                text: crate::text::template::fill(
+                    &super::workflow::text().summary,
+                    &[("summary", &summary.summary)],
+                ),
+            }],
+        }];
+        // Active catalogs may predate the retained tail; keep their latest snapshots.
+        let catalogs = crate::agent::context::build(&self.messages[..kept]);
+        for message in catalogs {
+            if let Message::User { parts } = message {
+                let parts: Vec<_> = parts.into_iter().filter(|p| matches!(p, crate::agent::message::Part::Reminder { text } if ["<available_skills>", "<mcp_servers>", "<active_instructions>"].iter().any(|tag| text.starts_with(tag)))).collect();
+                if !parts.is_empty() {
+                    messages.push(Message::User { parts });
+                }
+            }
+        }
+        messages.extend_from_slice(&self.messages[kept..]);
+        crate::agent::context::build(&messages)
+    }
+
+    pub fn compact(
+        &mut self,
+        kept: usize,
+        summary: String,
+        usage: Option<crate::agent::message::Usage>,
+    ) -> Result<(), Unsaved> {
+        let Some(head) = self.ids.last().cloned() else {
+            return Ok(());
+        };
+        let Some(kept) = self.ids.get(kept).cloned() else {
+            return Ok(());
+        };
+        self.record(super::entry::Entry::Compaction {
+            head: head.clone(),
+            kept: kept.clone(),
+            summary: summary.clone(),
+            usage,
+        })?;
+        self.compactions.push(super::entry::Compaction {
+            head,
+            kept,
+            summary,
+            usage,
+        });
+        Ok(())
+    }
+
+    pub fn snapshot(
+        &mut self,
+        of: String,
+        before: String,
+        after: Option<String>,
+    ) -> Result<(), Unsaved> {
+        self.record(super::entry::Entry::Snapshot {
+            of: of.clone(),
+            before: before.clone(),
+            after: after.clone(),
+        })?;
+        self.snapshots
+            .insert(of, super::entry::Snapshot { before, after });
+        Ok(())
+    }
+
+    pub fn rewind(&mut self, len: usize) -> Result<(), Unsaved> {
+        let head = len.checked_sub(1).and_then(|i| self.ids.get(i)).cloned();
+        if self.unsaved {
+            return Err(Unsaved {
+                path: self.file().to_owned(),
+                error: super::workflow::text().unsaved.clone(),
+            });
+        }
+        if let Some(store) = &mut self.store {
+            store.rewind(head, &self.state).map_err(|e| Unsaved {
+                path: store.path.clone(),
+                error: e.to_string(),
+            })?;
+        }
+        self.messages.truncate(len);
+        self.ids.truncate(len);
+        self.compactions
+            .retain(|c| self.ids.contains(&c.head) && self.ids.contains(&c.kept));
+        Ok(())
+    }
+
+    fn record(&mut self, entry: super::entry::Entry) -> Result<(), Unsaved> {
+        if let Some(store) = &mut self.store {
+            if self.unsaved {
+                return Err(Unsaved {
+                    path: store.path.clone(),
+                    error: super::workflow::text().unsaved.clone(),
+                });
+            }
+            if let Err(error) = store.record(&entry) {
+                self.unsaved = true;
+                return Err(Unsaved {
+                    path: store.path.clone(),
+                    error: error.to_string(),
+                });
+            }
+        }
+        Ok(())
+    }
+
+    pub fn usage(&self) -> crate::agent::message::Usage {
+        let mut total = crate::agent::message::Usage::default();
+        for usage in self
+            .messages
+            .iter()
+            .filter_map(|m| match m {
+                Message::Assistant(a) => a.usage,
+                Message::Tool(t) => t
+                    .details
+                    .as_ref()
+                    .and_then(|d| d.get("usage"))
+                    .and_then(|u| serde_json::from_value(u.clone()).ok()),
+                _ => None,
+            })
+            .chain(self.compactions.iter().filter_map(|c| c.usage))
+        {
+            total.input += usage.input;
+            total.cached += usage.cached;
+            total.output += usage.output;
+            total.reasoning += usage.reasoning;
+            total.cost_micros += usage.cost_micros;
+        }
+        total
     }
 }
 
@@ -137,6 +297,40 @@ mod tests {
         Message::User {
             parts: vec![Part::Text { text: text.into() }],
         }
+    }
+
+    #[test]
+    fn compaction_and_rewind_survive_reopening_without_erasing_history() {
+        let root = tempfile::tempdir().unwrap();
+        let paths = Paths::at(root.path().join("home"), root.path().into());
+        let mut transcript = Transcript::new(Some(Store::create(&paths)));
+        for prompt in ["one", "two", "three"] {
+            assert!(transcript.push(user(prompt)).is_ok());
+        }
+        assert!(
+            transcript
+                .compact(1, "earlier summary".into(), None)
+                .is_ok()
+        );
+        let file = transcript.file().to_owned();
+        drop(transcript);
+        let mut resumed = Transcript::open(&paths, &Selection::Latest).unwrap();
+        assert_eq!(resumed.messages.len(), 3);
+        assert_eq!(resumed.compactions.len(), 1);
+        assert!(
+            serde_json::to_string(&resumed.context())
+                .unwrap()
+                .contains("earlier summary")
+        );
+        assert!(resumed.rewind(1).is_ok());
+        assert!(resumed.push(user("new branch")).is_ok());
+        drop(resumed);
+        let resumed = Transcript::open(&paths, &Selection::Latest).unwrap();
+        assert_eq!(resumed.messages.len(), 2);
+        assert!(resumed.compactions.is_empty());
+        let physical = io::fs::read_string(&file).unwrap().unwrap();
+        assert!(physical.contains("three"));
+        assert!(physical.contains("new branch"));
     }
 
     #[test]

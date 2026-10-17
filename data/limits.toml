@@ -183,8 +183,8 @@ value = 600
 reason = "the longest a model may ask to wait on one command"
 
 [tools.bash_drain_ms]
-value = 250
-reason = "after the shell exits, output still in flight gets this long before the pipes close"
+value = 2000
+reason = "bounds pipes held open by a process that escaped the terminated command tree"
 
 [tools.bash_memory_bytes]
 value = 262144
@@ -366,3 +366,28 @@ reason = "Bound paginated discovery from any single server."
 [extensions.search_results]
 value = 6
 reason = "Load a small useful set of schemas per search."
+
+[snapshot.timeout_secs]
+value = 30
+reason = "bound each local checkpoint operation"
+[snapshot.args_bytes]
+value = 16000
+reason = "leave room for git options on Windows command lines"
+[compaction.keep_tokens]
+value = 8000
+reason = "preserve recent complete turns verbatim"
+[compaction.trigger_percent]
+value = 80
+reason = "reserve room to summarize before the context fills"
+[compaction.summary_tokens]
+value = 2048
+reason = "bound the summary request and retained summary"
+[subagent.parallel]
+value = 2
+reason = "bound concurrent delegated requests"
+[subagent.max_turns]
+value = 24
+reason = "bound each delegated job"
+[subagent.max_depth]
+value = 1
+reason = "children cannot recursively start more jobs"

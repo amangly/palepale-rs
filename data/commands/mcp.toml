@@ -1,9 +1,13 @@
 name = "mcp"
 summary = "Manage MCP servers and their tools"
-usage = "mcp [list | add <name> [options] (--url <url> | -- <program> [args...]) | check <name> | auth <name> | logout <name> | enable <name> | disable <name> | remove <name> [--scope user|project]]"
+usage = "mcp [list | discover | import <name> --fingerprint <hash> [--scope user|project] | add <name> [options] (--url <url> | -- <program> [args...]) | check <name> | auth <name> | logout <name> | enable <name> | disable <name> | remove <name> [--scope user|project]]"
 secret = ["--env", "--header"]
 
 [text]
+discovered = "{name} · {source} ({scope}) · fingerprint {fingerprint}"
+discovery_empty = "No supported external MCP definitions were found."
+discovery_changed = "The external definition changed or is unavailable. Run mcp discover again before importing."
+imported = "Imported {name}, disabled. Review it in /mcp, then enable it to connect."
 added = "Added {name} to Palepale ({scope}).\nConfig: {file}\nRun `palepale mcp check {name}` to verify the connection, or open /mcp."
 checked = "{name}: connected · {count} tools"
 removed = "Removed {name} from Palepale ({scope}).\nConfig: {file}"

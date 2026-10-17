@@ -41,6 +41,45 @@ pub struct Store {
 }
 
 impl Store {
+    pub fn child(
+        paths: &Paths,
+        parent: &std::path::Path,
+        call: &str,
+        agent: &str,
+    ) -> anyhow::Result<Self> {
+        let mut store = Self::create(paths);
+        let name = store.path.file_name().expect("session filename").to_owned();
+        store.path = parent.with_extension("").join(name);
+        store.record(&Entry::Parent {
+            session: parent
+                .file_stem()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .into_owned(),
+            call: call.to_owned(),
+            agent: agent.to_owned(),
+        })?;
+        Ok(store)
+    }
+
+    pub fn last_id(&self) -> Option<&str> {
+        self.last.as_deref()
+    }
+
+    pub fn rewind(&mut self, head: Option<String>, state: &SavedState) -> anyhow::Result<()> {
+        let previous = self.last.clone();
+        self.last = head;
+        if let Err(error) = self.save_state(state) {
+            self.last = previous;
+            return Err(error);
+        }
+        Ok(())
+    }
+
+    pub fn record(&mut self, entry: &Entry) -> anyhow::Result<()> {
+        self.ensure_open()?;
+        self.write(entry)
+    }
     pub fn create(paths: &Paths) -> Self {
         let id = entry::new_id();
         let created = io::clock::now();

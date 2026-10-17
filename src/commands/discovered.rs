@@ -195,6 +195,7 @@ pub async fn expand_prompts(
                 arguments: request.to_string(),
             });
             let tcx = ToolCx {
+                run: Some(cx),
                 app: cx.app,
                 shared,
                 emit: cx.emit,

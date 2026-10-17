@@ -11,10 +11,16 @@ use crate::io;
 #[derive(Default)]
 pub struct Files {
     seen: Mutex<HashMap<PathBuf, Option<SystemTime>>>,
-    locks: Mutex<HashMap<PathBuf, Arc<tokio::sync::Mutex<()>>>>,
+    locks: Arc<Mutex<HashMap<PathBuf, Arc<tokio::sync::Mutex<()>>>>>,
 }
 
 impl Files {
+    pub fn child(&self) -> Self {
+        Self {
+            seen: Mutex::default(),
+            locks: self.locks.clone(),
+        }
+    }
     /// Forgets every file, for a conversation that has read none yet.
     pub fn forget_all(&self) {
         self.seen.lock().unwrap().clear();

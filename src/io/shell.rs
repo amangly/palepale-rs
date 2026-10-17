@@ -83,9 +83,8 @@ pub async fn run(
             () = cancel.cancelled() => break Ended::Cancelled,
         }
     };
-    if !matches!(ended, Ended::Exited(_)) {
-        tree.kill();
-    }
+    // Close descendant writers before draining the command's remaining output.
+    tree.kill();
     let drain = tokio::time::sleep(cmd.drain);
     tokio::pin!(drain);
     loop {

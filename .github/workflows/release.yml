@@ -61,6 +61,32 @@ jobs:
           path: dist
           merge-multiple: true
       - run: cd dist && sha256sum palepale-* > SHA256SUMS
+      - name: Sign checksum manifest when a release key is configured
+        env:
+          PALEPALE_SIGNING_KEY: ${{ secrets.PALEPALE_SIGNING_KEY }}
+          TAG: ${{ needs.tag.outputs.tag }}
+        run: |
+          python3 - <<'PY'
+          import os, pathlib, tomllib
+          signing = tomllib.loads(pathlib.Path('data/release.toml').read_text())['signing']
+          keys = signing['keys']
+          secret = os.environ.get('PALEPALE_SIGNING_KEY', '')
+          if bool(keys) != bool(secret):
+              raise SystemExit('Configure both signing.keys and PALEPALE_SIGNING_KEY before publishing.')
+          if keys:
+              path = pathlib.Path(os.environ['RUNNER_TEMP']) / 'release.key'
+              path.touch(mode=0o600)
+              path.write_text(secret)
+              pathlib.Path(os.environ['RUNNER_TEMP'], 'release.pub').write_text(keys[0])
+          PY
+          key="$RUNNER_TEMP/release.key"
+          if test -f "$key"; then
+            trap 'rm -f "$key" "$RUNNER_TEMP/release.pub"' EXIT
+            sudo apt-get update -qq
+            sudo apt-get install -y minisign
+            minisign -S -s "$key" -m dist/SHA256SUMS -t "palepale release $TAG"
+            minisign -V -P "$(cat "$RUNNER_TEMP/release.pub")" -m dist/SHA256SUMS
+          fi
       - run: cp LICENSE-APACHE NOTICE dist/
       - env:
           GH_TOKEN: ${{ github.token }}

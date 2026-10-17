@@ -117,3 +117,35 @@ async fn a_corrupt_key_file_is_explained_and_logout_still_clears_it() {
     let status = sandbox.run(&fake.url, &["login", "--status"], None).await;
     assert!(status.success().stdout().contains("Not logged in"));
 }
+#[tokio::test(flavor = "multi_thread")]
+async fn key_management_requires_explicit_revocation_and_preserves_current_key_errors() {
+    let fake = crate::fake_palepale::Fake::start().await;
+    let sandbox = crate::Sandbox::default();
+    let listed = sandbox
+        .run(&fake.url, &["keys", "list"], crate::WITH_KEY)
+        .await;
+    assert!(listed.success().stdout().contains("This terminal"));
+    let current = "00000000-0000-0000-0000-000000000001";
+    let other = "00000000-0000-0000-0000-000000000002";
+    let refused = sandbox
+        .run(&fake.url, &["keys", "revoke", other], crate::WITH_KEY)
+        .await;
+    assert_ne!(refused.code(), Some(0));
+    assert_eq!(fake.hits(&format!("/api/me/keys/{other}/revoke")), 0);
+    let refused = sandbox
+        .run(
+            &fake.url,
+            &["keys", "revoke", current, "--yes"],
+            crate::WITH_KEY,
+        )
+        .await;
+    assert_ne!(refused.code(), Some(0));
+    let revoked = sandbox
+        .run(
+            &fake.url,
+            &["keys", "revoke", other, "--yes"],
+            crate::WITH_KEY,
+        )
+        .await;
+    assert!(revoked.success().stdout().contains("Revoked key"));
+}

@@ -34,6 +34,9 @@ impl Limit<u64> {
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Limits {
+    pub snapshot: SnapshotLimits,
+    pub compaction: CompactionLimits,
+    pub subagent: SubagentLimits,
     pub http: HttpLimits,
     pub models: ModelLimits,
     pub chat: ChatLimits,
@@ -47,6 +50,29 @@ pub struct Limits {
     pub edit: EditLimits,
     pub tui: TuiLimits,
     pub extensions: ExtensionLimits,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SnapshotLimits {
+    pub timeout_secs: Limit<u64>,
+    pub args_bytes: Limit<usize>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CompactionLimits {
+    pub keep_tokens: Limit<usize>,
+    pub trigger_percent: Limit<u64>,
+    pub summary_tokens: Limit<u64>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SubagentLimits {
+    pub parallel: Limit<usize>,
+    pub max_turns: Limit<u32>,
+    pub max_depth: Limit<usize>,
 }
 
 #[derive(Debug, Deserialize)]

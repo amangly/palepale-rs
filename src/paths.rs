@@ -73,6 +73,15 @@ impl Paths {
     pub fn sessions_dir(&self) -> PathBuf {
         self.home.join("sessions").join(slug(&self.project))
     }
+
+    pub fn snapshots_dir(&self, work: &Path) -> PathBuf {
+        use sha2::{Digest, Sha256};
+        let key: String = Sha256::digest(work.to_string_lossy().as_bytes())
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect();
+        self.home.join("snapshots").join(key)
+    }
 }
 
 fn slug(path: &Path) -> String {

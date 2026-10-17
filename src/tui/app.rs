@@ -74,6 +74,8 @@ enum Step<'a> {
     /// Put the conversation away and start a fresh one.
     NewConversation,
     ResumeSession(String),
+    Undo(bool),
+    Compact(String),
     /// Run beside input: a session command, or what one of them asked for.
     Work(BoxFuture<'a, Work>),
 }
@@ -398,6 +400,7 @@ impl<'a> Tui<'a> {
                 self.context_tokens = Some(usage.input);
             }
         }
+        self.session_usage = transcript.usage();
         self.cost_micros = self.session_usage.cost_micros;
         self.view = View::default();
     }
@@ -456,56 +459,109 @@ impl<'a> Tui<'a> {
         let mut tick = tokio::time::interval(limits::get().tui.frame_ms.ms());
         tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         let shared = self.shared;
+        let mut pending_step = None;
         loop {
             self.draw(turn.is_some());
-            let step = tokio::select! {
-                input = inputs.next() => {
-                    let Some(input) = input else { break };
-                    self.input(input, turn.is_some())
-                }
-                Some(event) = events.recv() => {
-                    self.agent(event);
-                    while let Ok(event) = events.try_recv() {
-                        self.agent(event);
+            let step = if let Some(step) = pending_step.take() {
+                step
+            } else {
+                tokio::select! {
+                    input = inputs.next() => {
+                        let Some(input) = input else { break };
+                        self.input(input, turn.is_some())
                     }
-                    Step::Continue
-                }
-                (owned, _) = async { turn.as_mut().expect("guarded by the branch condition").await }, if turn.is_some() => {
-                    turn = None;
-                    transcript = Some(owned);
-                    self.required_inputs = crate::api::models::input_requirements(&transcript.as_ref().expect("restored").messages);
-                    self.progress = None;
-                    self.queue.clear();
-                    let app = self.app;
-                    work.push(Box::pin(async move { Work::ExtensionsReady(commands::discovered::list(app).await) }));
-                    work.push(command::sync_catalog(app));
-                    while let Ok(event) = events.try_recv() {
+                    Some(event) = events.recv() => {
                         self.agent(event);
+                        while let Ok(event) = events.try_recv() {
+                            self.agent(event);
+                        }
+                        Step::Continue
                     }
-                    Step::Continue
-                }
-                done = async { job.as_mut().expect("guarded by the branch condition").await }, if job.is_some() => {
-                    job = None;
-                    if matches!(&done, Done::Extensions(extension_ui::Done::Loaded { .. })) {
+                    (owned, _) = async { turn.as_mut().expect("guarded by the branch condition").await }, if turn.is_some() => {
+                        turn = None;
+                        transcript = Some(owned);
+                        self.required_inputs = crate::api::models::input_requirements(&transcript.as_ref().expect("restored").messages);
+                        self.progress = None;
+                        self.queue.clear();
                         let app = self.app;
                         work.push(Box::pin(async move { Work::ExtensionsReady(commands::discovered::list(app).await) }));
+                        work.push(command::sync_catalog(app));
+                        while let Ok(event) = events.try_recv() {
+                            self.agent(event);
+                        }
+                        Step::Continue
                     }
-                    self.job_done(done)
+                    done = async { job.as_mut().expect("guarded by the branch condition").await }, if job.is_some() => {
+                        job = None;
+                        if matches!(&done, Done::Extensions(extension_ui::Done::Loaded { .. })) {
+                            let app = self.app;
+                            work.push(Box::pin(async move { Work::ExtensionsReady(commands::discovered::list(app).await) }));
+                        }
+                        self.job_done(done)
+                    }
+                    Some(done) = work.next(), if !work.is_empty() => {
+                        if matches!(&done, Work::Command(Ok(_))) {
+                            let app = self.app;
+                            work.push(Box::pin(async move { Work::ExtensionsReady(commands::discovered::list(app).await) }));
+                        }
+                        self.finish(done)
+                    },
+                    // Frames tick while the intro, a turn, or a toast moves.
+                    _ = tick.tick(), if turn.is_some() || self.toast.is_some() || self.intro.is_some() => {
+                        self.advance_intro();
+                        Step::Continue
+                    },
                 }
-                Some(done) = work.next(), if !work.is_empty() => {
-                    if matches!(&done, Work::Command(Ok(_))) {
-                        let app = self.app;
-                        work.push(Box::pin(async move { Work::ExtensionsReady(commands::discovered::list(app).await) }));
-                    }
-                    self.finish(done)
-                },
-                // Frames tick while the intro, a turn, or a toast moves.
-                _ = tick.tick(), if turn.is_some() || self.toast.is_some() || self.intro.is_some() => {
-                    self.advance_intro();
-                    Step::Continue
-                },
             };
             match step {
+                Step::Undo(retry) => {
+                    let Some(owned) = transcript.as_mut() else {
+                        self.feed.notice(&ui::get().text.busy, "warn");
+                        continue;
+                    };
+                    match crate::session::workflow::undo(&self.app.paths, owned).await {
+                        Ok((parts, note, retry_ready)) => {
+                            self.shared.resumed();
+                            self.restore_feed(owned);
+                            self.feed.notice(&note, "muted");
+                            self.restore_draft(&parts);
+                            if retry && retry_ready {
+                                pending_step = Some(Step::Send(parts));
+                            }
+                        }
+                        Err(error) => self.feed.notice(&error.to_string(), "error"),
+                    }
+                }
+                Step::Compact(focus) => {
+                    let Some(model) = self.model.clone() else {
+                        continue;
+                    };
+                    let Some(mut owned) = transcript.take() else {
+                        self.feed.notice(&ui::get().text.busy, "warn");
+                        continue;
+                    };
+                    let (app, tools, emit) = (self.app, turns.tools, turns.emit);
+                    let system = self.system.clone();
+                    let plan_file = tools::plan_file(&app.paths, &owned.id());
+                    self.progress = Some(Progress::start(
+                        clock::instant(),
+                        self.last_verb,
+                        &mut self.rng,
+                    ));
+                    turn = Some(Box::pin(async move {
+                        let cx = RunCtx {
+                            app,
+                            model: &model,
+                            system: &system,
+                            tools,
+                            plan_file,
+                            emit,
+                        };
+                        let outcome =
+                            crate::agent::compact::run(&cx, &mut owned, shared, &focus).await;
+                        (owned, outcome)
+                    }));
+                }
                 Step::Continue => {}
                 Step::Quit => break,
                 Step::Job(run) => job = Some(run),
@@ -530,7 +586,7 @@ impl<'a> Tui<'a> {
                                 continue;
                             }
                         };
-                    let mut proposed = crate::agent::context::build(&owned.messages);
+                    let mut proposed = owned.context();
                     proposed.push(Message::User {
                         parts: parts.clone(),
                     });
@@ -548,7 +604,9 @@ impl<'a> Tui<'a> {
                         messages: &proposed,
                         tools: &turns.tools.wire(),
                         agent_profile: None,
-                    }) {
+                    }) && (error.kind != "context_budget"
+                        || !crate::agent::compact::can_compact(&owned))
+                    {
                         self.feed.notice(&error.to_string(), "error");
                         self.restore_draft(&parts);
                         transcript = Some(owned);
@@ -1336,6 +1394,8 @@ impl<'a> Tui<'a> {
                     Err(error) => self.feed.notice(&error.to_string(), "error"),
                 },
                 Effect::ResumeSession(id) => return Step::ResumeSession(id),
+                Effect::Undo { retry } => return Step::Undo(retry),
+                Effect::Compact(focus) => return Step::Compact(focus),
                 Effect::Login { number: None } => self.login = Some(Login::new()),
                 Effect::Login {
                     number: Some(number),
@@ -1385,9 +1445,40 @@ impl<'a> Tui<'a> {
         Step::Continue
     }
 
+    fn add_usage(&mut self, usage: Usage) {
+        self.cost_micros = self.cost_micros.saturating_add(usage.cost_micros);
+        self.session_requests += 1;
+        self.session_usage.input = self.session_usage.input.saturating_add(usage.input);
+        self.session_usage.output = self.session_usage.output.saturating_add(usage.output);
+        self.session_usage.cached = self.session_usage.cached.saturating_add(usage.cached);
+        self.session_usage.reasoning = self.session_usage.reasoning.saturating_add(usage.reasoning);
+        self.session_usage.cost_micros = self
+            .session_usage
+            .cost_micros
+            .saturating_add(usage.cost_micros);
+    }
+
     fn agent(&mut self, event: AgentEvent) {
+        if let AgentEvent::Child { event, .. } = event {
+            match *event {
+                AgentEvent::Prompt { .. } | AgentEvent::Unsaved { .. } => self.agent(*event),
+                AgentEvent::MessageEnd { message } => {
+                    if let Some(usage) = message.usage {
+                        self.add_usage(usage);
+                    }
+                }
+                AgentEvent::CompactionEnd {
+                    usage: Some(usage), ..
+                } => self.add_usage(usage),
+                _ => {}
+            }
+            return;
+        }
         let now = clock::instant();
         match &event {
+            AgentEvent::CompactionEnd {
+                usage: Some(usage), ..
+            } => self.add_usage(*usage),
             AgentEvent::MessageEnd { message } => {
                 if let Some(usage) = message.usage {
                     self.cost_micros += usage.cost_micros;

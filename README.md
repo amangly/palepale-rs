@@ -46,10 +46,15 @@ The server keeps profile instructions private. The CLI receives the profile ID, 
 | --- | --- |
 | `/models` | Choose a model |
 | `/sessions` | Resume a saved conversation |
+| `/resume` | Alias for `/sessions` |
+| `/undo` | Take back the last prompt and restore its file checkpoint |
+| `/retry` | Take back the last prompt and send it again |
+| `/compact [focus]` | Summarize older turns while retaining recent context |
 | `/prompt` | List local system prompts and choose a default |
 | `/godmode` | Choose a coding profile |
 | `/godmode off` | Clear the profile |
 | `/status` | View session and usage |
+| `/keys` | List account keys; revoke another device with `/keys revoke <ref> --yes` |
 | `/mcp` | Manage MCP servers |
 | `/skills` | Browse reusable skills |
 | `/help` | Show commands |
@@ -57,6 +62,21 @@ The server keeps profile instructions private. The CLI receives the profile ID, 
 | `Ctrl+D` | Quit |
 
 New sessions start in AUTO. Use `/mode` or `Shift+Tab` to switch to MANUAL or PLAN.
+
+Undo checkpoints cover files inside a Git work tree and respect its ignore rules. Files edited
+after a completed turn are kept. An interrupted turn without a final checkpoint rewinds the
+conversation only. Snapshots live under the CLI home, and concurrent sessions cannot share an
+active snapshot index.
+
+Long conversations compact automatically near the context limit. The original messages stay
+in the session file. The `task` tool can delegate work to an `explore` agent with read-only
+tools or a `general` agent with the parent's tool set and permission mode. Child tasks have
+bounded depth, concurrency, and turns; stopping the parent cancels its children.
+
+Run `palepale mcp discover` to list MCP definitions from supported local clients. Import one
+with `palepale mcp import <name> --fingerprint <fingerprint>`, optionally adding `--scope project`.
+Imports start disabled; review the configuration in `/mcp` before enabling it. Discovery does
+not start servers or print environment/header values.
 
 Use `palepale --continue` to reopen the latest project conversation, or
 `palepale --resume <id>` for a specific one. Local prompt files and `/godmode`

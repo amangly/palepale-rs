@@ -89,3 +89,8 @@ action = "allow"
 permission = "plan_exit"
 pattern = "*"
 action = "allow"
+
+[[permission]]
+permission = "task"
+pattern = "*"
+action = "allow"

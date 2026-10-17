@@ -1,0 +1,5 @@
+name = "compact"
+summary = "Summarize earlier turns while retaining recent context"
+usage = "compact [focus]"
+scope = ["session"]
+requires_backend = true

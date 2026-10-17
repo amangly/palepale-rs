@@ -49,6 +49,56 @@ pub async fn overview(api: &Api) -> Result<Overview, ApiError> {
         .map_err(|e| ErrorInfo::local("bad_response", e.to_string()).into())
 }
 
+#[derive(Debug, Deserialize)]
+pub struct Key {
+    #[serde(rename = "ref")]
+    pub reference: String,
+    pub name: String,
+    pub hint: String,
+    pub created_at: String,
+    pub expires_at: String,
+    pub revoked_at: Option<String>,
+    pub current: bool,
+}
+
+pub async fn keys(api: &Api) -> Result<Vec<Key>, ApiError> {
+    #[derive(Deserialize)]
+    struct Response {
+        keys: Vec<Key>,
+    }
+    let response = api
+        .call(
+            "keys",
+            Call::default(),
+            limits::get().http.request_timeout_ms.ms(),
+        )
+        .await?;
+    serde_json::from_slice::<Response>(&response.body)
+        .map(|response| response.keys)
+        .map_err(|e| ErrorInfo::local("bad_response", e.to_string()).into())
+}
+
+pub async fn revoke_key(api: &Api, reference: &str) -> Result<(), ApiError> {
+    let response = api
+        .call(
+            "revoke_key",
+            Call {
+                args: &[("ref", reference)],
+                ..Call::default()
+            },
+            limits::get().http.request_timeout_ms.ms(),
+        )
+        .await?;
+    #[derive(Deserialize)]
+    struct Response {
+        ok: bool,
+    }
+    match serde_json::from_slice::<Response>(&response.body) {
+        Ok(Response { ok: true }) => Ok(()),
+        _ => Err(ErrorInfo::local("bad_response", "Key revocation was not acknowledged").into()),
+    }
+}
+
 impl Me {
     pub fn available(&self) -> i64 {
         self.available_microdollars

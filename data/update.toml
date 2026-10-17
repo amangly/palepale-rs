@@ -12,6 +12,7 @@ no_platform = "Releases have no build for this platform ({os} {arch})."
 missing = "Release {tag} has no {file}."
 not_writable = "palepale cannot write to {dir}, where it is installed (by an administrator or a package manager, perhaps); update it there."
 mismatch = "The download of {file} does not match its checksum; nothing was changed."
+signature = "The release signature is invalid or does not match its tag; nothing was changed."
 http = "{url} answered {status}."
 too_large = "The release response exceeds the supported size; the installed CLI was kept."
 

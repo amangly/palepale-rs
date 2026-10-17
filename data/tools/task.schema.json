@@ -1,0 +1,1 @@
+{"type":"object","properties":{"description":{"type":"string","minLength":1},"prompt":{"type":"string","minLength":1},"subagent_type":{"type":"string"}},"required":["description","prompt","subagent_type"],"additionalProperties":false}

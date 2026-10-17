@@ -26,6 +26,18 @@ pub enum Outcome {
 #[derive(Debug, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum AgentEvent {
+    CompactionStart {
+        auto: bool,
+    },
+    CompactionEnd {
+        changed: bool,
+        usage: Option<crate::agent::message::Usage>,
+        error: Option<String>,
+    },
+    Child {
+        call_id: String,
+        event: Box<AgentEvent>,
+    },
     /// Every tool call in a `MessageEnd` gets one `ToolStart` and one `ToolEnd`, refused ones
     /// included, in call order.
     ToolStart {

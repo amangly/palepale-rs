@@ -35,6 +35,10 @@ struct Text {
     logged_out: String,
     unavailable: String,
     toggled: String,
+    discovered: String,
+    discovery_empty: String,
+    discovery_changed: String,
+    imported: String,
 }
 
 #[derive(Parser)]
@@ -49,6 +53,14 @@ struct Options {
 #[allow(clippy::large_enum_variant)]
 enum Action {
     List,
+    Discover,
+    Import {
+        name: String,
+        #[arg(long)]
+        fingerprint: String,
+        #[arg(long, value_parser = ["user", "project"], default_value = "user")]
+        scope: String,
+    },
     Add {
         name: String,
         #[arg(long, value_parser = ["user", "project"], default_value = "user")]
@@ -140,6 +152,55 @@ impl Command for Mcp {
             let app = cx.app;
             app.mcp.reload(app)?;
             let output = match options.action.unwrap_or(Action::List) {
+                Action::Discover => {
+                    let rows: Vec<_> = mcp::discover::found(&app.paths.project)
+                        .into_iter()
+                        .map(|found| {
+                            fill(
+                                &TEXT.discovered,
+                                &[
+                                    ("name", &found.name),
+                                    ("source", &found.source),
+                                    ("scope", found.scope.label()),
+                                    ("fingerprint", &found.fingerprint),
+                                ],
+                            )
+                        })
+                        .collect();
+                    if rows.is_empty() {
+                        TEXT.discovery_empty.clone()
+                    } else {
+                        rows.join("\n")
+                    }
+                }
+                Action::Import {
+                    name,
+                    fingerprint,
+                    scope,
+                } => {
+                    let found = mcp::discover::found(&app.paths.project)
+                        .into_iter()
+                        .find(|found| found.name == name && found.fingerprint == fingerprint)
+                        .ok_or_else(|| anyhow::anyhow!(TEXT.discovery_changed.clone()))?;
+                    let scope = if scope == "project" {
+                        Placement::Project
+                    } else {
+                        Placement::User
+                    };
+                    if app.mcp.list().iter().any(|server| server.name == name) {
+                        bail!(fill(
+                            &TEXT.exists,
+                            &[
+                                ("name", &name),
+                                ("file", &app.paths.user_config().display().to_string())
+                            ]
+                        ));
+                    }
+                    let mut config = found.config;
+                    config.enabled = false;
+                    mcp::save(app, &name, &config, scope)?;
+                    fill(&TEXT.imported, &[("name", &name)])
+                }
                 Action::List => {
                     let rows: Vec<_> = app
                         .mcp

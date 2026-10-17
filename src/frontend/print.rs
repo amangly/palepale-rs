@@ -79,7 +79,7 @@ pub async fn run(
         std::future::pending::<()>().await;
     };
     let prompt = vec![Part::Text { text: prompt }];
-    let mut proposed = transcript.messages.clone();
+    let mut proposed = transcript.context();
     proposed.push(crate::agent::message::Message::User {
         parts: prompt.clone(),
     });
@@ -95,6 +95,13 @@ pub async fn run(
         messages: &proposed,
         tools: &registry.wire(),
         agent_profile: None,
+    })
+    .or_else(|error| {
+        if error.kind == "context_budget" && crate::agent::compact::can_compact(&transcript) {
+            Ok(())
+        } else {
+            Err(error)
+        }
     })
     .map_err(|error| anyhow!(error.to_string()))?;
     let outcome = tokio::select! {
@@ -116,6 +123,11 @@ struct Printer<'a> {
 
 impl Printer<'_> {
     fn event(&self, event: AgentEvent) {
+        if let AgentEvent::Child { event: child, .. } = &event
+            && let AgentEvent::Prompt { id, .. } = child.as_ref()
+        {
+            self.shared.answer(*id, Reply::Unavailable);
+        }
         // Nobody can answer a prompt here; decline it so the model hears why and carries on.
         if let AgentEvent::Prompt { id, .. } = &event {
             self.shared.answer(*id, Reply::Unavailable);
@@ -207,6 +219,9 @@ impl Printer<'_> {
             term::out("\n");
         }
         let last = self.last.lock().unwrap().take();
+        if last.as_ref().is_some_and(|m| m.finish == Finish::Length) {
+            term::err("palepale: the reply hit the configured backend output limit\n");
+        }
         match outcome {
             Outcome::Aborted => {
                 term::err("palepale: cancelled\n");
@@ -228,12 +243,7 @@ impl Printer<'_> {
                 ExitCode::FAILURE
             }
             Outcome::Rejected => ExitCode::FAILURE,
-            Outcome::Done => {
-                if last.is_some_and(|m| m.finish == Finish::Length) {
-                    term::err("palepale: the reply hit the configured backend output limit\n");
-                }
-                ExitCode::SUCCESS
-            }
+            Outcome::Done => ExitCode::SUCCESS,
         }
     }
 }

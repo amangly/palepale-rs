@@ -2,8 +2,8 @@
 //! mode, and the interrupt. Frontends change it while a run is live.
 
 use std::collections::{HashMap, VecDeque};
-use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
 
 use tokio::sync::oneshot;
 use tokio_util::sync::CancellationToken;
@@ -27,15 +27,21 @@ pub enum Reminder {
     },
 }
 
+type PendingAsks = HashMap<u64, (bool, oneshot::Sender<Reply>)>;
+
 pub struct Shared {
+    pub depth: usize,
+    pub session: Mutex<std::path::PathBuf>,
+    pub slots: Arc<tokio::sync::Semaphore>,
+    inherited_cancel: Option<CancellationToken>,
     cancel: Mutex<CancellationToken>,
     steer: Mutex<VecDeque<Vec<Part>>>,
     follow: Mutex<VecDeque<Vec<Part>>>,
     /// Waiting prompts, and whether each is a permission prompt.
-    asks: Mutex<HashMap<u64, (bool, oneshot::Sender<Reply>)>>,
-    next_ask: AtomicU64,
-    mode: Mutex<&'static Mode>,
-    agent_profile: Mutex<Option<String>>,
+    asks: Arc<Mutex<PendingAsks>>,
+    next_ask: Arc<AtomicU64>,
+    mode: Arc<Mutex<&'static Mode>>,
+    agent_profile: Arc<Mutex<Option<String>>>,
     /// The mode the model was last told about.
     reminded: Mutex<Option<&'static Mode>>,
     restored: AtomicBool,
@@ -45,13 +51,19 @@ pub struct Shared {
 impl Shared {
     pub fn new(mode: &'static Mode) -> Self {
         Self {
+            depth: 0,
+            session: Mutex::default(),
+            slots: Arc::new(tokio::sync::Semaphore::new(
+                crate::limits::get().subagent.parallel.value,
+            )),
+            inherited_cancel: None,
             cancel: Mutex::new(CancellationToken::new()),
             steer: Mutex::default(),
             follow: Mutex::default(),
-            asks: Mutex::default(),
-            next_ask: AtomicU64::new(1),
-            mode: Mutex::new(mode),
-            agent_profile: Mutex::default(),
+            asks: Arc::default(),
+            next_ask: Arc::new(AtomicU64::new(1)),
+            mode: Arc::new(Mutex::new(mode)),
+            agent_profile: Arc::default(),
             reminded: Mutex::default(),
             restored: AtomicBool::new(false),
             files: Files::default(),
@@ -60,9 +72,22 @@ impl Shared {
 
     /// A fresh interrupt for a new run.
     pub fn begin_run(&self) -> CancellationToken {
-        let token = CancellationToken::new();
+        let token = self.inherited_cancel.clone().unwrap_or_default();
         *self.cancel.lock().unwrap() = token.clone();
         token
+    }
+
+    pub fn child(&self, cancel: CancellationToken) -> Self {
+        let mut child = Self::new(self.mode());
+        child.depth = self.depth + 1;
+        child.inherited_cancel = Some(cancel.child_token());
+        child.asks = self.asks.clone();
+        child.next_ask = self.next_ask.clone();
+        child.mode = self.mode.clone();
+        child.agent_profile = self.agent_profile.clone();
+        child.slots = self.slots.clone();
+        child.files = self.files.child();
+        child
     }
 
     pub fn interrupt(&self) {
@@ -181,5 +206,26 @@ impl Shared {
             Some((_, waiting)) => waiting.send(reply).is_ok(),
             None => false,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn child_prompts_share_ids_and_parent_interrupt_cancels_children() {
+        let parent = Shared::new(crate::mode::get("manual").unwrap());
+        let token = parent.begin_run();
+        let child = parent.child(token.clone());
+        let child_token = child.begin_run();
+        let (parent_id, _) = parent.register_ask(true);
+        let (child_id, reply) = child.register_ask(true);
+        assert_ne!(parent_id, child_id);
+        assert!(parent.answer(child_id, Reply::Yes));
+        assert!(matches!(reply.await, Ok(Reply::Yes)));
+        parent.interrupt();
+        assert!(token.is_cancelled());
+        assert!(child_token.is_cancelled());
     }
 }

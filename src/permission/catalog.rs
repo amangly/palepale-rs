@@ -38,6 +38,7 @@ pub const FORUM: Permission = permission("forum", Effect::Other);
 /// Posting to a forum; the posting tool also confirms the content with the user every time.
 pub const FORUM_POST: Permission = permission("forum_post", Effect::Other);
 pub const TODO: Permission = permission("todo", Effect::Other);
+pub const TASK: Permission = permission("task", Effect::Other);
 pub const QUESTION: Permission = permission("question", Effect::Other);
 pub const PLAN_EXIT: Permission = permission("plan_exit", Effect::Other);
 /// The same call repeated; asked by the agent, not a tool.
@@ -60,6 +61,7 @@ const ALL: &[Permission] = &[
     FORUM,
     FORUM_POST,
     TODO,
+    TASK,
     QUESTION,
     PLAN_EXIT,
     DOOM_LOOP,

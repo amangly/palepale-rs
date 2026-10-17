@@ -43,6 +43,7 @@ struct Text {
     mismatch: String,
     http: String,
     too_large: String,
+    signature: String,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -181,8 +182,7 @@ struct Remote {
 
 /// Replaces `exe`, built as release `current`, with the release `latest_url` names, after
 /// checking the download against the release's checksums.
-/// CEILING: the checksums come from the same release, so they catch a damaged download, not a
-/// hostile upload. Upgrade: a minisign signature checked against a key built into palepale.
+/// Configured signing keys require an authenticated checksum manifest bound to the tag.
 #[cfg(test)]
 async fn run(http: &Http, latest_url: &str, current: &str, exe: &Path) -> anyhow::Result<Outcome> {
     run_with_progress(http, latest_url, current, exe, &|_| {}).await
@@ -253,6 +253,25 @@ async fn run_with_progress(
         false,
     )
     .await?;
+    let signing = release::signing();
+    if !signing.keys.is_empty() {
+        let signature = find(&signing.file)?;
+        let signature = get(
+            http,
+            &signature.browser_download_url,
+            limits::get().update.check_timeout_secs.secs(),
+            false,
+        )
+        .await?;
+        if !release::signature::check(
+            &sums,
+            &String::from_utf8_lossy(&signature),
+            &latest.tag_name,
+            signing,
+        ) {
+            bail!(TEXT.signature.clone());
+        }
+    }
     if !matches(&bytes, &String::from_utf8_lossy(&sums), &ours.file) {
         bail!(fill(&TEXT.mismatch, &[("file", &ours.file)]));
     }

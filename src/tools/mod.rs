@@ -16,6 +16,7 @@ mod read;
 mod shell;
 mod skill;
 pub(crate) mod target;
+mod task;
 mod todowrite;
 mod truncate;
 mod webfetch;
@@ -126,6 +127,7 @@ impl Output {
 }
 
 pub struct ToolCx<'a> {
+    pub run: Option<&'a crate::agent::run::RunCtx<'a>>,
     pub app: &'a App,
     /// The session: what the model has read, the mode, and the way to ask the user.
     pub shared: &'a Shared,
@@ -149,6 +151,9 @@ impl ToolCx<'_> {
 }
 
 pub trait Tool: Send + Sync {
+    fn joins_on_cancel(&self) -> bool {
+        false
+    }
     fn spec(&self) -> &Spec;
     /// Validates the call and says what it needs permission for; runs before any prompt.
     fn check(&self, args: &Value, cx: &ToolCx<'_>) -> Result<Check, Refusal>;
@@ -216,6 +221,7 @@ impl Registry {
             Arc::new(forum::Search),
             Arc::new(forum::Post),
             Arc::new(todowrite::TodoWrite),
+            Arc::new(task::Task),
             Arc::new(question::Question),
             Arc::new(plan_exit::PlanExit),
         ];
@@ -242,6 +248,24 @@ impl Registry {
 
     pub fn get(&self, name: &str) -> Option<&Arc<dyn Tool>> {
         self.tools.iter().find(|t| t.spec().name == name)
+    }
+
+    pub fn subset(&self, names: &[String], except: &[String]) -> Self {
+        let snapshot = self.snapshot();
+        Self {
+            tools: snapshot
+                .tools
+                .into_iter()
+                .filter(|t| {
+                    (names
+                        .iter()
+                        .any(|n| n == "*" || n == t.spec().name.as_ref()))
+                        && !except.iter().any(|n| n == t.spec().name.as_ref())
+                })
+                .collect(),
+            vars: self.vars.clone(),
+            mcp: None,
+        }
     }
 
     pub fn names(&self) -> String {
@@ -305,6 +329,7 @@ pub mod testing {
 
         pub fn cx(&self) -> ToolCx<'_> {
             ToolCx {
+                run: None,
                 app: &self.app,
                 shared: &self.shared,
                 emit: &|_| {},

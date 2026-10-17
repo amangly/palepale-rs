@@ -11,6 +11,7 @@ pub mod godmode;
 mod help;
 mod init;
 mod install;
+mod keys;
 mod keytest;
 pub mod login;
 mod logout;
@@ -25,6 +26,7 @@ mod signup;
 mod status;
 mod uninstall;
 mod update;
+mod workflow;
 
 use futures_util::future::BoxFuture;
 use serde::Deserialize;
@@ -161,6 +163,10 @@ pub enum Effect {
     },
     /// Start a fresh conversation with a new session file.
     NewConversation,
+    Undo {
+        retry: bool,
+    },
+    Compact(String),
     PickSession,
     ResumeSession(String),
     /// Open the server's current coding profile list.
@@ -224,6 +230,7 @@ pub static COMMANDS: &[&dyn Command] = &[
     &logout::Logout,
     &signup::Signup,
     &status::Status,
+    &keys::Keys,
     &mcp::Mcp,
     &extensions::Skills,
     &update::Update,
@@ -237,6 +244,9 @@ pub static COMMANDS: &[&dyn Command] = &[
     &copy::Copy,
     &init::Init,
     &new::New,
+    &workflow::UNDO,
+    &workflow::RETRY,
+    &workflow::COMPACT,
     &sessions::Sessions,
     &quit::Quit,
     &keytest::KeyTest,

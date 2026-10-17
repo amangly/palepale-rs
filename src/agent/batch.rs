@@ -89,10 +89,15 @@ pub async fn run<'a>(
         }
         cleared.push(slot);
     }
-    Batch {
-        results: settle(cx, calls, cleared, shared, cancel).await,
-        stop,
-    }
+    let results = settle(cx, calls, cleared, shared, cancel).await;
+    stop |= results.iter().any(|r| {
+        r.details
+            .as_ref()
+            .and_then(|d| d.get("outcome"))
+            .and_then(Value::as_str)
+            == Some("rejected")
+    });
+    Batch { results, stop }
 }
 
 /// Refused calls still emit their lifecycle events and record why they did not run.
@@ -137,10 +142,10 @@ async fn settle(
             },
             Ok(cleared) => {
                 let tcx = tool_cx(cx, shared, cancel, &call.id);
-                let out = tokio::select! {
+                let out = if cleared.tool.joins_on_cancel() { cleared.tool.run(cleared.args, &tcx).await } else { tokio::select! {
                     out = cleared.tool.run(cleared.args, &tcx) => out,
                     () = cancel.cancelled() => Output::error(model_text::get().cancelled.clone()),
-                };
+                } };
                 ToolResult {
                     asks: cleared.asks,
                     ..result(call, out)
@@ -308,6 +313,7 @@ fn tool_cx<'a>(
     call_id: &'a str,
 ) -> ToolCx<'a> {
     ToolCx {
+        run: Some(cx),
         app: cx.app,
         shared,
         emit: cx.emit,

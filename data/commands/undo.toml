@@ -1,0 +1,4 @@
+name = "undo"
+summary = "Take back the last prompt and restore its file changes"
+usage = "undo"
+scope = ["session"]

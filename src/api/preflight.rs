@@ -62,25 +62,7 @@ pub fn check(turn: &Turn<'_>) -> Result<(), ErrorInfo> {
     {
         return Err(error(&data.effort));
     }
-    // Estimate only the wire projection; local diff details and permission records are not sent.
-    let wire_messages = crate::api::wire::messages(
-        turn.messages,
-        &crate::api::wire::Replay {
-            model: &model.id,
-            reasoning: model.capabilities.reasoning,
-            tools: model.capabilities.tool_calling,
-        },
-    );
-    let bytes = turn.system.len() as u64
-        + serde_json::to_vec(&wire_messages).map_or(0, |v| v.len() as u64)
-        + if model.capabilities.tool_calling {
-            serde_json::to_vec(turn.tools).map_or(0, |v| v.len() as u64)
-        } else {
-            0
-        };
-    let input = bytes
-        .div_ceil(data.bytes_per_token.max(1))
-        .saturating_add((turn.messages.len() as u64 + 1) * data.message_overhead_tokens);
+    let input = estimated_input(turn);
     let output = output_limit(model);
     if input.saturating_add(output) > model.context_window {
         return Err(ErrorInfo::local(
@@ -97,6 +79,30 @@ pub fn check(turn: &Turn<'_>) -> Result<(), ErrorInfo> {
         ));
     }
     Ok(())
+}
+
+pub fn estimated_input(turn: &Turn<'_>) -> u64 {
+    let model = turn.model;
+    let data = config();
+    // Estimate only the wire projection; local diff details and permission records are not sent.
+    let wire_messages = crate::api::wire::messages(
+        turn.messages,
+        &crate::api::wire::Replay {
+            model: &model.id,
+            reasoning: model.capabilities.reasoning,
+            tools: model.capabilities.tool_calling,
+        },
+    );
+    let bytes = turn.system.len() as u64
+        + serde_json::to_vec(&wire_messages).map_or(0, |v| v.len() as u64)
+        + if model.capabilities.tool_calling {
+            serde_json::to_vec(turn.tools).map_or(0, |v| v.len() as u64)
+        } else {
+            0
+        };
+    bytes
+        .div_ceil(data.bytes_per_token.max(1))
+        .saturating_add((turn.messages.len() as u64 + 1) * data.message_overhead_tokens)
 }
 
 #[cfg(test)]

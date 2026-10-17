@@ -2,7 +2,6 @@
 //! back, until it stops calling tools. Messages queued meanwhile are delivered at safe points.
 
 use crate::agent::batch::{self, Batch};
-use crate::agent::context;
 use crate::agent::event::{AgentEvent, Outcome};
 use crate::agent::message::{Finish, Message, Part, ToolCall};
 use crate::agent::model_text;
@@ -33,6 +32,19 @@ pub async fn run(
     prompt: Vec<Part>,
 ) -> Outcome {
     let cancel = shared.begin_run();
+    *shared.session.lock().unwrap() = transcript
+        .stored_file()
+        .map(ToOwned::to_owned)
+        .unwrap_or_default();
+    let shadow = if shared.depth == 0 && transcript.stored_file().is_some() {
+        Some(crate::io::snapshot::Shadow::open(&cx.app.paths).await)
+    } else {
+        None
+    };
+    let before = match &shadow {
+        Some(shadow) => shadow.take().await,
+        None => None,
+    };
     let state = crate::session::store::SavedState {
         model: cx.model.id.clone(),
         mode: shared.mode().id.clone(),
@@ -65,8 +77,23 @@ pub async fn run(
     )
     .await;
     record(cx, transcript, Message::User { parts });
-    let max_turns = limits::get().agent.max_turns.value;
+    let prompt_id = transcript.ids.last().cloned().unwrap_or_default();
+    if let Some(before) = &before
+        && let Err(error) = transcript.snapshot(prompt_id.clone(), before.clone(), None)
+    {
+        (cx.emit)(AgentEvent::Unsaved {
+            path: error.path.display().to_string(),
+            error: error.error,
+        });
+    }
+    let max_turns = if shared.depth == 0 {
+        limits::get().agent.max_turns.value
+    } else {
+        limits::get().subagent.max_turns.value
+    };
     let mut turns = 0;
+    let mut summary_failed = false;
+    let mut overflow_retried = false;
 
     let outcome = 'run: loop {
         loop {
@@ -138,8 +165,24 @@ pub async fn run(
                 );
             }
 
-            let messages = context::build(&transcript.messages);
+            let mut messages = transcript.context();
             let agent_profile = shared.agent_profile();
+            if !summary_failed
+                && crate::agent::compact::can_compact(transcript)
+                && crate::agent::compact::needed(&Turn {
+                    model: cx.model,
+                    agent_profile: agent_profile.as_deref(),
+                    system: cx.system,
+                    messages: &messages,
+                    tools: &tools,
+                })
+            {
+                summary_failed = !matches!(
+                    crate::agent::compact::compact(cx, transcript, shared, &cancel, "", true).await,
+                    Ok(true)
+                );
+                messages = transcript.context();
+            }
             let turn = Turn {
                 model: cx.model,
                 agent_profile: agent_profile.as_deref(),
@@ -164,8 +207,26 @@ pub async fn run(
             .await;
             record(cx, transcript, Message::Assistant(reply.clone()));
             let finish = reply.finish;
+            let overflow = reply.error.as_ref().is_some_and(|e| {
+                [
+                    "context_budget",
+                    "context_length_exceeded",
+                    "context_window_exceeded",
+                ]
+                .contains(&e.kind.as_str())
+            });
             let calls: Vec<ToolCall> = reply.tool_calls().cloned().collect();
             (cx.emit)(AgentEvent::MessageEnd { message: reply });
+            if overflow && !overflow_retried && !summary_failed {
+                overflow_retried = true;
+                if matches!(
+                    crate::agent::compact::compact(cx, transcript, shared, &cancel, "", true).await,
+                    Ok(true)
+                ) {
+                    continue;
+                }
+                summary_failed = true;
+            }
             match finish {
                 Finish::Aborted => break 'run Outcome::Aborted,
                 Finish::Error => break 'run Outcome::Failed,
@@ -206,12 +267,16 @@ pub async fn run(
                 if stop {
                     break 'run Outcome::Rejected;
                 }
+                if finish == Finish::Length {
+                    // Record balanced refusals, then require the user to request another paid turn.
+                    break 'run Outcome::Failed;
+                }
             }
 
             let steered = shared.drain_steer();
             if !steered.is_empty() {
                 for parts in steered {
-                    deliver(cx, shared, transcript, parts, &cancel).await;
+                    deliver(cx, shared, transcript, parts, &cancel, shadow.as_ref()).await;
                 }
                 continue;
             }
@@ -224,11 +289,34 @@ pub async fn run(
             break Outcome::Done;
         }
         for parts in queued {
-            deliver(cx, shared, transcript, parts, &cancel).await;
+            deliver(cx, shared, transcript, parts, &cancel, shadow.as_ref()).await;
         }
     };
+    if let Some(shadow) = &shadow {
+        finish_checkpoint(cx, transcript, shadow).await;
+    }
     (cx.emit)(AgentEvent::RunEnd { outcome });
     outcome
+}
+
+async fn finish_checkpoint(
+    cx: &RunCtx<'_>,
+    transcript: &mut Transcript,
+    shadow: &crate::io::snapshot::Shadow,
+) -> Option<String> {
+    let after = shadow.take().await;
+    if let Some(at) = crate::session::workflow::last_prompt(transcript) {
+        let id = transcript.ids[at].clone();
+        if let Some(snapshot) = transcript.snapshots.get(&id).cloned()
+            && let Err(error) = transcript.snapshot(id, snapshot.before, after.clone())
+        {
+            (cx.emit)(AgentEvent::Unsaved {
+                path: error.path.display().to_string(),
+                error: error.error,
+            });
+        }
+    }
+    after
 }
 
 /// Keeps `message`; a session file that can no longer be written is reported once, and the
@@ -249,7 +337,12 @@ async fn deliver(
     transcript: &mut Transcript,
     parts: Vec<Part>,
     cancel: &tokio_util::sync::CancellationToken,
+    shadow: Option<&crate::io::snapshot::Shadow>,
 ) {
+    let before = match shadow {
+        Some(shadow) => finish_checkpoint(cx, transcript, shadow).await,
+        None => None,
+    };
     let text = parts
         .iter()
         .filter_map(|p| match p {
@@ -271,6 +364,15 @@ async fn deliver(
     )
     .await;
     record(cx, transcript, Message::User { parts });
+    if let Some(before) = before
+        && let Some(id) = transcript.ids.last().cloned()
+        && let Err(error) = transcript.snapshot(id, before, None)
+    {
+        (cx.emit)(AgentEvent::Unsaved {
+            path: error.path.display().to_string(),
+            error: error.error,
+        });
+    }
 }
 
 /// Mode changes reach the model as a reminder on the next user message, so the system prompt
@@ -454,6 +556,44 @@ mod tests {
 
     fn shared(mode: &str) -> Shared {
         Shared::new(mode::get(mode).unwrap())
+    }
+
+    #[tokio::test]
+    async fn manual_compaction_uses_no_tools_and_keeps_original_messages() {
+        let harness = Harness::new(vec![text("Earlier work summarized")]).await;
+        let registry = Registry::builtin(&harness.app);
+        let state = shared("auto");
+        let mut transcript = Transcript::new(None);
+        assert!(transcript.push(Message::user_text("older request")).is_ok());
+        assert!(
+            transcript
+                .push(Message::user_text("latest request"))
+                .is_ok()
+        );
+        let cx = RunCtx {
+            app: &harness.app,
+            model: &harness.model,
+            system: "sys",
+            tools: &registry,
+            plan_file: harness.plan_file(),
+            emit: &|_| {},
+        };
+        let outcome =
+            crate::agent::compact::run(&cx, &mut transcript, &state, "retain tests").await;
+        assert_eq!(outcome, Outcome::Done);
+        assert_eq!(transcript.messages.len(), 2);
+        assert_eq!(transcript.compactions.len(), 1);
+        let requests = harness.requests();
+        assert_eq!(requests.len(), 1);
+        assert!(
+            requests[0]
+                .get("tools")
+                .is_none_or(|tools| tools.as_array().is_some_and(Vec::is_empty))
+        );
+        let context = serde_json::to_string(&transcript.context()).unwrap();
+        assert!(context.contains("Earlier work summarized"));
+        assert!(context.contains("latest request"));
+        assert!(!context.contains("older request"));
     }
 
     fn last_message(request: &Value) -> Value {
@@ -843,7 +983,7 @@ mod tests {
         ])
         .await;
         let (outcome, transcript, events) = h.run(&shared("auto"), |_, _| {}).await;
-        assert_eq!(outcome, Outcome::Done);
+        assert_eq!(outcome, Outcome::Failed);
         for path in ["new.txt", "other.txt"] {
             assert_eq!(
                 crate::io::fs::kind(&h.app.paths.project.join(path)).unwrap(),
@@ -867,9 +1007,7 @@ mod tests {
         for event in ["tool_start", "tool_end"] {
             assert_eq!(events.iter().filter(|e| *e == event).count(), 2, "{event}");
         }
-        let result = last_message(&h.requests()[1]);
-        assert_eq!(result["role"], "tool");
-        assert!(result["content"].as_str().unwrap().contains("output limit"));
+        assert_eq!(h.requests().len(), 1);
     }
 
     #[tokio::test]
