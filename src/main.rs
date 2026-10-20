@@ -16,6 +16,7 @@ mod mcp;
 mod mode;
 mod paths;
 mod permission;
+mod prefs;
 mod release;
 mod session;
 mod settings;

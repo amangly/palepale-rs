@@ -167,7 +167,7 @@ impl Transcript {
         let catalogs = crate::agent::context::build(&self.messages[..kept]);
         for message in catalogs {
             if let Message::User { parts } = message {
-                let parts: Vec<_> = parts.into_iter().filter(|p| matches!(p, crate::agent::message::Part::Reminder { text } if ["<available_skills>", "<mcp_servers>", "<active_instructions>"].iter().any(|tag| text.starts_with(tag)))).collect();
+                let parts: Vec<_> = parts.into_iter().filter(|p| matches!(p, crate::agent::message::Part::Reminder { text } if crate::agent::context::catalog_prefixes().iter().any(|tag| text.starts_with(tag.as_str())))).collect();
                 if !parts.is_empty() {
                     messages.push(Message::User { parts });
                 }
@@ -297,6 +297,31 @@ mod tests {
         Message::User {
             parts: vec![Part::Text { text: text.into() }],
         }
+    }
+
+    #[test]
+    fn latest_workspace_snapshot_survives_compaction() {
+        let mut transcript = Transcript::new(None);
+        assert!(
+            transcript
+                .push(Message::User {
+                    parts: vec![
+                        Part::Reminder {
+                            text: "<workspace>current files</workspace>".into()
+                        },
+                        Part::Text {
+                            text: "earlier request".into()
+                        }
+                    ]
+                })
+                .is_ok()
+        );
+        assert!(transcript.push(user("latest request")).is_ok());
+        assert!(transcript.compact(1, "summary".into(), None).is_ok());
+        let context = serde_json::to_string(&transcript.context()).unwrap();
+        assert!(context.contains("current files"));
+        assert!(context.contains("latest request"));
+        assert!(!context.contains("earlier request"));
     }
 
     #[test]

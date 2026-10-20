@@ -45,6 +45,8 @@ pub struct Shared {
     /// The mode the model was last told about.
     reminded: Mutex<Option<&'static Mode>>,
     restored: AtomicBool,
+    cwd: Mutex<Option<std::path::PathBuf>>,
+    oriented: AtomicBool,
     pub files: Files,
 }
 
@@ -66,6 +68,8 @@ impl Shared {
             agent_profile: Arc::default(),
             reminded: Mutex::default(),
             restored: AtomicBool::new(false),
+            cwd: Mutex::default(),
+            oriented: AtomicBool::new(false),
             files: Files::default(),
         }
     }
@@ -87,6 +91,8 @@ impl Shared {
         child.agent_profile = self.agent_profile.clone();
         child.slots = self.slots.clone();
         child.files = self.files.child();
+        *child.cwd.lock().unwrap() = self.cwd();
+        child.oriented.store(true, Ordering::Release);
         child
     }
 
@@ -96,6 +102,18 @@ impl Shared {
 
     pub fn mode(&self) -> &'static Mode {
         *self.mode.lock().unwrap()
+    }
+
+    pub fn cwd(&self) -> Option<std::path::PathBuf> {
+        self.cwd.lock().unwrap().clone()
+    }
+
+    pub fn set_cwd(&self, dir: std::path::PathBuf) {
+        *self.cwd.lock().unwrap() = Some(dir);
+    }
+
+    pub fn orient_once(&self) -> bool {
+        !self.oriented.swap(true, Ordering::AcqRel)
     }
 
     pub fn agent_profile(&self) -> Option<String> {
@@ -162,6 +180,8 @@ impl Shared {
 
     /// A new conversation: the model has been told nothing, read nothing, and nothing waits.
     pub fn start_over(&self) {
+        *self.cwd.lock().unwrap() = None;
+        self.oriented.store(false, Ordering::Release);
         self.set_agent_profile(None);
         *self.reminded.lock().unwrap() = None;
         self.steer.lock().unwrap().clear();

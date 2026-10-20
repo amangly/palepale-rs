@@ -1,6 +1,7 @@
 //! Tools the model can call. Each is one file implementing `Tool`, registered once below.
 
 mod bash;
+mod decompile;
 mod edit;
 mod edit_match;
 pub mod files;
@@ -13,12 +14,12 @@ pub use crate::permission::catalog as permissions;
 mod plan_exit;
 mod question;
 mod read;
-mod shell;
+pub(crate) mod shell;
 mod skill;
 pub(crate) mod target;
 mod task;
 mod todowrite;
-mod truncate;
+pub(crate) mod truncate;
 mod webfetch;
 mod write;
 
@@ -131,6 +132,8 @@ pub struct ToolCx<'a> {
     pub app: &'a App,
     /// The session: what the model has read, the mode, and the way to ask the user.
     pub shared: &'a Shared,
+    /// Captured before permission checks; concurrent calls cannot change the approved directory.
+    pub cwd: std::path::PathBuf,
     pub emit: &'a (dyn Fn(AgentEvent) + Send + Sync),
     pub call_id: &'a str,
     /// The only file PLAN mode may write.
@@ -207,6 +210,7 @@ impl Registry {
         ];
         let tools: Vec<Arc<dyn Tool>> = vec![
             Arc::new(read::Read),
+            Arc::new(decompile::Decompile),
             Arc::new(skill::Skill),
             Arc::new(write::Write),
             Arc::new(edit::Edit),
@@ -332,6 +336,10 @@ pub mod testing {
                 run: None,
                 app: &self.app,
                 shared: &self.shared,
+                cwd: self
+                    .shared
+                    .cwd()
+                    .unwrap_or_else(|| self.app.paths.project.clone()),
                 emit: &|_| {},
                 call_id: "test",
                 plan_file: "/nowhere/plan.md",

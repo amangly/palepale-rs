@@ -46,7 +46,7 @@ pub async fn run(
     let model = catalog.selected(start.model(app, &transcript.state))?;
     let mode = start.mode(app, &transcript.state)?;
     let selected_prompt = start.prompt(app, &transcript.state).to_owned();
-    let system = system_prompt::selected(app, model, &selected_prompt)?;
+    let system = system_prompt::headless(system_prompt::selected(app, model, &selected_prompt)?);
     let registry = Registry::builtin(app);
     let shared = Shared::new(mode);
     shared.set_agent_profile(transcript.state.agent_profile.clone());

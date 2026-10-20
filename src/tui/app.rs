@@ -372,7 +372,19 @@ impl<'a> Tui<'a> {
     fn restore_feed(&mut self, transcript: &Transcript) {
         self.feed = Feed::new();
         self.feed.push(Block::Welcome(self.welcome()));
-        self.feed.restore(&transcript.messages);
+        let sessions = crate::io::fs::canonical(&self.app.paths.sessions_dir());
+        self.feed.restore_with(&transcript.messages, &|path| {
+            let path = crate::io::fs::canonical(std::path::Path::new(path));
+            if !path.starts_with(&sessions) {
+                return Vec::new();
+            }
+            crate::io::fs::read_string(&path)
+                .ok()
+                .flatten()
+                .and_then(|text| crate::session::reader::load(&text).ok())
+                .map(|loaded| loaded.messages)
+                .unwrap_or_default()
+        });
         self.feed.notice(
             &template::fill(
                 &crate::session::text::get().resumed,
@@ -1086,7 +1098,7 @@ impl<'a> Tui<'a> {
         self.model = Some(model);
     }
 
-    /// Uses `id` from the next turn on, for this session only.
+    /// Uses `id` from the next turn on and remembers the explicit choice.
     fn switch_model(&mut self, id: &str) {
         let Some(model) = self.catalog.get(id).cloned() else {
             return;
@@ -1096,6 +1108,7 @@ impl<'a> Tui<'a> {
             return;
         }
         self.replace_model(model);
+        crate::prefs::remember_model(&self.app.paths, id);
         let text = template::fill(&ui::get().picker.switched, &[("model", id)]);
         self.feed.notice(&text, "done");
         if self
@@ -1459,6 +1472,9 @@ impl<'a> Tui<'a> {
     }
 
     fn agent(&mut self, event: AgentEvent) {
+        if matches!(event, AgentEvent::Child { .. }) {
+            self.feed.event(&event, clock::instant());
+        }
         if let AgentEvent::Child { event, .. } = event {
             match *event {
                 AgentEvent::Prompt { .. } | AgentEvent::Unsaved { .. } => self.agent(*event),

@@ -54,6 +54,10 @@ impl Paths {
         self.home.join("auth.json")
     }
 
+    pub fn prefs(&self) -> PathBuf {
+        self.home.join("prefs.json")
+    }
+
     /// The forums the user added and the session cookies for the ones logged in.
     pub fn forums(&self) -> PathBuf {
         self.home.join("forums.json")

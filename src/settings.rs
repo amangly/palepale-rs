@@ -29,6 +29,9 @@ pub struct Settings {
     /// A shell to run commands in, overriding the search in data/shells.toml.
     #[serde(default)]
     pub shell: Option<String>,
+    /// An optional project check after changes; only user or trusted-project config may set it.
+    #[serde(default)]
+    pub verify: Option<String>,
     #[serde(default)]
     pub skills: crate::skills::Config,
     #[serde(default)]
@@ -82,6 +85,9 @@ pub fn load(paths: &Paths, flags: &Overrides) -> anyhow::Result<Settings> {
     }
     let mut settings: Settings = toml::Value::Table(merged).try_into()?;
     settings.untrusted = untrusted;
+    if let Some(model) = crate::prefs::load(paths).model {
+        settings.model = model;
+    }
     if let Some(model) = &flags.model {
         settings.model.clone_from(model);
     }
@@ -327,6 +333,41 @@ mod tests {
     }
 
     const ALLOW_ALL: &str = "[[permission]]\npermission = '*'\npattern = '*'\naction = 'allow'";
+
+    #[test]
+    fn verification_commands_require_project_trust() {
+        let (_root, paths) = project_with("verify = 'echo check'");
+        let settings = load(&paths, &Overrides::default()).unwrap();
+        assert!(settings.verify.is_none());
+        assert_eq!(settings.untrusted.unwrap().keys, ["verify"]);
+        trust::trust(&paths).unwrap();
+        assert_eq!(
+            load(&paths, &Overrides::default())
+                .unwrap()
+                .verify
+                .as_deref(),
+            Some("echo check")
+        );
+    }
+
+    #[test]
+    fn remembered_model_overrides_config_but_not_an_explicit_flag() {
+        let (_root, paths) = project_with("model = 'project-model'");
+        crate::prefs::remember_model(&paths, "chosen-model");
+        assert_eq!(
+            load(&paths, &Overrides::default()).unwrap().model,
+            "chosen-model"
+        );
+        let flags = Overrides {
+            model: Some("one-off-model".into()),
+            ..Overrides::default()
+        };
+        assert_eq!(load(&paths, &flags).unwrap().model, "one-off-model");
+        assert_eq!(
+            crate::prefs::load(&paths).model.as_deref(),
+            Some("chosen-model")
+        );
+    }
 
     #[test]
     fn an_untrusted_project_cannot_loosen_anything() {

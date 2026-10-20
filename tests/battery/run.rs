@@ -12,7 +12,7 @@ use serde_json::{Value, json};
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, BufReader};
 
 use crate::cmd::{self, git};
-use crate::corpus::{Repo, Settings, Task, bench, slashes};
+use crate::corpus::{self, Repo, Settings, Task, bench, slashes};
 use crate::project;
 use crate::record::{self, Record};
 
@@ -87,6 +87,12 @@ async fn one(battery: &Battery, repo: &Repo, task: &Task, rep: u32) -> anyhow::R
         std::fs::create_dir_all(&cache)?;
         std::fs::write(cache.join("models.json"), models)?;
     }
+    // Beside the copy, not in it: the model reaches the servers' data through their tools only.
+    let records = parent.path().join("mcp");
+    std::fs::write(
+        home.path().join("config.toml"),
+        config(repo, task, &records),
+    )?;
 
     let watched = watch(battery, repo, task, home.path(), &copy).await?;
 
@@ -105,7 +111,7 @@ async fn one(battery: &Battery, repo: &Repo, task: &Task, rep: u32) -> anyhow::R
     let reply = dir.join("reply.txt");
     record::save(&dir, "reply.txt", &watched.reply, key)?;
     let check = cmd::sh(
-        &check_line(&task.check, &reply, &plan),
+        &check_line(&task.check, &reply, &plan, &records),
         &copy,
         &repo.env(),
         settings.check_secs.secs(),
@@ -125,6 +131,14 @@ async fn one(battery: &Battery, repo: &Repo, task: &Task, rep: u32) -> anyhow::R
     if let Ok(text) = std::fs::read_to_string(&plan) {
         record::save(&dir, "plan.md", &text, key)?;
     }
+    if records.is_dir() {
+        let kept = dir.join("mcp");
+        std::fs::create_dir_all(&kept)?;
+        for file in std::fs::read_dir(&records)?.flatten() {
+            let name = file.file_name().to_string_lossy().into_owned();
+            record::save(&kept, &name, &std::fs::read_to_string(file.path())?, key)?;
+        }
+    }
     Ok(Record {
         task: task.id.clone(),
         repo: repo.id.clone(),
@@ -143,17 +157,39 @@ async fn one(battery: &Battery, repo: &Repo, task: &Task, rep: u32) -> anyhow::R
     })
 }
 
+/// The run's palepale config: none of the servers the machine's own apps list (the runs keep the
+/// real HOME for the repos' builds), and the task's simulated servers, recording into `records`.
+fn config(repo: &Repo, task: &Task, records: &Path) -> String {
+    let mut text = String::new();
+    // Measurement hook: with BATTERY_VERIFY set, the run checks with the repo's own test command
+    // before it ends (the `verify` setting), to measure auto-verify's effect on solve rate.
+    if std::env::var_os("BATTERY_VERIFY").is_some() {
+        text.push_str(&format!("verify = '{}'\n", repo.test));
+    }
+    let simulator = slashes(Path::new(env!("CARGO_BIN_EXE_palepale-fake-mcp")));
+    let records = slashes(records);
+    for server in &task.mcp {
+        let file = slashes(&corpus::mcp_server(server));
+        text.push_str(&format!(
+            "\n[mcp_servers.{server}]\ncommand = '{simulator}'\n\
+             args = ['--server', '{file}', '--record', '{records}']\n"
+        ));
+    }
+    text
+}
+
 /// A task's check line with its placeholders filled, each quoted for `sh`: `{reply}` is a file
-/// holding the run's last reply, `{plan}` its plan file (absent when it wrote none) and
-/// `{checks}` bench/checks/.
-pub fn check_line(check: &str, reply: &Path, plan: &Path) -> String {
+/// holding the run's last reply, `{plan}` its plan file (absent when it wrote none), `{checks}`
+/// bench/checks/ and `{mcp}` the folder its simulated servers recorded into.
+pub fn check_line(check: &str, reply: &Path, plan: &Path, mcp: &Path) -> String {
     check
         .replace("{reply}", &quote(reply))
         .replace("{plan}", &quote(plan))
         .replace("{checks}", &quote(&bench().join("checks")))
+        .replace("{mcp}", &quote(mcp))
 }
 
-pub const PLACEHOLDERS: &[&str] = &["{reply}", "{plan}", "{checks}"];
+pub const PLACEHOLDERS: &[&str] = &["{reply}", "{plan}", "{checks}", "{mcp}"];
 
 fn quote(path: &Path) -> String {
     format!("'{}'", slashes(path).replace('\'', r"'\''"))
@@ -250,13 +286,14 @@ async fn watch(
 
 fn tally(w: &mut Watched, battery: &Battery, line: &str, started: Instant) {
     let event: Value = serde_json::from_str(line).unwrap_or_else(|_| Value::from(line));
+    // A subagent's and a summary's requests are spent too; only the run's own replies are turns.
+    let cost = cost(&event);
+    w.cost += cost;
+    battery.spent.fetch_add(cost, Ordering::Relaxed);
     if event["type"] == "message_end" {
         let message = &event["message"];
-        let cost = message["usage"]["cost_micros"].as_u64().unwrap_or(0);
         w.turns += 1;
-        w.cost += cost;
         w.finished = message["finish"] == "done";
-        battery.spent.fetch_add(cost, Ordering::Relaxed);
         let text: String = message["parts"]
             .as_array()
             .into_iter()
@@ -272,6 +309,18 @@ fn tally(w: &mut Watched, battery: &Battery, line: &str, started: Instant) {
     w.events
         .push_str(&json!({ "ms": ms, "event": event }).to_string());
     w.events.push('\n');
+}
+
+/// What a stream event spent: a reply's or a summary's cost, however deep the subagent.
+fn cost(event: &Value) -> u64 {
+    match event["type"].as_str() {
+        Some("message_end") => event["message"]["usage"]["cost_micros"]
+            .as_u64()
+            .unwrap_or(0),
+        Some("compaction_end") => event["usage"]["cost_micros"].as_u64().unwrap_or(0),
+        Some("child") => cost(&event["event"]),
+        _ => 0,
+    }
 }
 
 fn limit_reached(

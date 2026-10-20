@@ -5,7 +5,9 @@ use std::collections::BTreeMap;
 
 use serde::Deserialize;
 
+use super::grounding::{self, Ground, Grounding};
 use super::load::{Battery, Run};
+use super::mcp::{self, Mcp};
 use super::replay::{self, Replayed};
 use super::sequences;
 use super::shell::{self, Shell, Smell};
@@ -28,7 +30,11 @@ pub struct Words {
     pub subcommands: Vec<String>,
     pub replay: Vec<String>,
     pub never_propose: Vec<String>,
+    /// A simulated MCP server's words for how a call went, in the MCP table's column order.
+    pub mcp_outcomes: Vec<String>,
     pub smell: Vec<Smell>,
+    /// Commands that count as grounding an answer by running or scripting it.
+    pub ground: Vec<Ground>,
     pub text: Text,
 }
 
@@ -46,6 +52,11 @@ pub struct Text {
     refusals: String,
     repeats: String,
     repeats_columns: Vec<String>,
+    mcp: String,
+    mcp_columns: Vec<String>,
+    mistakes: String,
+    replies: String,
+    replies_columns: Vec<String>,
     shell: String,
     first: String,
     first_two: String,
@@ -53,6 +64,7 @@ pub struct Text {
     filters: String,
     smells: String,
     smells_columns: Vec<String>,
+    grounding: String,
     sequences: String,
     pairs: String,
     triples: String,
@@ -68,6 +80,10 @@ pub struct Text {
     candidate_refusal: String,
     candidate_retry: String,
     candidate_sequence: String,
+    candidate_mistake: String,
+    candidate_reply: String,
+    candidate_ready: String,
+    candidate_grounding: String,
     against: String,
     against_columns: Vec<String>,
     against_rows: Vec<String>,
@@ -79,7 +95,9 @@ const MISREAD: &[&str] = &["invalid_arguments", "bad_json", "unknown_tool", "che
 
 struct Stats {
     tools: Tools,
+    mcp: Mcp,
     shell: Shell,
+    grounding: Grounding,
     pairs: Counts,
     triples: Counts,
     replayed: Vec<Replayed>,
@@ -92,7 +110,9 @@ impl Stats {
         let modes: Vec<&mode::Mode> = words.replay.iter().filter_map(|m| mode::get(m)).collect();
         Self {
             tools: tools::tally(runs),
+            mcp: mcp::tally(runs),
             shell: shell::tally(runs, &words.smell, &words.subcommands),
+            grounding: grounding::tally(runs, &words.ground),
             pairs: sequences::ngrams(runs, 2),
             triples: sequences::ngrams(runs, 3),
             replayed: replay::replay(runs, rules, &modes, &words.subcommands),
@@ -250,6 +270,47 @@ pub fn render(this: &Battery, that: Option<&Battery>, words: &Words, rules: &[Ru
             .collect(),
     ));
 
+    if !stats.mcp.rows.is_empty() {
+        out.push(t.mcp.clone());
+        out.push(table(
+            &t.mcp_columns,
+            stats
+                .mcp
+                .rows
+                .iter()
+                .map(|row| {
+                    let mut cells = vec![row.name.clone(), row.calls.to_string()];
+                    cells.extend(
+                        words
+                            .mcp_outcomes
+                            .iter()
+                            .map(|o| row.outcomes.get(o).copied().unwrap_or(0).to_string()),
+                    );
+                    cells
+                })
+                .collect(),
+        ));
+        out.push(t.mistakes.clone());
+        out.push(counts(&t.count_columns, &stats.mcp.mistakes, words.top));
+        out.push(t.replies.clone());
+        let mut spread: Vec<&str> = stats.mcp.rows.iter().map(|r| r.name.as_str()).collect();
+        spread.retain(|n| stats.mcp.one_per_reply.get(n) + stats.mcp.together.get(n) > 0);
+        spread.sort_by_key(|n| std::cmp::Reverse(stats.mcp.one_per_reply.get(n)));
+        out.push(table(
+            &t.replies_columns,
+            spread
+                .iter()
+                .map(|n| {
+                    vec![
+                        (*n).to_owned(),
+                        stats.mcp.one_per_reply.get(n).to_string(),
+                        stats.mcp.together.get(n).to_string(),
+                    ]
+                })
+                .collect(),
+        ));
+    }
+
     let sh = &stats.shell;
     out.push(fill(
         &t.shell,
@@ -283,6 +344,9 @@ pub fn render(this: &Battery, that: Option<&Battery>, words: &Words, rules: &[Ru
             })
             .collect(),
     ));
+
+    out.push(t.grounding.clone());
+    out.push(counts(&t.count_columns, &stats.grounding.split, words.top));
 
     out.push(t.sequences.clone());
     out.push(t.pairs.clone());
@@ -393,17 +457,42 @@ fn candidates(stats: &Stats, words: &Words) -> Vec<(usize, String)> {
         }
     }
     for (label, c) in stats.tools.retried.top(usize::MAX) {
-        push(&t.candidate_retry, c.n, &[("label", label)]);
+        // A server that answered "busy, try again" was right to be called again.
+        let busy = stats
+            .mcp
+            .rows
+            .iter()
+            .find(|r| r.name == label)
+            .and_then(|r| r.outcomes.get("transient"))
+            .copied()
+            .unwrap_or(0);
+        let n = c.n.saturating_sub(busy);
+        if n > 0 {
+            push(&t.candidate_retry, n, &[("label", label)]);
+        }
     }
     for (label, c) in stats.triples.top(3) {
         push(&t.candidate_sequence, c.n, &[("label", label)]);
+    }
+    for (label, c) in stats.mcp.mistakes.top(usize::MAX) {
+        push(&t.candidate_mistake, c.n, &[("label", label)]);
+    }
+    for (label, c) in stats.mcp.one_per_reply.top(usize::MAX) {
+        push(&t.candidate_reply, c.n, &[("label", label)]);
+    }
+    for (label, c) in stats.mcp.unready.top(usize::MAX) {
+        push(&t.candidate_ready, c.n, &[("label", label)]);
+    }
+    for (label, c) in stats.grounding.misses.top(usize::MAX) {
+        push(&t.candidate_grounding, c.n, &[("label", label)]);
     }
     all.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.cmp(&b.1)));
     all
 }
 
-/// Per run, in the order of `against_rows`: done, turns, calls, bash calls, stand-ins, cost.
-fn measures(battery: &Battery, stats: &Stats) -> [f64; 6] {
+/// Per run, in the order of `against_rows`: done, turns, calls, bash calls, stand-ins, grounded,
+/// cost.
+fn measures(battery: &Battery, stats: &Stats) -> [f64; 7] {
     let runs: Vec<&Run> = battery
         .runs
         .iter()
@@ -416,6 +505,11 @@ fn measures(battery: &Battery, stats: &Stats) -> [f64; 6] {
         runs.iter().map(|r| r.calls.len() as f64).sum::<f64>() / n,
         stats.shell.calls as f64 / n,
         stats.shell.smells.total() as f64 / n,
+        stats
+            .grounding
+            .split
+            .get("grounded by running or scripting") as f64
+            / n,
         runs.iter()
             .map(|r| r.record.cost_micros as f64)
             .sum::<f64>()

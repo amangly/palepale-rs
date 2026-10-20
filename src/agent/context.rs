@@ -6,14 +6,21 @@ use std::collections::HashSet;
 use crate::agent::message::{Assistant, Finish, Message, Part, ToolResult};
 use crate::agent::model_text;
 
+pub fn catalog_prefixes() -> &'static [String] {
+    #[derive(serde::Deserialize)]
+    struct Config {
+        catalog_prefixes: Vec<String>,
+    }
+    static CONFIG: std::sync::LazyLock<Config> = std::sync::LazyLock::new(|| {
+        toml::from_str(include_str!("../../data/context.toml")).expect("context configuration")
+    });
+    &CONFIG.catalog_prefixes
+}
+
 pub fn build(messages: &[Message]) -> Vec<Message> {
-    let catalogs = [
-        "<available_skills>",
-        "<mcp_servers>",
-        "<active_instructions>",
-    ];
+    let catalogs = catalog_prefixes();
     let latest: Vec<_> = catalogs.iter().map(|prefix| messages.iter().rposition(|m| matches!(m,
-        Message::User { parts } if parts.iter().any(|p| matches!(p, Part::Reminder { text } if text.starts_with(prefix)))
+        Message::User { parts } if parts.iter().any(|p| matches!(p, Part::Reminder { text } if text.starts_with(prefix.as_str())))
     ))).collect();
     let mut out = Vec::with_capacity(messages.len());
     // Calls from the latest assistant turn still waiting for a result.
@@ -48,7 +55,7 @@ pub fn build(messages: &[Message]) -> Vec<Message> {
             Message::User { parts } => {
                 answer_open(&mut out, &mut open);
                 let parts: Vec<_> = parts.iter().filter(|part| !matches!(part,
-                    Part::Reminder { text } if catalogs.iter().enumerate().any(|(i, prefix)| text.starts_with(prefix) && latest[i] != Some(index))
+                    Part::Reminder { text } if catalogs.iter().enumerate().any(|(i, prefix)| text.starts_with(prefix.as_str()) && latest[i] != Some(index))
                 )).cloned().collect();
                 if !parts.is_empty() {
                     out.push(Message::User { parts });
@@ -108,6 +115,37 @@ fn completed_text(a: &Assistant) -> Option<Assistant> {
 mod tests {
     use super::*;
     use crate::agent::message::ToolCall;
+
+    #[test]
+    fn only_latest_workspace_snapshot_reaches_the_model_and_user_words_stay() {
+        let history = [
+            Message::User {
+                parts: vec![
+                    Part::Reminder {
+                        text: "<workspace>old files</workspace>".into(),
+                    },
+                    Part::Text {
+                        text: "first request".into(),
+                    },
+                ],
+            },
+            Message::User {
+                parts: vec![
+                    Part::Reminder {
+                        text: "<workspace>current files</workspace>".into(),
+                    },
+                    Part::Text {
+                        text: "resumed request".into(),
+                    },
+                ],
+            },
+        ];
+        let context = serde_json::to_string(&build(&history)).unwrap();
+        assert!(!context.contains("old files"));
+        assert!(context.contains("current files"));
+        assert!(context.contains("first request"));
+        assert!(context.contains("resumed request"));
+    }
 
     fn assistant(finish: Finish, parts: Vec<Part>) -> Message {
         Message::Assistant(Assistant {

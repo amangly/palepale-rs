@@ -1,4 +1,5 @@
 use std::fmt::Write as _;
+use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 use std::time::Duration;
 
@@ -51,10 +52,20 @@ impl Tool for Bash {
         if args.command.trim().is_empty() {
             return Err(Refusal::InvalidArgs("`command` is empty".into()));
         }
-        let asks = crate::permission::bash::asks(&args.command, &cx.app.paths.project, &|file| {
-            let target = target::resolve(&cx.app.paths, file).ok()?;
+        let cwd = cx.cwd.clone();
+        let mut asks = crate::permission::bash::asks(&args.command, &cwd, &|file| {
+            let path = cwd.join(file);
+            let target = target::resolve(&cx.app.paths, &path.to_string_lossy()).ok()?;
             Some(target::asks(permissions::READ.name, &target))
         });
+        if let Ok(target) = target::resolve(&cx.app.paths, &cwd.to_string_lossy())
+            && target.outside
+        {
+            asks.push(crate::permission::gate::Ask::new(
+                permissions::EXTERNAL_DIRECTORY.name,
+                target.shown,
+            ));
+        }
         Ok(Check::new(asks).with_preview(format!("$ {}", args.command.trim())))
     }
 
@@ -73,12 +84,13 @@ impl Tool for Bash {
                 .unwrap_or(limits.bash_timeout_secs.value)
                 .clamp(1, limits.bash_max_timeout_secs.value);
             let mut sink = Sink::new(cx.app.paths.tmp_dir());
+            let cwd = cx.cwd.clone();
             let ended = shell::run(
                 &ShellCommand {
                     program,
                     args: &self.shell.args,
                     command: &args.command,
-                    cwd: &cx.app.paths.project,
+                    cwd: &cwd,
                     env: &self.shell.env,
                     unset: &self.shell.unset,
                     timeout: Duration::from_secs(secs),
@@ -94,6 +106,11 @@ impl Tool for Bash {
                     return Output::error(format!("Could not start {}: {e}", self.shell.name));
                 }
             };
+            if ended == Ended::Exited(Some(0))
+                && let Some(next) = next_cwd(&args.command, &cwd)
+            {
+                cx.shared.set_cwd(next);
+            }
             let text = clean(&String::from_utf8_lossy(&sink.held));
             let cut = truncate::cut(
                 &text,
@@ -154,6 +171,52 @@ impl Tool for Bash {
             )
         })
     }
+}
+
+// CEILING: only one literal leading cd is remembered after success. Exact shell state needs
+// a shell-specific cwd channel; substitutions and later directory changes remain local.
+fn next_cwd(command: &str, current: &Path) -> Option<PathBuf> {
+    // These operators can put cd in a subshell or hide its failure.
+    if command.replace("&&", "").contains(['|', '&']) {
+        return None;
+    }
+    let split = crate::permission::shell_split::split(command);
+    if split.complex
+        || split
+            .commands
+            .iter()
+            .skip(1)
+            .any(|command| crate::permission::workdir::moves(command))
+    {
+        return None;
+    }
+    let first = split.commands.first()?.trim();
+    let argument = first
+        .strip_prefix("cd")?
+        .strip_prefix(char::is_whitespace)?
+        .trim();
+    let quoted = argument.len() >= 2
+        && ((argument.starts_with('\'') && argument.ends_with('\''))
+            || (argument.starts_with('"') && argument.ends_with('"')));
+    let target = if quoted {
+        &argument[1..argument.len() - 1]
+    } else if !argument.chars().any(char::is_whitespace) {
+        argument
+    } else {
+        return None;
+    };
+    if target.is_empty()
+        || target.starts_with('-')
+        || target.contains(['$', '`', '~', '*', '?', '\'', '"'])
+    {
+        return None;
+    }
+    let target = target::resolve(
+        &crate::paths::Paths::at(PathBuf::new(), current.to_owned()),
+        target,
+    )
+    .ok()?;
+    matches!(io::fs::kind(&target.path), Ok(io::fs::Kind::Dir)).then_some(target.path)
 }
 
 /// What a command printed, within bounds: all of it while small, then only the latest part in
@@ -289,6 +352,78 @@ mod tests {
     use crate::permission::gate::Ask;
     use crate::tools::shell;
     use crate::tools::testing::Project;
+
+    #[tokio::test]
+    async fn a_call_keeps_the_directory_it_was_checked_in() {
+        let project = Project::new();
+        project.write("marker.txt", "approved root");
+        project.write("sub/marker.txt", "another directory");
+        let bash = Bash::new(shell::resolve(None));
+        let approved = project.cx();
+        let arguments = json!({"command":"cat marker.txt"});
+        let asks = bash.check(&arguments, &approved).unwrap().asks;
+        assert_eq!(asks, [Ask::new("read", "marker.txt")]);
+        project
+            .shared
+            .set_cwd(project.app.paths.project.join("sub"));
+        let result = bash.run(arguments, &approved).await;
+        assert!(!result.is_error, "{}", result.content);
+        assert_eq!(result.content, "approved root");
+    }
+
+    #[tokio::test]
+    async fn a_successful_literal_cd_carries_and_reads_are_checked_at_the_new_directory() {
+        let project = Project::new();
+        project.write("sub folder/marker.txt", "here");
+        project.write("sub folder/.env", "secret");
+        let bash = Bash::new(shell::resolve(None));
+        let moved = bash
+            .run(json!({"command":"cd 'sub folder' && pwd"}), &project.cx())
+            .await;
+        assert!(!moved.is_error, "{}", moved.content);
+        let next = bash
+            .run(json!({"command":"cat marker.txt"}), &project.cx())
+            .await;
+        assert_eq!(next.content, "here");
+        let checked = bash
+            .check(&json!({"command":"cat .env"}), &project.cx())
+            .unwrap();
+        assert_eq!(checked.asks, [Ask::new("read", "sub folder/.env")]);
+        let failed = bash
+            .run(json!({"command":"cd missing && pwd"}), &project.cx())
+            .await;
+        assert!(failed.is_error);
+        assert_eq!(
+            project.shared.cwd(),
+            Some(io::fs::canonical(
+                &project.app.paths.project.join("sub folder")
+            ))
+        );
+    }
+
+    #[test]
+    fn cwd_parser_does_not_guess_expansions_or_later_directory_changes() {
+        let project = Project::new();
+        project.write("sub/marker", "x");
+        let root = &project.app.paths.project;
+        assert_eq!(
+            next_cwd("cd sub && ls", root),
+            Some(io::fs::canonical(&root.join("sub")))
+        );
+        for command in [
+            "cd $TARGET",
+            "cd sub && cd ..",
+            "cd -",
+            "cd missing",
+            "echo cd sub",
+            "cd sub | cat",
+            "cd sub & wait",
+            "cd sub && pwd & wait",
+            "cd sub || pwd",
+        ] {
+            assert_eq!(next_cwd(command, root), None, "{command}");
+        }
+    }
 
     fn asks(command: &str) -> Vec<Ask> {
         let project = Project::new();

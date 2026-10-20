@@ -89,8 +89,17 @@ pub fn header(tool: &str, arguments: &str, state: State<'_>) -> Line {
     };
     let mut line = Line::styled(format!("{mark} "), Style::fg(role));
     line.push(tool, Style::default().bold());
+    if let Some(title) = title(tool, arguments) {
+        line.push(" ", Style::default());
+        line.push(title, Style::fg("muted"));
+    }
+    line
+}
+
+pub fn title(tool: &str, arguments: &str) -> Option<String> {
     let args: Value = serde_json::from_str(arguments).unwrap_or(Value::Null);
     let spec = spec(tool);
+    let wanted = spec.title.as_ref().is_some_and(|keys| !keys.is_empty());
     let present: Vec<String> = spec
         .title
         .unwrap_or_default()
@@ -103,11 +112,45 @@ pub fn header(tool: &str, arguments: &str, state: State<'_>) -> Line {
         Some(sep) => (!present.is_empty()).then(|| present.join(&sep)),
         None => present.into_iter().next(),
     };
-    if let Some(title) = title {
-        line.push(" ", Style::default());
-        line.push(title.lines().next().unwrap_or_default(), Style::fg("muted"));
-    }
-    line
+    title.or_else(|| {
+        let values: Vec<String> = args
+            .as_object()?
+            .values()
+            .filter_map(|value| match value {
+                Value::String(text) => text
+                    .lines()
+                    .next()
+                    .filter(|line| !line.is_empty())
+                    .map(str::to_owned),
+                Value::Number(number) => Some(number.to_string()),
+                Value::Bool(boolean) => Some(boolean.to_string()),
+                _ => None,
+            })
+            .take(3)
+            .collect();
+        (wanted && !values.is_empty()).then(|| values.join(" "))
+    })
+}
+
+fn input(tool: &str, arguments: &str) -> Option<String> {
+    let args: Value = serde_json::from_str(arguments).ok()?;
+    let key = spec(tool)
+        .title?
+        .into_iter()
+        .find(|key| !at(&args, key).is_null())?;
+    let value = at(&args, &key);
+    let text = value.as_str()?;
+    (text.lines().count() > 1).then(|| text.to_owned())
+}
+
+pub fn step(tool: &str, arguments: &str, depth: usize) -> Line {
+    let title = title(tool, arguments)
+        .map(|title| format!(" {title}"))
+        .unwrap_or_default();
+    Line::styled(
+        format!("{}{}{}", "│ ".repeat(depth + 1), tool, title),
+        Style::fg("muted"),
+    )
 }
 
 /// The finished card: header, then the body its spec asks for, indented under it.
@@ -119,6 +162,17 @@ pub fn finished(tool: &str, arguments: &str, result: &ToolResult, width: usize) 
     };
     let mut lines = vec![header(tool, arguments, state).truncate(width)];
     let inner = width.saturating_sub(2);
+    if let Some(command) = input(tool, arguments) {
+        let shown = command
+            .lines()
+            .map(|line| Line::styled(line, Style::fg("muted")).truncate(inner))
+            .collect();
+        for line in capped(shown, spec(tool).max_lines.unwrap_or(8)) {
+            let mut indented = Line::plain("  ");
+            indented.extend(line);
+            lines.push(indented);
+        }
+    }
     let body = if result.is_error {
         let max = limits::get().tui.error_lines.value;
         result
@@ -160,6 +214,16 @@ pub fn expanded(tool: &str, arguments: &str, result: &ToolResult, width: usize) 
     };
     let mut lines = vec![header(tool, arguments, state).truncate(width)];
     let inner = width.saturating_sub(2).max(1);
+    if let Some(command) = input(tool, arguments) {
+        for row in command
+            .lines()
+            .flat_map(|line| Line::styled(line, Style::fg("muted")).wrap(inner, &Line::default()))
+        {
+            let mut line = Line::plain("  ");
+            line.extend(row);
+            lines.push(line);
+        }
+    }
     let output = match result.details.as_ref().and_then(|d| d["diff"].as_str()) {
         Some(text) => diff::render(text, inner),
         None => result

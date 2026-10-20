@@ -26,7 +26,7 @@ pub struct Remote {
     connection: Arc<io::mcp::Connection>,
 }
 
-fn alias(server: &str, name: &str) -> String {
+pub fn alias(server: &str, name: &str) -> String {
     let plain = format!("mcp__{server}__{name}");
     if plain.len() <= 64
         && !server.contains("__")

@@ -1,0 +1,6 @@
+data: {"choices":[{"delta":{"tool_calls":[{"type":"function","id":"db1","index":0,"function":{"name":"mcp__db__update","arguments":"{\"id\":999999,\"table\":\"orders\",\"set\":{\"status\":\"paid\"}}"}}]},"index":0}]}
+
+data: {"choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}
+
+data: [DONE]
+

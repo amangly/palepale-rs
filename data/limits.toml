@@ -391,3 +391,25 @@ reason = "bound each delegated job"
 [subagent.max_depth]
 value = 1
 reason = "children cannot recursively start more jobs"
+
+[agent.verify_attempts]
+value = 2
+reason = "Bound verify-and-fix cycles when the configured check keeps failing."
+[agent.verify_timeout_secs]
+value = 300
+reason = "Allow a cold project build while bounding the configured check."
+[agent.orient_entries]
+value = 50
+reason = "Show the project shape without flooding the opening turn."
+[agent.orient_status_lines]
+value = 15
+reason = "Bound dirty-worktree context on the opening turn."
+[agent.orient_commits]
+value = 5
+reason = "Give recent project history without sending a full log."
+[agent.orient_timeout_secs]
+value = 5
+reason = "Do not hold an opening prompt for a stalled Git read."
+[tools.decompile_timeout_secs]
+value = 90
+reason = "Bound the optional local decompiler."

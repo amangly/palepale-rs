@@ -103,7 +103,9 @@ async fn print_streams_the_reply_and_records_the_session() {
     assert_eq!(body["model"], "demo-2");
     assert_eq!(body["stream"], true);
     assert_eq!(body["messages"][0]["role"], "system");
-    assert_eq!(body["messages"][1]["content"], "hi there");
+    let prompt = body["messages"][1]["content"].as_str().unwrap();
+    assert!(prompt.contains("<workspace>"));
+    assert!(prompt.ends_with("\n\nhi there"));
 
     let sessions = sandbox.sessions();
     assert_eq!(sessions.len(), 1);

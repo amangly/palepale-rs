@@ -31,6 +31,7 @@ struct Cleared {
     tool: Arc<dyn Tool>,
     args: Value,
     asks: Vec<Ask>,
+    cwd: std::path::PathBuf,
 }
 
 /// Why a call does not run: what the model is told, and whether the run stops there.
@@ -141,7 +142,8 @@ async fn settle(
                 ..result(call, Output::error(refused.why))
             },
             Ok(cleared) => {
-                let tcx = tool_cx(cx, shared, cancel, &call.id);
+                let mut tcx = tool_cx(cx, shared, cancel, &call.id);
+                tcx.cwd = cleared.cwd;
                 let out = if cleared.tool.joins_on_cancel() { cleared.tool.run(cleared.args, &tcx).await } else { tokio::select! {
                     out = cleared.tool.run(cleared.args, &tcx) => out,
                     () = cancel.cancelled() => Output::error(model_text::get().cancelled.clone()),
@@ -204,18 +206,17 @@ async fn clear<'a>(
             DoomLoop::Ask => asks.push(Ask::new(permissions::DOOM_LOOP.name, call.name.clone())),
         }
     }
-    let mut check = tool
-        .check(&args, &tool_cx(cx, shared, cancel, &call.id))
-        .map_err(|refusal| match refusal {
-            Refusal::InvalidArgs(error) => Refused::new(
-                "invalid_arguments",
-                fill(
-                    &text.invalid_arguments,
-                    &[("name", &call.name), ("error", &error)],
-                ),
+    let tcx = tool_cx(cx, shared, cancel, &call.id);
+    let mut check = tool.check(&args, &tcx).map_err(|refusal| match refusal {
+        Refusal::InvalidArgs(error) => Refused::new(
+            "invalid_arguments",
+            fill(
+                &text.invalid_arguments,
+                &[("name", &call.name), ("error", &error)],
             ),
-            Refusal::Refused(why) => Refused::new("check", why),
-        })?;
+        ),
+        Refusal::Refused(why) => Refused::new("check", why),
+    })?;
     if uncertain {
         check.confirm = true;
         check.preview = Some(crate::session::text::get().interrupted.clone());
@@ -231,6 +232,7 @@ async fn clear<'a>(
         tool: tool.clone(),
         args,
         asks,
+        cwd: tcx.cwd.clone(),
     };
     let decision = match policy.decide(&asks) {
         Decision::Allow if check.confirm => Decision::Ask,
@@ -316,6 +318,7 @@ fn tool_cx<'a>(
         run: Some(cx),
         app: cx.app,
         shared,
+        cwd: shared.cwd().unwrap_or_else(|| cx.app.paths.project.clone()),
         emit: cx.emit,
         call_id,
         plan_file: &cx.plan_file,

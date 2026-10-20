@@ -1,0 +1,6 @@
+data: {"choices":[{"index":0,"delta":{"content":"Order 1017 is paid again."}}]}
+
+data: {"choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}
+
+data: [DONE]
+

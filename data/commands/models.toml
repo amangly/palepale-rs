@@ -1,6 +1,6 @@
 name = "models"
 aliases = ["model"]
-summary = "Pick the model for this session; on the command line, list them with prices and limits"
+summary = "Choose and remember a model; on the command line, list prices and limits"
 usage = "models [--refresh]"
 # A narrow picker leaves these columns out first, in this order, before cutting any.
 drop = ["capabilities", "max_output", "cached", "name"]

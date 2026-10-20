@@ -13,6 +13,11 @@ const BASE: &str = include_str!("../../data/prompts/system.md");
 const CHAT_ONLY: &str = include_str!("../../data/prompts/chat_only.md");
 const ENV: &str = include_str!("../../data/prompts/env.md");
 const EXTENSIONS: &str = include_str!("../../data/prompts/extensions.md");
+const HEADLESS: &str = include_str!("../../data/prompts/headless.md");
+
+pub fn headless(system: String) -> String {
+    format!("{system}\n\n{}", HEADLESS.trim_end())
+}
 
 static FORUMS: LazyLock<Forums> = LazyLock::new(|| {
     toml::from_str(include_str!("../../data/prompts/forums.toml"))

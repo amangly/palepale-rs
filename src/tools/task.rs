@@ -103,6 +103,7 @@ async fn child(args: Value, cx: &ToolCx<'_>) -> anyhow::Result<Output> {
         () = cx.cancel.cancelled() => return Ok(Output::error(text().task_cancelled.clone())),
     };
     let shared = cx.shared.child(cx.cancel.clone());
+    shared.set_cwd(cx.cwd.clone());
     let parent_file = cx.shared.session.lock().unwrap().clone();
     let store =
         crate::session::store::Store::child(&cx.app.paths, &parent_file, cx.call_id, &kind.id)?;
@@ -164,8 +165,11 @@ async fn child(args: Value, cx: &ToolCx<'_>) -> anyhow::Result<Output> {
     } else {
         Output::error(content)
     };
+    let changed_files = transcript.messages.iter().any(
+        |message| matches!(message, Message::Tool(result) if crate::agent::verify::changed(result)),
+    );
     output.details = Some(
-        json!({"agent": kind.id, "description": args.description, "session": transcript.file(), "outcome": outcome, "usage": transcript.usage()}),
+        json!({"agent": kind.id, "description": args.description, "session": transcript.file(), "outcome": outcome, "usage": transcript.usage(), "changed_files": changed_files}),
     );
     Ok(output)
 }

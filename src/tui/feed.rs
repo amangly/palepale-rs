@@ -5,7 +5,7 @@
 use std::time::{Duration, Instant};
 
 use crate::agent::event::{AgentEvent, DeltaKind, Outcome};
-use crate::agent::message::{Assistant, Finish, Message, Part, ToolResult};
+use crate::agent::message::{Assistant, Finish, ToolResult};
 use crate::api::error::ErrorInfo;
 use crate::limits;
 use crate::text::styled::{Line, Style};
@@ -13,6 +13,9 @@ use crate::text::template::fill;
 use crate::text::{markdown, stream};
 use crate::tui::cards::{self, State};
 use crate::tui::{ui, welcome};
+
+mod tree;
+use tree::{SubCall, child_lines, route};
 
 pub enum Block {
     Welcome(welcome::Info),
@@ -31,6 +34,8 @@ pub enum Block {
     Tool {
         arguments: String,
         result: ToolResult,
+        first: bool,
+        depth: usize,
     },
     Thinking {
         text: String,
@@ -44,17 +49,34 @@ struct Entry {
     /// A thinking block shows its text.
     open: bool,
     /// The block drawn at a width; cleared when it is toggled.
-    drawn: Option<(usize, Vec<Line>)>,
+    drawn: Option<(usize, Decor, Vec<Line>)>,
+}
+
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
+struct Decor {
+    depth: usize,
+    rail: bool,
 }
 
 impl Entry {
-    fn lines(&mut self, width: usize) -> &[Line] {
-        if self.drawn.as_ref().is_none_or(|(w, _)| *w != width) {
-            self.drawn = Some((width, render(&self.block, self.open, width)));
+    fn lines(&mut self, width: usize, decor: Decor) -> &[Line] {
+        if self
+            .drawn
+            .as_ref()
+            .is_none_or(|(w, d, _)| *w != width || *d != decor)
+        {
+            self.drawn = Some((width, decor, render(&self.block, self.open, width, decor)));
         }
         self.drawn
             .as_ref()
-            .map_or(&[], |(_, lines)| lines.as_slice())
+            .map_or(&[], |(_, _, lines)| lines.as_slice())
+    }
+
+    fn depth(&self) -> usize {
+        match self.block {
+            Block::Tool { depth, .. } => depth,
+            _ => 0,
+        }
     }
 }
 
@@ -63,12 +85,13 @@ struct Running {
     name: String,
     arguments: String,
     since: Instant,
+    children: Vec<SubCall>,
 }
 
 pub struct Feed {
     entries: Vec<Entry>,
     /// From the last `measure`: the row each entry starts on, the live part and where it starts.
-    starts: Vec<usize>,
+    starts: Vec<(usize, usize)>,
     live: Vec<Line>,
     live_start: usize,
     total: usize,
@@ -81,6 +104,7 @@ pub struct Feed {
     reasoning_since: Option<Instant>,
     running: Vec<Running>,
     retry: Option<(Instant, String)>,
+    batch_open: bool,
 }
 
 impl Feed {
@@ -98,6 +122,7 @@ impl Feed {
             reasoning_since: None,
             running: Vec::new(),
             retry: None,
+            batch_open: false,
         }
     }
 
@@ -121,51 +146,6 @@ impl Feed {
 
     pub fn user(&mut self, text: &str) {
         self.push(Block::User(text.to_owned()));
-    }
-
-    /// Restore display blocks without emitting lifecycle events or executing tools.
-    pub fn restore(&mut self, messages: &[Message]) {
-        let mut arguments = std::collections::HashMap::new();
-        for message in messages {
-            match message {
-                Message::User { parts } => {
-                    let text = parts
-                        .iter()
-                        .filter_map(|part| match part {
-                            Part::Text { text } => Some(text.as_str()),
-                            _ => None,
-                        })
-                        .collect::<Vec<_>>()
-                        .join("\n");
-                    if !text.is_empty() {
-                        self.user(&text);
-                    }
-                }
-                Message::Assistant(reply) => {
-                    for part in &reply.parts {
-                        match part {
-                            Part::Text { text } => self.push(Block::Reply {
-                                md: text.clone(),
-                                first: true,
-                            }),
-                            Part::Reasoning { text } => self.push(Block::Thinking {
-                                text: text.clone(),
-                                secs: 0,
-                            }),
-                            Part::ToolCall(call) => {
-                                arguments.insert(call.id.clone(), call.arguments.clone());
-                            }
-                            _ => {}
-                        }
-                    }
-                    self.outcome_of(reply);
-                }
-                Message::Tool(result) => self.push(Block::Tool {
-                    arguments: arguments.remove(&result.call_id).unwrap_or_default(),
-                    result: result.clone(),
-                }),
-            }
-        }
     }
 
     pub fn markdown(&mut self, md: &str) {
@@ -228,10 +208,10 @@ impl Feed {
 
     /// Opens every thinking block, or closes them all when all are open; new ones follow suit.
     pub fn toggle_all(&mut self) {
-        let thinking = self
-            .entries
-            .iter_mut()
-            .filter(|e| matches!(e.block, Block::Thinking { .. }));
+        let thinking = self.entries.iter_mut().filter(|e| {
+            matches!(&e.block, Block::Thinking { .. })
+                || matches!(&e.block, Block::Tool { result, .. } if result.name == "task")
+        });
         let mut all: Vec<&mut Entry> = thinking.collect();
         let open = if all.is_empty() {
             !self.open_thinking
@@ -243,6 +223,43 @@ impl Feed {
             entry.drawn = None;
         }
         self.open_thinking = open;
+    }
+
+    fn is_task(&self, index: usize) -> bool {
+        self.entries.get(index).is_some_and(
+            |entry| matches!(&entry.block, Block::Tool { result, .. } if result.name == "task"),
+        )
+    }
+
+    fn stacks_up(&self, index: usize) -> bool {
+        self.entries[index].depth() > 0
+            || (matches!(self.entries[index].block, Block::Tool { first: false, .. })
+                && index > 0
+                && matches!(self.entries[index - 1].block, Block::Tool { .. }))
+    }
+
+    fn batch_rail(&self, index: usize) -> bool {
+        let top_tool = |at: usize| {
+            self.entries
+                .get(at)
+                .is_some_and(|entry| matches!(entry.block, Block::Tool { depth: 0, .. }))
+        };
+        let continues = |at: usize| {
+            self.entries.get(at).is_some_and(|entry| {
+                matches!(
+                    entry.block,
+                    Block::Tool {
+                        first: false,
+                        depth: 0,
+                        ..
+                    }
+                )
+            })
+        };
+        let next = (index + 1..self.entries.len()).find(|&at| self.entries[at].depth() == 0);
+        let previous = (0..index).rev().find(|&at| self.entries[at].depth() == 0);
+        top_tool(index)
+            && (next.is_some_and(continues) || (continues(index) && previous.is_some_and(top_tool)))
     }
 
     pub fn event(&mut self, event: &AgentEvent, now: Instant) {
@@ -272,6 +289,7 @@ impl Feed {
                 self.finish_reasoning(now);
                 self.finish_text();
                 self.outcome_of(message);
+                self.batch_open = false;
             }
             AgentEvent::ToolStart {
                 call_id,
@@ -282,18 +300,26 @@ impl Feed {
                 name: name.clone(),
                 arguments: arguments.clone(),
                 since: now,
+                children: Vec::new(),
             }),
             AgentEvent::ToolEnd { result } => {
-                let arguments = self
+                let removed = self
                     .running
                     .iter()
                     .position(|r| r.call_id == result.call_id)
-                    .map(|i| self.running.remove(i).arguments)
+                    .map(|i| self.running.remove(i));
+                let (arguments, children) = removed
+                    .map(|running| (running.arguments, running.children))
                     .unwrap_or_default();
+                let first = !self.batch_open;
+                self.batch_open = true;
                 self.push(Block::Tool {
                     arguments,
                     result: result.clone(),
+                    first,
+                    depth: 0,
                 });
+                self.flatten(children, 1);
             }
             AgentEvent::Retry {
                 delay_ms, error, ..
@@ -309,6 +335,7 @@ impl Feed {
                 self.finish_reasoning(now);
                 self.finish_text();
                 self.running.clear();
+                self.batch_open = false;
                 self.retry = None;
                 let limit = limits::get().agent.max_turns.value.to_string();
                 let note = match outcome {
@@ -335,7 +362,16 @@ impl Feed {
                 }),
                 if error.is_some() { "error" } else { "muted" },
             ),
-            AgentEvent::Child { .. } | AgentEvent::Prompt { .. } => {}
+            AgentEvent::Child { call_id, event } => {
+                if let Some(task) = self
+                    .running
+                    .iter_mut()
+                    .find(|task| task.call_id == *call_id)
+                {
+                    route(&mut task.children, event);
+                }
+            }
+            AgentEvent::Prompt { .. } => {}
         }
     }
 
@@ -344,12 +380,26 @@ impl Feed {
     pub fn measure(&mut self, width: usize, now: Instant) -> usize {
         let mut row = 0;
         self.starts.clear();
-        for (i, entry) in self.entries.iter_mut().enumerate() {
-            if i > 0 {
+        let mut floor = usize::MAX;
+        for i in 0..self.entries.len() {
+            let depth = self.entries[i].depth();
+            if depth > floor {
+                continue;
+            }
+            floor = if self.is_task(i) && !self.entries[i].open {
+                depth
+            } else {
+                usize::MAX
+            };
+            let decor = Decor {
+                depth,
+                rail: self.batch_rail(i),
+            };
+            if i > 0 && !self.stacks_up(i) {
                 row += 1;
             }
-            self.starts.push(row);
-            row += entry.lines(width).len();
+            self.starts.push((row, i));
+            row += self.entries[i].lines(width, decor).len();
         }
         self.live = self.live_lines(width, now);
         if !self.live.is_empty() && !self.entries.is_empty() {
@@ -367,12 +417,19 @@ impl Feed {
                 if row >= self.live_start {
                     return (self.live[row - self.live_start].clone(), None);
                 }
-                let i = self.starts.partition_point(|&s| s <= row) - 1;
+                let Some(at) = self
+                    .starts
+                    .partition_point(|&(start, _)| start <= row)
+                    .checked_sub(1)
+                else {
+                    return (Line::default(), None);
+                };
+                let (start, i) = self.starts[at];
                 let lines = self.entries[i]
                     .drawn
                     .as_ref()
-                    .map_or(&[][..], |(_, l)| l.as_slice());
-                match lines.get(row - self.starts[i]) {
+                    .map_or(&[][..], |(_, _, l)| l.as_slice());
+                match lines.get(row - start) {
                     Some(line) => (line.clone(), Some(i)),
                     None => (Line::default(), None),
                 }
@@ -416,11 +473,15 @@ impl Feed {
             groups.push(
                 self.running
                     .iter()
-                    .map(|tool| {
+                    .flat_map(|tool| {
                         let elapsed = now.duration_since(tool.since).as_millis();
                         let frame = ui::get().spinner_frame(elapsed, limits.spinner_ms.value);
-                        cards::header(&tool.name, &tool.arguments, State::Running(frame))
-                            .truncate(width)
+                        let mut lines = vec![
+                            cards::header(&tool.name, &tool.arguments, State::Running(frame))
+                                .truncate(width),
+                        ];
+                        lines.extend(child_lines(&tool.children, 0, width));
+                        lines
                     })
                     .collect(),
             );
@@ -478,7 +539,7 @@ impl Feed {
     }
 }
 
-fn render(block: &Block, open: bool, width: usize) -> Vec<Line> {
+fn render(block: &Block, open: bool, width: usize, decor: Decor) -> Vec<Line> {
     match block {
         Block::Welcome(info) => welcome::render(info, width),
         Block::User(text) => user_lines(text, width),
@@ -487,12 +548,31 @@ fn render(block: &Block, open: bool, width: usize) -> Vec<Line> {
         Block::Notice { text, role } => {
             Line::styled(text, Style::fg(role)).wrap(width, &Line::default())
         }
-        Block::Tool { arguments, result } => {
-            if open {
-                cards::expanded(&result.name, arguments, result, width)
+        Block::Tool {
+            arguments, result, ..
+        } => {
+            let columns = (decor.depth + usize::from(decor.rail)) * 2;
+            let inner = width.saturating_sub(columns);
+            let card = if open && result.name == "task" {
+                let state = if result.is_error {
+                    State::Failed
+                } else {
+                    State::Done
+                };
+                vec![cards::header(&result.name, arguments, state).truncate(inner)]
+            } else if open {
+                cards::expanded(&result.name, arguments, result, inner)
             } else {
-                cards::compact(&result.name, arguments, result, width)
-            }
+                cards::compact(&result.name, arguments, result, inner)
+            };
+            let rail = Line::styled("│ ".repeat(columns / 2), Style::fg("muted"));
+            card.into_iter()
+                .map(|line| {
+                    let mut out = rail.clone();
+                    out.extend(line);
+                    out.truncate(width)
+                })
+                .collect()
         }
         Block::Thinking { text, secs } => {
             let words = &ui::get().thinking;
@@ -588,6 +668,126 @@ mod tests {
     use super::*;
     use crate::agent::message::{Assistant, ToolResult};
     use crate::api::error::ErrorInfo;
+
+    fn tool_result(id: &str, name: &str) -> ToolResult {
+        ToolResult {
+            call_id: id.into(),
+            name: name.into(),
+            content: "output".into(),
+            attachments: Vec::new(),
+            is_error: false,
+            details: None,
+            asks: Vec::new(),
+            refused: None,
+        }
+    }
+
+    #[test]
+    fn a_task_tree_expands_and_collapses_without_exposing_cached_child_rows() {
+        let now = crate::io::clock::instant();
+        let mut feed = Feed::new();
+        feed.event(
+            &AgentEvent::ToolStart {
+                call_id: "parent".into(),
+                name: "task".into(),
+                arguments: r#"{"description":"inspect"}"#.into(),
+            },
+            now,
+        );
+        feed.event(
+            &AgentEvent::Child {
+                call_id: "parent".into(),
+                event: Box::new(AgentEvent::ToolStart {
+                    call_id: "child".into(),
+                    name: "read".into(),
+                    arguments: r#"{"path":"nested.txt"}"#.into(),
+                }),
+            },
+            now,
+        );
+        feed.event(
+            &AgentEvent::Child {
+                call_id: "parent".into(),
+                event: Box::new(AgentEvent::ToolEnd {
+                    result: tool_result("child", "read"),
+                }),
+            },
+            now,
+        );
+        assert!(
+            texts(&mut feed, now)
+                .iter()
+                .any(|line| line.contains("nested.txt"))
+        );
+        feed.event(
+            &AgentEvent::ToolEnd {
+                result: tool_result("parent", "task"),
+            },
+            now,
+        );
+        feed.user("next message");
+        let collapsed = texts(&mut feed, now);
+        assert!(!collapsed.iter().any(|line| line.contains("nested.txt")));
+        assert!(feed.toggle(0));
+        assert!(
+            texts(&mut feed, now)
+                .iter()
+                .any(|line| line.contains("nested.txt"))
+        );
+        assert!(feed.toggle(0));
+        assert_eq!(texts(&mut feed, now), collapsed);
+        feed.measure(1, now);
+        assert!(
+            feed.rows(0, 100)
+                .iter()
+                .filter(|(_, index)| index
+                    .is_some_and(|i| matches!(feed.entries[i].block, Block::Tool { .. })))
+                .all(|(line, _)| line.width() <= 1)
+        );
+    }
+
+    #[test]
+    fn replay_loads_linked_child_calls_into_the_task_tree() {
+        use crate::agent::message::{Message, Part};
+        let now = crate::io::clock::instant();
+        let mut task = tool_result("parent", "task");
+        task.details = Some(serde_json::json!({"session":"child-session"}));
+        let child = vec![
+            Message::Assistant(Assistant {
+                parts: vec![Part::ToolCall(crate::agent::message::ToolCall {
+                    id: "child".into(),
+                    name: "read".into(),
+                    arguments: r#"{"path":"saved.txt"}"#.into(),
+                })],
+                model: "model".into(),
+                effort: None,
+                usage: None,
+                finish: Finish::ToolCalls,
+                error: None,
+                request_id: None,
+            }),
+            Message::Tool(tool_result("child", "read")),
+        ];
+        let mut feed = Feed::new();
+        feed.restore_with(&[Message::Tool(task)], &|path| {
+            if path == "child-session" {
+                child.clone()
+            } else {
+                Vec::new()
+            }
+        });
+        assert!(
+            !texts(&mut feed, now)
+                .iter()
+                .any(|line| line.contains("saved.txt"))
+        );
+        assert!(feed.toggle(0));
+        assert!(
+            texts(&mut feed, now)
+                .iter()
+                .any(|line| line.contains("saved.txt"))
+        );
+    }
 
     fn delta(kind: DeltaKind, text: &str) -> AgentEvent {
         AgentEvent::Delta {
@@ -773,6 +973,8 @@ mod tests {
             .collect::<String>();
         feed.push(Block::Tool {
             arguments: r#"{"command":"build"}"#.into(),
+            first: true,
+            depth: 0,
             result: ToolResult {
                 call_id: "build".into(),
                 name: "bash".into(),

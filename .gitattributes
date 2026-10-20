@@ -1,5 +1,8 @@
 * text=auto eol=lf
 *.png binary
+tests/fixtures/projects/crackme/vault* binary
+# SSE frames end with a blank line, including the final fixture frame.
+tests/fixtures/sse/** whitespace=-blank-at-eof
 # Edit goldens test line endings and BOMs byte for byte.
 tests/golden/** -text
 # Preserve the supplied artwork bytes and deliberate terminal column padding.

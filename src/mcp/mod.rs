@@ -19,6 +19,7 @@ use crate::{io, limits, settings, trust};
 
 use tool::Remote;
 pub use tool::Search;
+pub use tool::alias as tool_name;
 
 fn yes() -> bool {
     true

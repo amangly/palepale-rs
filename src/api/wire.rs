@@ -230,9 +230,17 @@ impl WireMessage {
     }
 }
 
+fn null_as_default<'de, D, T>(de: D) -> Result<T, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Deserialize<'de> + Default,
+{
+    Ok(Option::<T>::deserialize(de)?.unwrap_or_default())
+}
+
 #[derive(Debug, Default, Deserialize)]
 pub struct Chunk {
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_as_default")]
     pub choices: Vec<Choice>,
     #[serde(default)]
     pub usage: Option<WireUsage>,
@@ -255,7 +263,7 @@ pub struct Delta {
     pub content: Option<String>,
     #[serde(default)]
     pub reasoning_content: Option<String>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_as_default")]
     pub tool_calls: Vec<ToolCallDelta>,
 }
 
@@ -329,6 +337,18 @@ impl WireUsage {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn null_stream_arrays_are_empty_and_keep_content() {
+        let chunk: Chunk =
+            serde_json::from_str(r#"{"choices":[{"delta":{"content":"hi","tool_calls":null}}]}"#)
+                .unwrap();
+        assert_eq!(chunk.choices[0].delta.content.as_deref(), Some("hi"));
+        assert!(chunk.choices[0].delta.tool_calls.is_empty());
+        let chunk: Chunk = serde_json::from_str(r#"{"choices":null}"#).unwrap();
+        assert!(chunk.choices.is_empty());
+        assert!(serde_json::from_str::<Chunk>(r#"{"choices":{}}"#).is_err());
+    }
 
     #[test]
     fn attachments_follow_the_complete_tool_batch_and_survive_session_roundtrips() {

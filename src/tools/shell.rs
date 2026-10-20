@@ -61,6 +61,10 @@ pub struct Shell {
     pub unset: Vec<String>,
 }
 
+pub fn unset() -> &'static [String] {
+    &CATALOG.unset
+}
+
 pub fn resolve(configured: Option<&str>) -> Shell {
     let os = if cfg!(windows) { Os::Windows } else { Os::Unix };
     let fallback = &CATALOG.fallback;
@@ -69,7 +73,7 @@ pub fn resolve(configured: Option<&str>) -> Shell {
         .iter()
         .map(|(k, v)| (k.clone(), v.clone()))
         .collect();
-    let unset = CATALOG.unset.clone();
+    let unset = unset().to_vec();
     let entries: Vec<&Entry> = CATALOG.shell.iter().filter(|e| e.os == os).collect();
 
     if let Some(configured) = configured {

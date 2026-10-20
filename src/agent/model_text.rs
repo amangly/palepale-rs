@@ -38,6 +38,8 @@ pub struct ModelText {
     pub plan_only: String,
     pub mode_left: String,
     pub mode_restored: String,
+    pub written_calls: String,
+    pub verify_failed: String,
 }
 
 pub fn get() -> &'static ModelText {

@@ -63,6 +63,10 @@ The server keeps profile instructions private. The CLI receives the profile ID, 
 
 New sessions start in AUTO. Use `/mode` or `Shift+Tab` to switch to MANUAL or PLAN.
 
+Choosing a model in `/models` saves it for future sessions. A `--model` flag overrides that
+choice for one launch. The backend continues to select the default model on a fresh install
+and controls reasoning effort.
+
 Undo checkpoints cover files inside a Git work tree and respect its ignore rules. Files edited
 after a completed turn are kept. An interrupted turn without a final checkpoint rewinds the
 conversation only. Snapshots live under the CLI home, and concurrent sessions cannot share an
@@ -72,6 +76,22 @@ Long conversations compact automatically near the context limit. The original me
 in the session file. The `task` tool can delegate work to an `explore` agent with read-only
 tools or a `general` agent with the parent's tool set and permission mode. Child tasks have
 bounded depth, concurrency, and turns; stopping the parent cancels its children.
+
+Tool calls from the same reply share a rail in the transcript. Expand a task card to inspect
+its child tool calls; saved sessions reconstruct the tree when resumed. Expanded command cards
+show multi-line input and complete output.
+
+The optional `decompile` tool lists functions and requests pseudocode from a local `kuna`
+executable. It follows file-read permissions and reports a missing executable without
+installing anything. Disassembly through `bash` remains available.
+
+The opening turn includes a bounded directory listing and Git status. A successful command
+that starts with one literal `cd` keeps that directory for the next `bash` call. Shell
+variables, substitutions, and later directory changes stay local to the command.
+
+Set `verify = "cargo test"` in user settings or trusted project settings to run a check after
+the agent changes files. A failed check returns its output to the agent for a bounded repair
+attempt. Verification is off by default and follows normal command permissions.
 
 Run `palepale mcp discover` to list MCP definitions from supported local clients. Import one
 with `palepale mcp import <name> --fingerprint <fingerprint>`, optionally adding `--scope project`.

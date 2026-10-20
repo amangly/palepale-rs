@@ -59,6 +59,15 @@ pub async fn run(
         });
     }
     let mut parts = with_reminder(cx, shared, prompt);
+    if shared.depth == 0 && shared.orient_once() {
+        let context = tokio::select! {
+            context = crate::agent::orient::snapshot(&cx.app.paths) => context,
+            () = cancel.cancelled() => String::new(),
+        };
+        if !context.is_empty() {
+            parts.insert(0, Part::Reminder { text: context });
+        }
+    }
     if !crate::commands::discovered::expand_prompts(cx, shared, &cancel, &mut parts).await {
         record(cx, transcript, Message::User { parts });
         (cx.emit)(AgentEvent::RunEnd {
@@ -94,6 +103,9 @@ pub async fn run(
     let mut turns = 0;
     let mut summary_failed = false;
     let mut overflow_retried = false;
+    let mut told_written = false;
+    let mut changed = false;
+    let mut verified = 0;
 
     let outcome = 'run: loop {
         loop {
@@ -216,6 +228,7 @@ pub async fn run(
                 .contains(&e.kind.as_str())
             });
             let calls: Vec<ToolCall> = reply.tool_calls().cloned().collect();
+            let written = calls.is_empty() && reply.parts.iter().any(|part| matches!(part, Part::Text { text } if crate::agent::written::wrote_calls(text)));
             (cx.emit)(AgentEvent::MessageEnd { message: reply });
             if overflow && !overflow_retried && !summary_failed {
                 overflow_retried = true;
@@ -259,6 +272,7 @@ pub async fn run(
                 };
                 let Batch { results, stop } = batch;
                 for result in results {
+                    changed |= crate::agent::verify::changed(&result);
                     record(cx, transcript, Message::Tool(result));
                 }
                 if cancel.is_cancelled() {
@@ -281,11 +295,82 @@ pub async fn run(
                 continue;
             }
             if calls.is_empty() {
+                if written && !told_written && !tools.is_empty() {
+                    told_written = true;
+                    record(
+                        cx,
+                        transcript,
+                        Message::User {
+                            parts: vec![Part::Reminder {
+                                text: model_text::get().written_calls.clone(),
+                            }],
+                        },
+                    );
+                    continue;
+                }
                 break;
             }
         }
         let queued = shared.drain_follow();
         if queued.is_empty() {
+            let verify_changed = if cx.app.settings.verify.is_some() && shared.depth == 0 {
+                match (&shadow, &before) {
+                    (Some(shadow), Some(before)) => shadow
+                        .take()
+                        .await
+                        .map_or(changed, |after| after != *before),
+                    _ => changed,
+                }
+            } else {
+                changed
+            };
+            if let Some(call) = crate::agent::verify::call(
+                &cx.app.settings,
+                verify_changed,
+                shared.depth == 0,
+                verified,
+            ) {
+                verified += 1;
+                let command = cx.app.settings.verify.as_deref().unwrap_or_default();
+                let assistant = crate::agent::message::Assistant {
+                    parts: vec![Part::ToolCall(call.clone())],
+                    model: cx.model.id.clone(),
+                    effort: None,
+                    usage: None,
+                    finish: Finish::ToolCalls,
+                    error: None,
+                    request_id: None,
+                };
+                record(cx, transcript, Message::Assistant(assistant.clone()));
+                (cx.emit)(AgentEvent::MessageEnd { message: assistant });
+                let verify_state = shared.child(cancel.clone());
+                verify_state.set_cwd(cx.app.paths.project.clone());
+                let checked = batch::run(
+                    cx,
+                    &transcript.messages[..transcript.messages.len() - 1],
+                    &[call],
+                    &verify_state,
+                    &cancel,
+                )
+                .await;
+                let follow = checked
+                    .results
+                    .first()
+                    .and_then(|result| crate::agent::verify::failure(command, result));
+                for result in checked.results {
+                    record(cx, transcript, Message::Tool(result));
+                }
+                if cancel.is_cancelled() {
+                    break Outcome::Aborted;
+                }
+                if checked.stop {
+                    break Outcome::Rejected;
+                }
+                if let Some(parts) = follow {
+                    record(cx, transcript, Message::User { parts });
+                    continue;
+                }
+            }
             break Outcome::Done;
         }
         for parts in queued {
@@ -556,6 +641,117 @@ mod tests {
 
     fn shared(mode: &str) -> Shared {
         Shared::new(mode::get(mode).unwrap())
+    }
+
+    #[tokio::test]
+    async fn written_calls_are_corrected_only_once_and_opening_context_is_grounded() {
+        let written = r#"I will read it. {"tool_calls":[{"name":"read"}]}"#;
+        let h = Harness::new(vec![text(written), text(written)]).await;
+        h.write("actual.txt", "contents");
+        let (outcome, _, _) = h.run(&shared("auto"), |_, _| {}).await;
+        assert_eq!(outcome, Outcome::Done);
+        let requests = h.requests();
+        assert_eq!(requests.len(), 2);
+        let first = requests[0].to_string();
+        assert!(first.contains("<workspace>"));
+        assert!(first.contains("actual.txt"));
+        assert!(
+            last_message(&requests[1])
+                .to_string()
+                .contains("wrote tool calls into its text")
+        );
+    }
+
+    #[tokio::test]
+    async fn a_configured_failing_check_returns_to_the_model_and_records_balanced_calls() {
+        let mut h = Harness::new(vec![
+            reply(
+                "",
+                &[(
+                    "write-1",
+                    "write",
+                    json!({"path":"work.txt", "content":"work"}),
+                )],
+                "tool_calls",
+            ),
+            text("Done"),
+            reply(
+                "",
+                &[(
+                    "write-2",
+                    "write",
+                    json!({"path":"ok.flag", "content":"ok"}),
+                )],
+                "tool_calls",
+            ),
+            text("Fixed"),
+        ])
+        .await;
+        h.app.settings.verify = Some("test -f ok.flag".into());
+        let (outcome, transcript, _) = h.run(&shared("auto"), |_, _| {}).await;
+        assert_eq!(outcome, Outcome::Done);
+        assert_eq!(h.requests().len(), 4);
+        assert!(
+            h.requests()[2]
+                .to_string()
+                .contains("failed after your changes")
+        );
+        let calls = transcript
+            .messages
+            .iter()
+            .filter_map(|message| {
+                if let Message::Assistant(reply) = message {
+                    Some(reply.tool_calls().count())
+                } else {
+                    None
+                }
+            })
+            .sum::<usize>();
+        let results = transcript
+            .messages
+            .iter()
+            .filter(|message| matches!(message, Message::Tool(_)))
+            .count();
+        assert_eq!(calls, results);
+        assert!(transcript.messages.iter().any(|message| matches!(message, Message::Tool(result) if result.name == "bash" && !result.is_error)));
+    }
+
+    #[tokio::test]
+    async fn a_manual_verification_check_requires_permission() {
+        let mut h = Harness::new(vec![
+            reply(
+                "",
+                &[(
+                    "write-1",
+                    "write",
+                    json!({"path":"work.txt", "content":"work"}),
+                )],
+                "tool_calls",
+            ),
+            text("Done"),
+        ])
+        .await;
+        h.app.settings.verify = Some("printf checked > verified.txt".into());
+        let mut edit = crate::permission::rule::Rule {
+            permission: "edit".into(),
+            pattern: "*".into(),
+            action: crate::permission::rule::Action::Allow,
+        };
+        h.app.settings.permission.push(edit.clone());
+        edit.permission = "external_directory".into();
+        h.app.settings.permission.push(edit);
+        let (_, transcript, _) = h
+            .run(&shared("manual"), |event, shared| {
+                if let AgentEvent::Prompt { id, .. } = event {
+                    shared.answer(*id, crate::agent::prompt::Reply::Unavailable);
+                }
+            })
+            .await;
+        assert!(transcript.messages.iter().any(|message| matches!(message, Message::Tool(result) if result.name == "bash" && result.refused.is_some())));
+        assert!(matches!(
+            crate::io::fs::kind(&h.app.paths.project.join("verified.txt")),
+            Ok(crate::io::fs::Kind::Missing)
+        ));
     }
 
     #[tokio::test]

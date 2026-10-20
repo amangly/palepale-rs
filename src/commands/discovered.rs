@@ -198,6 +198,7 @@ pub async fn expand_prompts(
                 run: Some(cx),
                 app: cx.app,
                 shared,
+                cwd: shared.cwd().unwrap_or_else(|| cx.app.paths.project.clone()),
                 emit: cx.emit,
                 call_id: "mcp-prompt",
                 plan_file: &cx.plan_file,

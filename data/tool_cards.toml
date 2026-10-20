@@ -29,6 +29,17 @@ max_lines = 20
 body = "tail"
 max_lines = 8
 
+[decompile]
+title = ["binary", "function"]
+title_join = " "
+body = "head"
+max_lines = 12
+
+[task]
+title = ["description"]
+body = "head"
+max_lines = 3
+
 [glob]
 body = "summary"
 summary = { count = "files", one = "{n} file", many = "{n} files" }

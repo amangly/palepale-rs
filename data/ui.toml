@@ -78,7 +78,7 @@ gutter = "│ "
 [picker]
 title = "Models"
 hint = "↑↓ move · → or enter select · esc close"
-switched = "Model: {model} for this session."
+switched = "Model: {model}. Saved as your default."
 
 # The popup listing commands while a `/name` is typed.
 [palette]

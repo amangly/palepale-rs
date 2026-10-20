@@ -1,0 +1,9 @@
+{
+  "type": "object",
+  "properties": {
+    "binary": { "type": "string", "minLength": 1, "description": "Executable or object file path" },
+    "function": { "type": "string", "minLength": 1, "description": "Function name or 0x address; omit to list functions" }
+  },
+  "required": ["binary"],
+  "additionalProperties": false
+}

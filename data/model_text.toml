@@ -26,3 +26,5 @@ plan_unavailable = "Nobody can approve the plan in this run. Stop and summarise 
 plan_only = "plan_exit only works in PLAN mode."
 mode_left = "The user switched to {mode} mode; the previous mode's instructions no longer apply."
 mode_restored = "This session was resumed in {mode} mode. Earlier mode instructions no longer apply. Use the current tool permissions and project instructions."
+written_calls = "Your last reply wrote tool calls into its text instead of making them, so none ran. Make them as tool calls."
+verify_failed = "The check `{command}` failed after your changes:\n\n{output}\n\nFix what it reports. If the failure is unrelated to your change or was already there, say so briefly and stop."

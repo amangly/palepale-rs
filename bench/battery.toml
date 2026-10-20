@@ -1,16 +1,13 @@
-# One battery run: the model, how often each task runs, and what stops it. `make battery` reads
-# this; the shipped binary never does.
-model = "glm-5.3"
-repeats = 3
-parallel = 4
+# One battery run: what every suite shares, then each suite's model, repeats and cap.
+# `make battery` runs the `code` suite; `make battery SUITE=mcp` the MCP one. The shipped binary
+# never reads this file.
 
-[cap_micros]
-value = 60000000
-reason = "the local stop threshold for one full run; live usage needs explicit approval"
+# Live runs override the model through PALEPALE_SMOKE_MODEL and need explicit approval.
+parallel = 2
 
 [run_cap_micros]
 value = 2000000
-reason = "stop a task after this observed charge; concurrent requests may still be in flight"
+reason = "stop a task after this observed charge; requests in flight may exceed it"
 
 [run_wall_secs]
 value = 900
@@ -23,3 +20,32 @@ reason = "time for palepale to end its commands after Ctrl-C before it is killed
 [check_secs]
 value = 600
 reason = "a task's check is its repo's test suite; a cold Rust build of one is a few minutes"
+
+# M9's corpus: tool use on real repositories.
+[suites.code]
+model = "glm-5.3"
+repeats = 3
+
+[suites.code.cap_micros]
+value = 60000000
+reason = "local stop threshold for a full code suite; live use requires explicit approval"
+
+# M11's: simulated MCP servers (bench/mcp/), with the cheapest model, to see what a weak one
+# makes of them.
+[suites.mcp]
+model = "glm-5.3"
+repeats = 3
+
+[suites.mcp.cap_micros]
+value = 5000000
+reason = "bound one simulated MCP suite's observed cost"
+
+# M14's: a real crackme binary reversed with bash by the weakest model, timed (wall_ms) so
+# optimizations can be measured. `make battery SUITE=re`.
+[suites.re]
+model = "glm-5.3"
+repeats = 3
+
+[suites.re.cap_micros]
+value = 2000000
+reason = "bound one local reverse-engineering suite's observed cost"

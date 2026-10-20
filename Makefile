@@ -32,7 +32,7 @@ battery:
 	@test -n "$${PALEPALE_SMOKE_URL:-}" || { echo "set PALEPALE_SMOKE_URL"; exit 1; }
 	@test -n "$${PALEPALE_SMOKE_MODEL:-}" || { echo "set PALEPALE_SMOKE_MODEL"; exit 1; }
 	@test -n "$${PALEPALE_SMOKE_KEY:-}" || { echo "set PALEPALE_SMOKE_KEY (the battery spends real money)"; exit 1; }
-	BATTERY_TASKS="$(TASKS)" BATTERY_REPEATS="$(REPEATS)" $(CARGO) test --locked --test battery live -- --ignored --exact --nocapture
+	BATTERY_SUITE="$(SUITE)" BATTERY_TASKS="$(TASKS)" BATTERY_REPEATS="$(REPEATS)" $(CARGO) test --locked --test battery live -- --ignored --exact --nocapture
 
 # Rewrites golden files and insta snapshots from current output; only for a deliberate change.
 golden:

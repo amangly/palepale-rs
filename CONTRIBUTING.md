@@ -53,6 +53,17 @@ Runs save sessions, tool permissions, diffs, and check results under `bench/runs
 
 The full external corpus also needs Git, Python 3, and Node 18.12 or later with Corepack. The pinned pnpm used by the UFO tasks refuses older Node versions. Its setup uses a Unix shell and `ln -s`; run it on Linux or macOS. `make battery-setup` installs dependencies and checks that untouched repositories pass and planted bugs fail, without calling a model.
 
+The battery also has `mcp` and `re` suites. MCP tasks run against local simulated servers with
+schema checks, state, and call records. The `re` suite uses stripped Linux x64 binaries whose
+sources live under `bench/benchmarks/`; run those tasks on Linux. Select a suite with
+`make battery SUITE=mcp`. Live runs still require explicit approval and the configured smoke
+credentials. `BATTERY_VERIFY=1` measures the optional verification step using each repository's
+test command.
+
+Reports include grounding, tool batches, simulator errors, and server preconditions. The report
+snapshot includes a synthetic MCP run to exercise those sections; regenerate it only when the
+report or fixture deliberately changes.
+
 ## Configuration
 
 User settings live in `~/.palepale/config.toml`; a project can add `.palepale/config.toml`. Settings that increase project permissions require trust. Sessions are saved under the CLI home after the first backend turn starts.

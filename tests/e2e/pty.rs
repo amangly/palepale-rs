@@ -991,7 +991,12 @@ async fn a_doubled_slash_sends_a_message_that_starts_with_a_slash() {
     })
     .await;
     let bodies = fake.chat_bodies();
-    assert_eq!(bodies[0]["messages"][1]["content"], "/etc/hosts is odd");
+    assert!(
+        bodies[0]["messages"][1]["content"]
+            .as_str()
+            .unwrap()
+            .ends_with("\n\n/etc/hosts is odd")
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -1330,7 +1335,7 @@ async fn the_context_share_uses_the_selected_models_latest_request() {
         s.wait_for("╭ Models");
         s.send("\x1b[B");
         s.send("\r");
-        s.wait_for("Model: fake-coder for this session.");
+        s.wait_for("Model: fake-coder. Saved as your default.");
         s.poll(WAIT, "old-model context cleared", |s| {
             (!s.bottom_row().contains("ctx ")).then_some(())
         });
@@ -1677,7 +1682,9 @@ async fn the_models_questions_are_answered_on_one_card() {
 async fn slash_models_picks_the_model_for_the_rest_of_the_session() {
     let fake = Fake::start().await;
     fake.script([Reply::sse("hello.sse")]);
-    in_session(&fake, Sandbox::default(), Some(ENV_KEY), |s| {
+    let sandbox = Sandbox::default();
+    let prefs_path = sandbox.home().join("prefs.json");
+    in_session(&fake, sandbox, Some(ENV_KEY), move |s| {
         s.wait_for("AUTO");
         s.type_text("/models");
         s.send("\r");
@@ -1685,7 +1692,10 @@ async fn slash_models_picks_the_model_for_the_rest_of_the_session() {
         // The list opens on the model in use; the next one down is picked with Enter.
         s.send("\x1b[B");
         s.send("\r");
-        s.wait_for("Model: fake-coder for this session.");
+        s.wait_for("Model: fake-coder. Saved as your default.");
+        let prefs: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&prefs_path).unwrap()).unwrap();
+        assert_eq!(prefs["model"], "fake-coder");
         assert!(s.bottom_row().contains("fake-coder"), "{}", s.contents());
         s.type_text("hi");
         s.send("\r");

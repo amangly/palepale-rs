@@ -32,3 +32,14 @@ test = "npx vitest run"
 id = "calc"
 fixture = "tests/fixtures/projects/calc"
 test = "true"
+
+[[repo]]
+id = "desk"
+fixture = "tests/fixtures/projects/desk"
+test = "true"
+
+[[repo]]
+id = "crackme"
+fixture = "tests/fixtures/projects/crackme"
+prepare = "chmod +x vault vault2"
+test = "true"
