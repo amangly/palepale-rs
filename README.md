@@ -21,11 +21,11 @@ chmod +x palepale
 ./palepale
 ```
 
-On the first run, enter your account number or pair the terminal at [palepale.tech/pair](https://palepale.tech/pair).
+For the Bun gateway, set `PALEPALE_API_KEY` to an inference key (`pk_`). Account numbers and owner credentials do not authorize chat. See [Bun gateway compatibility](docs/bun-gateway.md) for the current endpoint migration and remaining onboarding work.
 
 ## Before and after `/godmode`
 
-Run `/godmode` and choose a server profile. The selected profile stays visible and applies to the next requests.
+On a backend that exposes server profiles, run `/godmode` and choose a profile. The Bun gateway does not yet expose this legacy feature.
 
 <table>
   <tr>

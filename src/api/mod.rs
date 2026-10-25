@@ -4,6 +4,7 @@ pub mod account;
 pub mod agent_profiles;
 pub mod assemble;
 pub mod chat;
+mod decimal;
 pub mod endpoints;
 pub mod error;
 pub mod models;

@@ -74,6 +74,8 @@ pub enum AgentEvent {
         #[serde(skip_serializing_if = "Option::is_none")]
         name: Option<String>,
     },
+    // Retained in the serialized event vocabulary; paid chat no longer emits retries.
+    #[allow(dead_code)]
     Retry {
         attempt: u32,
         delay_ms: u64,

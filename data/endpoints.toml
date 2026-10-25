@@ -31,13 +31,13 @@ auth = true
 [endpoints.me]
 origin = "api"
 method = "GET"
-path = "/api/me"
+path = "/v1/account/summary"
 auth = true
 
 [endpoints.overview]
 origin = "api"
 method = "GET"
-path = "/api/me/overview?days=0"
+path = "/v1/account/usage/summary?days=0"
 auth = true
 
 [endpoints.keys]

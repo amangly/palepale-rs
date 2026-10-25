@@ -205,15 +205,6 @@ pub async fn run(
             let reply = chat::stream(&cx.app.api, &turn, &cancel, &mut |event| {
                 (cx.emit)(match event {
                     Event::Delta(delta) => AgentEvent::from(delta),
-                    Event::Retry {
-                        attempt,
-                        delay,
-                        error,
-                    } => AgentEvent::Retry {
-                        attempt,
-                        delay_ms: delay.as_millis() as u64,
-                        error: error.clone(),
-                    },
                 });
             })
             .await;
@@ -563,6 +554,8 @@ mod tests {
                 description: String::new(),
                 context_window: 100_000,
                 max_output_tokens: 1000,
+                default_max_output_tokens: None,
+                available: true,
                 pricing: Pricing {
                     input_per_1m_usd: 1.0,
                     cached_input_per_1m_usd: 0.1,

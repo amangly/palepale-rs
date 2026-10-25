@@ -23,6 +23,20 @@ async fn a_child_uses_restricted_tools_and_returns_to_the_parent() {
     assert!(output.contains("\"type\":\"child\""));
     let bodies = fake.chat_bodies();
     assert_eq!(bodies.len(), 3);
+    let operations = fake.chat_operations();
+    assert_eq!(operations.len(), 3);
+    assert!(
+        operations
+            .iter()
+            .all(|key| key.len() == 32 && key.bytes().all(|c| c.is_ascii_hexdigit()))
+    );
+    assert_eq!(
+        operations
+            .iter()
+            .collect::<std::collections::HashSet<_>>()
+            .len(),
+        3
+    );
     let tools: Vec<_> = bodies[1]["tools"]
         .as_array()
         .unwrap()
@@ -150,55 +164,28 @@ async fn json_mode_emits_one_event_per_line() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn rate_limits_are_retried_before_anything_streams() {
-    let fake = Fake::start().await;
-    fake.script([
-        Reply::Error {
-            status: 429,
-            kind: "rate_limited",
-            retry_after: Some(0),
-        },
-        Reply::sse("hello.sse"),
-    ]);
-    let sandbox = Sandbox::default();
-
-    let run = sandbox.run(&fake.url, &["-p", "hi"], WITH_KEY).await;
-    assert_eq!(run.success().stdout(), "Hello there!\n");
-    assert!(run.stderr().contains("retrying"), "{}", run.stderr());
-    assert_eq!(fake.hits("/v1/chat/completions"), 2);
-}
-
-#[tokio::test(flavor = "multi_thread")]
-async fn model_cooldown_continues_the_same_conversation_without_restart() {
-    let fake = Fake::start().await;
-    fake.script([
-        Reply::Error {
-            status: 503,
-            kind: "model_busy",
-            retry_after: Some(1),
-        },
-        Reply::sse("hello.sse"),
-    ]);
-    let sandbox = Sandbox::default();
-    let run = sandbox.run(&fake.url, &["-p", "hi"], WITH_KEY).await;
-    assert_eq!(run.success().stdout(), "Hello there!\n");
-    assert!(run.stderr().contains("retrying"));
-    let requests = fake.chat_bodies();
-    assert_eq!(requests.len(), 2);
-    assert_eq!(requests[0], requests[1]);
-    let lines: Vec<Value> = std::fs::read_to_string(&sandbox.sessions()[0])
-        .unwrap()
-        .lines()
-        .map(|line| serde_json::from_str(line).unwrap())
-        .collect();
-    assert_eq!(
-        lines
-            .iter()
-            .filter(|line| line["message"]["role"] == "assistant")
-            .count(),
-        1
-    );
-    assert_eq!(lines.last().unwrap()["message"]["finish"], "done");
+async fn paid_requests_are_never_retried_even_without_output() {
+    for (status, kind) in [
+        (429, "rate_limited"),
+        (503, "model_busy"),
+        (503, "upstream_unavailable"),
+    ] {
+        let fake = Fake::start().await;
+        fake.script([
+            Reply::Error {
+                status,
+                kind,
+                retry_after: Some(0),
+            },
+            Reply::sse("hello.sse"),
+        ]);
+        let sandbox = Sandbox::default();
+        let run = sandbox.run(&fake.url, &["-p", "hi"], WITH_KEY).await;
+        assert_eq!(run.code(), Some(1));
+        assert!(!run.stderr().contains("retrying"), "{}", run.stderr());
+        assert_eq!(fake.hits("/v1/chat/completions"), 1);
+        assert!(!run.stdout().contains("Hello there!"));
+    }
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -221,15 +208,15 @@ async fn billing_errors_fail_with_a_hint_and_no_retry() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn an_error_whose_body_stalls_is_retried_not_waited_on() {
+async fn an_error_whose_body_stalls_is_not_redispatched() {
     let fake = Fake::start().await;
     fake.script([Reply::Stall { status: 503 }, Reply::sse("hello.sse")]);
     let sandbox = Sandbox::default();
 
     let run = sandbox.run(&fake.url, &["-p", "hi"], WITH_KEY).await;
-    assert!(run.success().stdout().contains("Hello there!"));
-    assert!(run.stderr().contains("retrying"), "{}", run.stderr());
-    assert_eq!(fake.hits("/v1/chat/completions"), 2);
+    assert_eq!(run.code(), Some(1));
+    assert!(!run.stderr().contains("retrying"), "{}", run.stderr());
+    assert_eq!(fake.hits("/v1/chat/completions"), 1);
 }
 
 #[tokio::test(flavor = "multi_thread")]

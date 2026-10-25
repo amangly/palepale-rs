@@ -10,13 +10,13 @@ use crate::limits;
 pub struct Me {
     #[serde(default)]
     pub account_hint: String,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "crate::api::decimal::optional_integer")]
     pub available_microdollars: Option<i64>,
-    #[serde(default)]
+    #[serde(deserialize_with = "crate::api::decimal::integer")]
     pub balance_microdollars: i64,
     #[serde(default)]
     pub can_spend: bool,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "crate::api::decimal::optional_integer")]
     pub reserved_microdollars: Option<i64>,
     #[serde(default)]
     pub token_budget: Option<u64>,
@@ -28,12 +28,19 @@ pub struct Me {
 
 #[derive(Debug, Default, Deserialize)]
 pub struct Overview {
+    #[serde(deserialize_with = "crate::api::decimal::integer")]
     pub confirmed_requests: u64,
+    #[serde(deserialize_with = "crate::api::decimal::integer")]
     pub unknown_requests: u64,
+    #[serde(deserialize_with = "crate::api::decimal::integer")]
     pub spent_microdollars: i64,
+    #[serde(deserialize_with = "crate::api::decimal::integer")]
     pub prompt_tokens: u64,
+    #[serde(deserialize_with = "crate::api::decimal::integer")]
     pub completion_tokens: u64,
+    #[serde(deserialize_with = "crate::api::decimal::integer")]
     pub cached_tokens: u64,
+    #[serde(deserialize_with = "crate::api::decimal::integer")]
     pub reasoning_tokens: u64,
 }
 
@@ -121,6 +128,23 @@ pub async fn me(api: &Api) -> Result<Me, ApiError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn bun_wallet_and_usage_keep_decimal_integer_precision() {
+        let me: Me = serde_json::from_value(serde_json::json!({
+            "account_hint": "fixture", "balance_microdollars": "9007199254740993",
+            "available_microdollars": "9007199254740991", "reserved_microdollars": "2", "can_spend": true
+        })).unwrap();
+        assert_eq!(me.balance_microdollars, 9_007_199_254_740_993);
+        assert_eq!(me.available(), 9_007_199_254_740_991);
+        assert!(serde_json::from_str::<Me>("{}").is_err());
+        let totals: Overview = serde_json::from_value(serde_json::json!({
+            "confirmed_requests":"1", "unknown_requests":"2", "spent_microdollars":"42",
+            "prompt_tokens":"10", "completion_tokens":"3", "cached_tokens":"2", "reasoning_tokens":"1"
+        })).unwrap();
+        assert_eq!(totals.spent_microdollars, 42);
+        assert_eq!(totals.unknown_requests, 2);
+    }
 
     #[test]
     fn account_status_uses_available_funds_after_reservations() {

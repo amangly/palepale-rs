@@ -79,7 +79,7 @@ async fn saved_session_picker_restores_history_and_its_writer_lock_at_64_columns
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn model_cooldown_retries_in_the_open_terminal_and_can_be_cancelled() {
+async fn a_paid_refusal_returns_control_without_automatic_redispatch() {
     let fake = Fake::start().await;
     fake.script([
         Reply::Error {
@@ -88,11 +88,6 @@ async fn model_cooldown_retries_in_the_open_terminal_and_can_be_cancelled() {
             retry_after: Some(1),
         },
         Reply::sse("hello.sse"),
-        Reply::Error {
-            status: 503,
-            kind: "model_busy",
-            retry_after: Some(59),
-        },
     ]);
     let sandbox = Sandbox::default();
     let url = fake.url.clone();
@@ -102,19 +97,14 @@ async fn model_cooldown_retries_in_the_open_terminal_and_can_be_cancelled() {
         session.wait_for("palepale v");
         session.type_text("hello");
         session.send("\r");
-        session.wait_for("Hello there!");
-        assert_eq!(recorded.chat_bodies().len(), 2);
-        session.type_text("hello again");
-        session.send("\r");
-        session.wait_for("This model needs a moment");
-        session.send("\x03");
-        session.wait_gone("This model needs a moment");
+        session.wait_for("model_busy");
+        assert_eq!(recorded.chat_bodies().len(), 1);
         session.send("\x04");
         assert!(session.wait_exit());
     })
     .await
     .unwrap();
-    assert_eq!(fake.chat_bodies().len(), 3);
+    assert_eq!(fake.chat_bodies().len(), 1);
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -1424,8 +1414,8 @@ async fn slash_status_refreshes_account_balance_with_local_model_and_mode() {
         s.wait_gone("╭ Status");
     })
     .await;
-    assert_eq!(fake.hits("/api/me"), 2);
-    assert_eq!(fake.hits("/api/me/overview"), 2);
+    assert_eq!(fake.hits("/v1/account/summary"), 2);
+    assert_eq!(fake.hits("/v1/account/usage/summary"), 2);
 }
 
 #[tokio::test(flavor = "multi_thread")]

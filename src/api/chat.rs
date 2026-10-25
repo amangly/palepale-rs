@@ -1,7 +1,5 @@
-//! One model turn: send the conversation, stream the reply, retry what is safe to retry.
+//! One paid model turn: dispatch once, then stream the reply.
 //! Never fails: every outcome, including errors and cancellation, is an `Assistant` message.
-
-use std::time::Duration;
 
 use futures_util::StreamExt;
 use tokio_util::sync::CancellationToken;
@@ -12,7 +10,7 @@ use crate::api::error::{ApiError, ErrorInfo};
 use crate::api::models::Model;
 use crate::api::sse;
 use crate::api::wire::{self, Replay, StreamOptions, WireMessage, WireUsage};
-use crate::api::{Api, Call, retry};
+use crate::api::{Api, Call};
 use crate::limits;
 
 pub struct Turn<'a> {
@@ -25,11 +23,6 @@ pub struct Turn<'a> {
 
 pub enum Event<'a> {
     Delta(Delta<'a>),
-    Retry {
-        attempt: u32,
-        delay: Duration,
-        error: &'a ErrorInfo,
-    },
 }
 
 pub async fn stream(
@@ -42,33 +35,8 @@ pub async fn stream(
         return message(turn, Vec::new(), Finish::Error, None, Some(error), None);
     }
     let body = serde_json::to_value(request(turn)).expect("chat requests serialize");
-    let mut attempt = 1;
-    loop {
-        let outcome = attempt_once(api, turn, &body, cancel, on).await;
-        if !outcome.emitted
-            && let Some(error) = &outcome.message.error
-            && let Some(delay) = retry::delay(error, outcome.retry_after, attempt)
-        {
-            on(Event::Retry {
-                attempt,
-                delay,
-                error,
-            });
-            tokio::select! {
-                () = crate::io::clock::sleep(delay) => {}
-                () = cancel.cancelled() => return message(turn, Vec::new(), Finish::Aborted, None, None, None),
-            }
-            attempt += 1;
-            continue;
-        }
-        return outcome.message;
-    }
-}
-
-struct Outcome {
-    message: Assistant,
-    emitted: bool,
-    retry_after: Option<Duration>,
+    // Missing output does not prove that the provider rejected the paid request.
+    attempt_once(api, turn, &body, cancel, on).await
 }
 
 async fn attempt_once(
@@ -77,36 +45,31 @@ async fn attempt_once(
     body: &serde_json::Value,
     cancel: &CancellationToken,
     on: &mut (dyn FnMut(Event<'_>) + Send),
-) -> Outcome {
+) -> Assistant {
     let limits = &limits::get().chat;
+    let operation = crate::session::entry::new_id();
+    let headers = [("Idempotency-Key", operation.as_str())];
     let call = Call {
         body: Some(body),
+        headers: &headers,
         ..Call::default()
     };
     let opened = tokio::select! {
         r = api.open("chat", call, limits.headers_timeout_secs.secs()) => r,
-        () = cancel.cancelled() => return Outcome {
-            message: message(turn, Vec::new(), Finish::Aborted, None, None, None),
-            emitted: false,
-            retry_after: None,
-        },
+        () = cancel.cancelled() => return message(turn, Vec::new(), Finish::Aborted, None, None, None),
     };
     let resp = match opened {
         Ok(resp) => resp,
-        Err(ApiError { info, retry_after }) => {
+        Err(ApiError { info, .. }) => {
             let request_id = info.request_id.clone();
-            return Outcome {
-                message: message(
-                    turn,
-                    Vec::new(),
-                    Finish::Error,
-                    None,
-                    Some(info),
-                    request_id,
-                ),
-                emitted: false,
-                retry_after,
-            };
+            return message(
+                turn,
+                Vec::new(),
+                Finish::Error,
+                None,
+                Some(info),
+                request_id,
+            );
         }
     };
 
@@ -141,7 +104,6 @@ async fn attempt_once(
         }
     }
 
-    let emitted = asm.emitted;
     let request_id = resp.head.request_id.clone();
     let done = asm.finish(cut);
     let (finish, error) = if aborted {
@@ -171,11 +133,7 @@ async fn attempt_once(
         )
     };
     let usage = done.usage.map(|u| cost(turn.model, &u));
-    Outcome {
-        message: message(turn, done.parts, finish, usage, error, request_id),
-        emitted,
-        retry_after: None,
-    }
+    message(turn, done.parts, finish, usage, error, request_id)
 }
 
 fn request(turn: &Turn<'_>) -> wire::Request {
@@ -259,6 +217,8 @@ mod tests {
             description: String::new(),
             context_window: 1000,
             max_output_tokens: 100,
+            default_max_output_tokens: None,
+            available: true,
             pricing: Pricing {
                 input_per_1m_usd: 6.0,
                 cached_input_per_1m_usd: 0.6,

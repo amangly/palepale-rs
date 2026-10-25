@@ -29,7 +29,9 @@ pub fn config() -> &'static Config {
 }
 
 pub fn output_limit(model: &crate::api::models::Model) -> u64 {
-    model.max_output_tokens
+    model
+        .default_max_output_tokens
+        .unwrap_or(model.max_output_tokens)
 }
 
 pub fn check(turn: &Turn<'_>) -> Result<(), ErrorInfo> {
@@ -40,9 +42,12 @@ pub fn check(turn: &Turn<'_>) -> Result<(), ErrorInfo> {
     if !model.capabilities.streaming {
         return Err(error(&data.streaming));
     }
-    if model.context_window == 0
+    if !model.available
+        || model.context_window == 0
         || model.max_output_tokens == 0
         || model.max_output_tokens > model.context_window
+        || output_limit(model) == 0
+        || output_limit(model) > model.max_output_tokens
     {
         return Err(error(&data.limits));
     }

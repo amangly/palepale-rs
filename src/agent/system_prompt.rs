@@ -145,6 +145,8 @@ mod tests {
             description: String::new(),
             context_window: 1000,
             max_output_tokens: 100,
+            default_max_output_tokens: None,
+            available: true,
             pricing: Pricing {
                 input_per_1m_usd: 1.0,
                 cached_input_per_1m_usd: 0.1,

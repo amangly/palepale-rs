@@ -18,6 +18,10 @@ pub struct Model {
     pub description: String,
     pub context_window: u64,
     pub max_output_tokens: u64,
+    #[serde(default)]
+    pub default_max_output_tokens: Option<u64>,
+    #[serde(default = "available_by_default")]
+    pub available: bool,
     pub pricing: Pricing,
     #[serde(default)]
     pub capabilities: Capabilities,
@@ -32,6 +36,10 @@ pub struct Model {
     pub reasoning_efforts: Option<Vec<String>>,
     #[serde(default)]
     pub default_reasoning_effort: Option<String>,
+}
+
+fn available_by_default() -> bool {
+    true
 }
 
 impl Model {
@@ -154,9 +162,11 @@ pub fn input_requirements(
 /// USD per million tokens.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Pricing {
+    #[serde(deserialize_with = "crate::api::decimal::rate")]
     pub input_per_1m_usd: f64,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "crate::api::decimal::rate")]
     pub cached_input_per_1m_usd: f64,
+    #[serde(deserialize_with = "crate::api::decimal::rate")]
     pub output_per_1m_usd: f64,
 }
 
@@ -190,7 +200,8 @@ impl Catalog {
     pub fn selected(&self, requested: &str) -> anyhow::Result<&Model> {
         if requested.is_empty() {
             self.models
-                .first()
+                .iter()
+                .find(|model| model.available)
                 .ok_or_else(|| anyhow::anyhow!("No models available from the configured backend."))
         } else {
             self.get(requested).ok_or_else(|| {
@@ -200,7 +211,7 @@ impl Catalog {
     }
 
     pub fn get(&self, id: &str) -> Option<&Model> {
-        self.models.iter().find(|m| m.id == id)
+        self.models.iter().find(|m| m.id == id && m.available)
     }
 }
 
@@ -329,6 +340,23 @@ pub fn fixture() -> Vec<Model> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn bun_decimal_rates_parse_without_changing_the_public_prices() {
+        let pricing: Pricing = serde_json::from_value(serde_json::json!({
+            "input_per_1m_usd":"0.218400000", "cached_input_per_1m_usd":"0.010920000", "output_per_1m_usd":"1.092000000"
+        })).unwrap();
+        assert_eq!(pricing.input_per_1m_usd, 0.2184);
+        assert_eq!(pricing.output_per_1m_usd, 1.092);
+        for invalid in ["NaN", "inf", "-1", "not a rate"] {
+            assert!(
+                serde_json::from_value::<Pricing>(
+                    serde_json::json!({"input_per_1m_usd":invalid,"output_per_1m_usd":"1"})
+                )
+                .is_err()
+            );
+        }
+    }
 
     #[test]
     fn snapshot_parses_and_is_not_empty() {

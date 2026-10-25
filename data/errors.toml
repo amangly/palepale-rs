@@ -1,6 +1,40 @@
 # How the client treats each error. Keys are palepale's `error.type`, plus our own kinds for
 # failures that never reached palepale. `retry` says whether an error is worth trying again
-# automatically; without it the HTTP status decides (429 and 5xx are, other statuses are not).
+# on retryable reads; paid chat is always dispatched once, regardless of status.
+
+[invalid_request]
+title = "The gateway cannot accept this request"
+hint = "Refresh the model catalog and check its supported limits and capabilities."
+retry = false
+
+[unauthorized]
+title = "This credential cannot authorize the request"
+hint = "Use a Palepale inference key for chat. Account management requires an owner credential."
+retry = false
+
+[forbidden]
+title = "This credential cannot perform that operation"
+retry = false
+
+[conflict]
+title = "This operation conflicts with an existing request"
+hint = "Check account usage before submitting another paid request."
+retry = false
+
+[insufficient_credit]
+title = "Out of available credit"
+hint = "Check the wallet and held credit in your Palepale account."
+retry = false
+
+[unavailable]
+title = "The gateway could not complete this request"
+hint = "Check account usage before trying again; a provider may already have accepted it."
+retry = false
+
+[pending_usage]
+title = "Usage needs reconciliation"
+hint = "Credit remains held. Keep the request ID for support and do not retry automatically."
+retry = false
 
 [unknown]
 title = "Request failed"

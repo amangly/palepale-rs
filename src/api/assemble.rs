@@ -26,8 +26,6 @@ pub struct Assembler {
     usage: Option<WireUsage>,
     finish_reason: Option<String>,
     error: Option<ErrorInfo>,
-    /// Whether any content reached the caller; a retry would then repeat billed output.
-    pub emitted: bool,
 }
 
 pub struct Assembled {
@@ -88,7 +86,6 @@ impl Assembler {
             if choice.finish_reason.is_some() {
                 self.finish_reason = choice.finish_reason;
             }
-            self.emitted |= !self.parts.is_empty();
         }
     }
 

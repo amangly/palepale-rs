@@ -45,6 +45,7 @@ struct Inner {
     home: String,
     paths: Vec<String>,
     chat_bodies: Vec<Value>,
+    chat_operations: Vec<String>,
     model_lists: VecDeque<String>,
     agent_profile_lists: VecDeque<String>,
     model_delays: VecDeque<std::time::Duration>,
@@ -81,6 +82,9 @@ impl Reply {
 }
 
 impl Fake {
+    pub fn chat_operations(&self) -> Vec<String> {
+        self.inner.lock().unwrap().chat_operations.clone()
+    }
     pub fn me_errors(&self, errors: impl IntoIterator<Item = u16>) {
         self.inner.lock().unwrap().me_errors.extend(errors);
     }
@@ -90,10 +94,10 @@ impl Fake {
             .route("/v1/models", get(models))
             .route("/v1/agent-profiles", get(agent_profiles))
             .route("/v1/chat/completions", post(chat))
-            .route("/api/me", get(me))
+            .route("/v1/account/summary", get(me))
             .route("/api/me/keys", get(keys))
             .route("/api/me/keys/{reference}/revoke", post(revoke_key))
-            .route("/api/me/overview", get(overview))
+            .route("/v1/account/usage/summary", get(overview))
             .route("/api/pair/start", post(pair_start))
             .route("/api/pair/{code}", get(pair_poll))
             .route("/api/pow", get(pow))
@@ -306,6 +310,13 @@ async fn chat(State(inner): State<Shared>, headers: HeaderMap, body: String) -> 
     }
     let (reply, base, home) = {
         let mut inner = inner.lock().unwrap();
+        inner.chat_operations.push(
+            headers
+                .get("idempotency-key")
+                .and_then(|v| v.to_str().ok())
+                .unwrap_or_default()
+                .to_owned(),
+        );
         inner
             .chat_bodies
             .push(serde_json::from_str(&body).unwrap_or(Value::Null));
