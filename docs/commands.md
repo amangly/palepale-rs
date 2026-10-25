@@ -76,8 +76,10 @@ permits investigation and checks, with edits limited to the plan file.
 ## Models and sessions
 
 Choosing a model with `/models` saves it for future sessions. `--model <id>` overrides
-the choice for one launch. On a fresh install, the backend selects the default model
-and controls reasoning effort.
+the choice for one launch. If the chosen model lists supported reasoning efforts,
+a second picker lets you choose one. Escape keeps the current effort, or the server
+default when switching models. The choice is saved with the conversation and restored
+when you resume. Models without configurable effort skip this step.
 
 Run `palepale --continue` to reopen the latest conversation for the project, or
 `palepale --resume <id>` to open a specific one. Local system prompts and server

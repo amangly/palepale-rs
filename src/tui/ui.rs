@@ -123,6 +123,9 @@ pub struct PickerText {
     pub title: String,
     pub hint: String,
     pub switched: String,
+    pub effort_title: String,
+    pub effort_hint: String,
+    pub effort_set: String,
 }
 
 #[derive(Debug, Deserialize)]

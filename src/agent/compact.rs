@@ -141,6 +141,7 @@ async fn summarize(
         messages: &messages,
         tools: &[],
         agent_profile: profile,
+        effort: cx.effort.as_deref(),
     };
     preflight::check(&turn).map_err(|error| error.to_string())?;
     let reply = chat::stream(&cx.app.api, &turn, cancel, &mut |_| {}).await;

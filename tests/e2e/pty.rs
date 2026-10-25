@@ -1562,6 +1562,9 @@ async fn choosing_a_model_keeps_refresh_responsive_and_uses_server_reasoning() {
         s.wait_for("┌ Models");
         s.send("\r");
         s.wait_gone("┌ Models");
+        s.wait_for("┌ Reasoning effort");
+        s.send("\x1b");
+        s.wait_gone("┌ Reasoning effort");
         s.type_text("hi");
         s.send("\r");
         s.wait_for("Hello there!");
@@ -1569,6 +1572,66 @@ async fn choosing_a_model_keeps_refresh_responsive_and_uses_server_reasoning() {
     .await;
     assert_eq!(fake.chat_bodies()[0]["model"], "demo-2");
     assert!(fake.chat_bodies()[0].get("reasoning_effort").is_none());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn model_effort_choice_reaches_the_gateway_and_survives_resume() {
+    let fake = Fake::start().await;
+    fake.script([
+        Reply::sse("hello.sse"),
+        Reply::sse("hello.sse"),
+        Reply::sse("pty/long_context.sse"),
+    ]);
+    let ended = in_session(&fake, Sandbox::default(), Some(ENV_KEY), |s| {
+        s.type_text("/models");
+        s.send("\r");
+        s.wait_for("┌ Models");
+        s.send("\r");
+        s.wait_for("┌ Reasoning effort");
+        s.send("\x1b[B");
+        s.send("\r");
+        s.wait_for("Reasoning effort: high.");
+        s.type_text("hi");
+        s.send("\r");
+        s.wait_for("Hello there!");
+    })
+    .await;
+    assert_eq!(fake.chat_bodies()[0]["reasoning_effort"], "high");
+    ended
+        .sandbox
+        .run(&fake.url, &["--continue", "-p", "again"], crate::WITH_KEY)
+        .await
+        .success();
+    assert_eq!(fake.chat_bodies()[1]["reasoning_effort"], "high");
+    in_session(&fake, ended.sandbox, Some(ENV_KEY), |s| {
+        s.type_text("/sessions");
+        s.send("\r");
+        s.wait_for("Saved sessions");
+        s.send("\r");
+        s.wait_gone("Saved sessions");
+        s.type_text("/models");
+        s.send("\r");
+        s.wait_for("┌ Models");
+        s.send("\r");
+        s.wait_for("┌ Reasoning effort");
+        s.wait_for("› high");
+        s.send("\x1b");
+        s.wait_gone("┌ Reasoning effort");
+        s.type_text("/models");
+        s.send("\r");
+        s.wait_for("┌ Models");
+        s.send("\x1b[B");
+        s.send("\r");
+        s.wait_for("Model: fake-coder.");
+        assert!(!s.contents().contains("┌ Reasoning effort"));
+        s.type_text("use this model");
+        s.send("\r");
+        s.wait_for("use this model");
+        s.wait_for("Read it all.");
+    })
+    .await;
+    assert_eq!(fake.chat_bodies()[2]["model"], "fake-coder");
+    assert!(fake.chat_bodies()[2].get("reasoning_effort").is_none());
 }
 
 #[tokio::test(flavor = "multi_thread")]

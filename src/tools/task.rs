@@ -123,6 +123,7 @@ async fn child(args: Value, cx: &ToolCx<'_>) -> anyhow::Result<Output> {
     let child = RunCtx {
         app: parent.app,
         model: parent.model,
+        effort: parent.effort.clone(),
         system: &system,
         tools: &tools,
         plan_file: parent.plan_file.clone(),

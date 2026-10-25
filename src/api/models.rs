@@ -43,6 +43,14 @@ fn available_by_default() -> bool {
 }
 
 impl Model {
+    pub fn supports_effort(&self, effort: &str) -> bool {
+        self.capabilities.reasoning
+            && self
+                .reasoning_efforts
+                .as_ref()
+                .is_some_and(|levels| levels.iter().any(|level| level == effort))
+    }
+
     /// Reject requests the catalog says this model cannot accept before opening the gateway.
     /// Unknown attachment metadata stays distinguishable from an explicit refusal.
     pub fn preflight(

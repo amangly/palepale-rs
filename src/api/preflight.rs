@@ -67,6 +67,11 @@ pub fn check(turn: &Turn<'_>) -> Result<(), ErrorInfo> {
     {
         return Err(error(&data.effort));
     }
+    if let Some(effort) = turn.effort
+        && !model.supports_effort(effort)
+    {
+        return Err(error(&data.effort));
+    }
     let input = estimated_input(turn);
     let output = output_limit(model);
     if input.saturating_add(output) > model.context_window {
@@ -148,12 +153,33 @@ mod tests {
     }
 
     #[test]
+    fn selected_effort_must_be_declared_by_the_model() {
+        let mut model = crate::api::models::fixture().remove(0);
+        let check_effort = |model: &crate::api::models::Model, effort| {
+            check(&Turn {
+                model,
+                agent_profile: None,
+                effort,
+                system: "sys",
+                messages: &[],
+                tools: &[],
+            })
+        };
+        assert!(check_effort(&model, Some("high")).is_ok());
+        assert!(check_effort(&model, Some("unknown")).is_err());
+        model.reasoning_efforts = None;
+        assert!(check_effort(&model, Some("high")).is_err());
+        assert!(check_effort(&model, None).is_ok());
+    }
+
+    #[test]
     fn streaming_limits_and_reasoning_metadata_are_checked_before_dispatch() {
         let mut model = crate::api::models::fixture().remove(0);
         let check_model = |model: &crate::api::models::Model| {
             check(&Turn {
                 model,
                 agent_profile: None,
+                effort: None,
                 system: "system",
                 messages: &[],
                 tools: &[],

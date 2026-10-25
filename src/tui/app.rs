@@ -36,6 +36,7 @@ use crate::tui::card::{self, Card};
 use crate::tui::command::{self, Work};
 use crate::tui::dashboard::{self, Dashboard};
 use crate::tui::editor::Editor;
+use crate::tui::effort as effort_picker;
 use crate::tui::extensions::{self as extension_ui, Manager};
 use crate::tui::feed::{Block, Feed};
 use crate::tui::forums::{self, Forums};
@@ -123,6 +124,12 @@ pub async fn run(
 
     let raw = term::Raw::fullscreen()?;
     let mut tui = Tui::new(app, catalog, model, &shared, initial, session_file);
+    tui.effort = transcript.state.effort.clone().filter(|_| {
+        tui.model
+            .as_ref()
+            .is_some_and(|model| model.id == transcript.state.model)
+    });
+    tui.normalize_effort();
     tui.selected_prompt = start.prompt(app, &transcript.state).to_owned();
     if let Some(model) = &tui.model {
         tui.system = system_prompt::selected(app, model, &tui.selected_prompt)?;
@@ -181,6 +188,8 @@ struct Tui<'a> {
     login: Option<Login>,
     /// The `/models` card, likewise.
     picker: Option<Picker>,
+    /// The reasoning effort card opened after a model is picked.
+    effort_picker: Option<effort_picker::Picker>,
     godmode_picker: Option<godmode_picker::Picker>,
     sessions_picker: Option<session_picker::Picker>,
     dashboard: Option<Dashboard>,
@@ -205,6 +214,7 @@ struct Tui<'a> {
     earlier: Vec<String>,
     /// Input tokens of the last request for the selected model.
     context_tokens: Option<u64>,
+    effort: Option<String>,
 }
 
 impl<'a> Tui<'a> {
@@ -245,6 +255,7 @@ impl<'a> Tui<'a> {
             cards: VecDeque::new(),
             login: None,
             picker: None,
+            effort_picker: None,
             godmode_picker: None,
             sessions_picker: None,
             dashboard: None,
@@ -265,6 +276,7 @@ impl<'a> Tui<'a> {
             session_file,
             earlier: Vec::new(),
             context_tokens: None,
+            effort: None,
         };
         let welcome = tui.welcome();
         tui.feed.push(Block::Welcome(welcome));
@@ -571,6 +583,7 @@ impl<'a> Tui<'a> {
                     };
                     let (app, tools, emit) = (self.app, turns.tools, turns.emit);
                     let system = self.system.clone();
+                    let effort = self.effort.clone();
                     let plan_file = tools::plan_file(&app.paths, &owned.id());
                     self.progress = Some(Progress::start(
                         clock::instant(),
@@ -581,6 +594,7 @@ impl<'a> Tui<'a> {
                         let cx = RunCtx {
                             app,
                             model: &model,
+                            effort,
                             system: &system,
                             tools,
                             plan_file,
@@ -633,6 +647,7 @@ impl<'a> Tui<'a> {
                         messages: &proposed,
                         tools: &turns.tools.wire(),
                         agent_profile: None,
+                        effort: self.effort.as_deref(),
                     }) && (error.kind != "context_budget"
                         || !crate::agent::compact::can_compact(&owned))
                     {
@@ -643,16 +658,19 @@ impl<'a> Tui<'a> {
                     }
                     self.system = system;
                     owned.state.system_prompt = self.selected_prompt.clone();
+                    owned.state.effort = self.effort.clone();
                     let progress = Progress::start(clock::instant(), self.last_verb, &mut self.rng);
                     self.last_verb = Some(progress.verb());
                     self.progress = Some(progress);
                     let (app, tools, emit) = (self.app, turns.tools, turns.emit);
                     let plan_file = tools::plan_file(&app.paths, &owned.id());
                     let system = self.system.clone();
+                    let effort = self.effort.clone();
                     turn = Some(Box::pin(async move {
                         let cx = RunCtx {
                             app,
                             model: &model,
+                            effort,
                             system: &system,
                             tools,
                             plan_file,
@@ -697,6 +715,8 @@ impl<'a> Tui<'a> {
                                         self.shared
                                             .set_agent_profile(loaded.state.agent_profile.clone());
                                         self.model = Some(model);
+                                        self.effort = loaded.state.effort.clone();
+                                        self.normalize_effort();
                                         self.system = system;
                                         self.selected_prompt = selected_prompt;
                                         self.session_file = loaded.file().display().to_string();
@@ -723,7 +743,7 @@ impl<'a> Tui<'a> {
                         .as_ref()
                         .map_or_else(String::new, |model| model.id.clone()),
                     mode: self.shared.mode().id.clone(),
-                    effort: transcript.state.effort.clone(),
+                    effort: self.effort.clone(),
                     agent_profile: self.shared.agent_profile(),
                     system_prompt: self.selected_prompt.clone(),
                 };
@@ -750,6 +770,15 @@ impl<'a> Tui<'a> {
         // Inside a burst of keys (a paste where the terminal sends one as keystrokes), Enter
         // and Tab are text for whatever field has the keys, never commands.
         let input = match input {
+            Input::Key(key)
+                if self.picker.is_some()
+                    || self.effort_picker.is_some()
+                    || self.godmode_picker.is_some()
+                    || self.sessions_picker.is_some()
+                    || self.dashboard.is_some() =>
+            {
+                Input::Key(key)
+            }
             Input::Key(key) => match (self.burst.is_paste(clock::instant()), key.code) {
                 (true, KeyCode::Enter) => Input::Paste("\n".into()),
                 (true, KeyCode::Tab) => Input::Paste(TAB.into()),
@@ -809,6 +838,7 @@ impl<'a> Tui<'a> {
             Input::Paste(_)
                 if self.extensions.is_none()
                     && (self.picker.is_some()
+                        || self.effort_picker.is_some()
                         || self.godmode_picker.is_some()
                         || self.sessions_picker.is_some()
                         || self.dashboard.is_some()) =>
@@ -838,6 +868,10 @@ impl<'a> Tui<'a> {
             }
             Input::Key(key) if self.picker.is_some() => {
                 self.picker_key(&key);
+                Step::Continue
+            }
+            Input::Key(key) if self.effort_picker.is_some() => {
+                self.effort_key(&key);
                 Step::Continue
             }
             Input::Key(key) if self.godmode_picker.is_some() => {
@@ -1037,7 +1071,29 @@ impl<'a> Tui<'a> {
             picker::Step::Close => self.picker = None,
             picker::Step::Pick(id) => {
                 self.picker = None;
-                self.switch_model(&id);
+                self.switch_model(&id, true);
+            }
+        }
+    }
+
+    fn effort_key(&mut self, key: &crate::io::term::KeyEvent) {
+        let action = keymap::get().action(key);
+        if action == Some(Action::CycleMode) {
+            return self.cycle_mode();
+        }
+        let Some(picker) = &mut self.effort_picker else {
+            return;
+        };
+        match picker.key(action) {
+            effort_picker::Step::Stay => {}
+            effort_picker::Step::Close => self.effort_picker = None,
+            effort_picker::Step::Pick(effort) => {
+                self.effort_picker = None;
+                self.effort = Some(effort.clone());
+                self.feed.notice(
+                    &template::fill(&ui::get().picker.effort_set, &[("effort", &effort)]),
+                    "done",
+                );
             }
         }
     }
@@ -1113,13 +1169,50 @@ impl<'a> Tui<'a> {
     fn replace_model(&mut self, model: Model) {
         if self.model.as_ref().is_some_and(|old| old.id != model.id) {
             self.context_tokens = None;
+            self.effort = None;
+        }
+        if self.model.as_ref().is_none_or(|old| {
+            old.id != model.id
+                || old.capabilities.reasoning != model.capabilities.reasoning
+                || old.reasoning_efforts != model.reasoning_efforts
+                || old.default_reasoning_effort != model.default_reasoning_effort
+        }) {
+            self.effort_picker = None;
         }
         self.system = system_prompt::build(&self.app.paths, &model);
         self.model = Some(model);
     }
 
+    fn normalize_effort(&mut self) {
+        if self.effort.as_ref().is_some_and(|effort| {
+            self.model
+                .as_ref()
+                .is_none_or(|model| !model.supports_effort(effort))
+        }) {
+            self.effort = None;
+        }
+    }
+
+    fn open_effort_picker(&mut self) {
+        let Some(model) = &self.model else {
+            return;
+        };
+        let Some(efforts) = model
+            .reasoning_efforts
+            .as_ref()
+            .filter(|efforts| model.capabilities.reasoning && !efforts.is_empty())
+        else {
+            return;
+        };
+        self.effort_picker = Some(effort_picker::Picker::new(
+            efforts,
+            self.effort.as_deref(),
+            model.default_reasoning_effort.as_deref(),
+        ));
+    }
+
     /// Uses `id` from the next turn on and remembers the explicit choice.
-    fn switch_model(&mut self, id: &str) {
+    fn switch_model(&mut self, id: &str, choose_effort: bool) {
         let Some(model) = self.catalog.get(id).cloned() else {
             return;
         };
@@ -1128,6 +1221,7 @@ impl<'a> Tui<'a> {
             return;
         }
         self.replace_model(model);
+        self.normalize_effort();
         crate::prefs::remember_model(&self.app.paths, id);
         let text = template::fill(&ui::get().picker.switched, &[("model", id)]);
         self.feed.notice(&text, "done");
@@ -1137,6 +1231,9 @@ impl<'a> Tui<'a> {
             .is_some_and(|m| !m.capabilities.tool_calling)
         {
             self.feed.notice(&ui::get().text.chat_only, "muted");
+        }
+        if choose_effort {
+            self.open_effort_picker();
         }
     }
 
@@ -1357,7 +1454,7 @@ impl<'a> Tui<'a> {
                     match self.catalog.selected(&self.app.settings.model) {
                         Ok(model) => {
                             let id = model.id.clone();
-                            self.switch_model(&id);
+                            self.switch_model(&id, false);
                         }
                         Err(error) => self.feed.notice(&error.to_string(), "warn"),
                     }
@@ -1370,6 +1467,7 @@ impl<'a> Tui<'a> {
                     .cloned()
                 {
                     self.replace_model(model);
+                    self.normalize_effort();
                 }
                 self.picker = Some(Picker::new(
                     &self.catalog,
@@ -1389,6 +1487,7 @@ impl<'a> Tui<'a> {
                     .cloned()
                 {
                     self.replace_model(model);
+                    self.normalize_effort();
                 }
                 return Step::Continue;
             }
@@ -1584,6 +1683,8 @@ impl<'a> Tui<'a> {
             Some(forums.render(width))
         } else if let Some(manager) = &self.extensions {
             Some(manager.render(width, height.saturating_sub(live.len() + 3).max(5)))
+        } else if let Some(picker) = &self.effort_picker {
+            Some(picker.render(width))
         } else if let Some(picker) = &self.picker {
             Some(picker.render(width))
         } else if let Some(picker) = &self.godmode_picker {
@@ -1704,6 +1805,47 @@ fn text_of(parts: &[Part]) -> String {
 mod account_tests {
     use super::*;
     use crate::api::error::ErrorInfo;
+
+    #[test]
+    fn catalog_refresh_preserves_the_effort_picker_until_capabilities_change() {
+        let home = tempfile::tempdir().unwrap();
+        let app = App::for_tests(home.path());
+        let shared = Shared::new(mode::get(&app.settings.mode).unwrap());
+        let catalog = Catalog {
+            models: models::fixture(),
+            source: models::Source::Live,
+            fetched_at: None,
+            note: None,
+        };
+        let model = catalog.models[0].clone();
+        let mut tui = Tui::new(
+            &app,
+            catalog,
+            Some(model.clone()),
+            &shared,
+            None,
+            String::new(),
+        );
+        tui.effort = Some("high".into());
+        tui.open_effort_picker();
+        // Navigation cards must accept Enter even after a burst of input.
+        tui.burst = Burst::new(std::time::Duration::from_secs(60), 1);
+        tui.input(
+            Input::Key(term::KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE)),
+            false,
+        );
+        assert!(tui.effort_picker.is_none());
+        assert_eq!(tui.effort.as_deref(), Some("high"));
+        tui.open_effort_picker();
+        tui.replace_model(model.clone());
+        assert!(tui.effort_picker.is_some());
+        let mut changed = model;
+        changed.reasoning_efforts = Some(vec![]);
+        tui.replace_model(changed);
+        tui.normalize_effort();
+        assert!(tui.effort_picker.is_none());
+        assert!(tui.effort.is_none());
+    }
 
     #[test]
     fn typing_keeps_the_intro_and_temporarily_accelerates_it() {

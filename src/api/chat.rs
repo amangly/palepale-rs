@@ -16,6 +16,7 @@ use crate::limits;
 pub struct Turn<'a> {
     pub model: &'a Model,
     pub agent_profile: Option<&'a str>,
+    pub effort: Option<&'a str>,
     pub system: &'a str,
     pub messages: &'a [Message],
     pub tools: &'a [serde_json::Value],
@@ -159,6 +160,7 @@ fn request(turn: &Turn<'_>) -> wire::Request {
             include_usage: true,
         },
         agent_profile: turn.agent_profile.map(str::to_owned),
+        reasoning_effort: turn.effort.map(str::to_owned),
         max_completion_tokens: crate::api::preflight::output_limit(turn.model),
     }
 }
@@ -197,7 +199,7 @@ fn message(
     Assistant {
         parts,
         model: turn.model.id.clone(),
-        effort: None,
+        effort: turn.effort.map(str::to_owned),
         usage,
         finish,
         error,
@@ -253,6 +255,7 @@ mod tests {
         let turn = Turn {
             model: &m,
             agent_profile: None,
+            effort: None,
             system: "sys",
             messages: &[],
             tools: &[],
@@ -275,6 +278,15 @@ mod tests {
                 .is_none()
         );
         assert_eq!(recorded(&turn), None);
+        let turn = Turn {
+            effort: Some("high"),
+            ..turn
+        };
+        assert_eq!(
+            serde_json::to_value(request(&turn)).unwrap()["reasoning_effort"],
+            "high"
+        );
+        assert_eq!(recorded(&turn).as_deref(), Some("high"));
     }
 
     #[test]
@@ -283,6 +295,7 @@ mod tests {
         let turn = Turn {
             model: &m,
             agent_profile: Some("jb-2"),
+            effort: None,
             system: "sys",
             messages: &[],
             tools: &[],

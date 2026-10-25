@@ -25,6 +25,7 @@ pub fn load(text: &str) -> anyhow::Result<Loaded> {
     let mut header = None;
     let mut head = None;
     let mut state = SavedState::default();
+    let mut has_state = false;
     let mut valid_bytes = 0;
     let mut activity = None;
     let mut snapshots = HashMap::new();
@@ -88,6 +89,7 @@ pub fn load(text: &str) -> anyhow::Result<Loaded> {
                 system_prompt,
             } if header.is_some() => {
                 head.clone_from(active);
+                has_state = true;
                 state = SavedState {
                     model: model.clone(),
                     mode: mode.clone(),
@@ -129,7 +131,7 @@ pub fn load(text: &str) -> anyhow::Result<Loaded> {
             })
             .unwrap_or_default();
     }
-    if state.effort.is_none() {
+    if !has_state {
         state.effort = messages.iter().rev().find_map(|message| match message {
             Message::Assistant(reply) => reply.effort.clone(),
             _ => None,
@@ -222,6 +224,22 @@ mod tests {
             ))
             .is_err()
         );
+    }
+
+    #[test]
+    fn explicit_default_effort_does_not_restore_an_older_assistant_choice() {
+        let text = include_str!("../../tests/fixtures/session/v1.jsonl")
+            .lines()
+            .take(5)
+            .collect::<Vec<_>>()
+            .join("\n")
+            + "\n";
+        let loaded = load(&text).unwrap();
+        assert_eq!(loaded.state.effort.as_deref(), Some("high"));
+        let state =
+            serde_json::json!({"type":"state","head":loaded.head,"model":"demo-2","effort":null});
+        let loaded = load(&format!("{text}{state}\n")).unwrap();
+        assert!(loaded.state.effort.is_none());
     }
 
     #[test]

@@ -87,6 +87,9 @@ gutter = "│ "
 title = "Models"
 hint = "↑↓ move · → or enter select · esc close"
 switched = "Model: {model}. Saved as your default."
+effort_title = "Reasoning effort"
+effort_hint = "↑↓ move · → or enter select · esc keep current"
+effort_set = "Reasoning effort: {effort}."
 
 # The popup listing commands while a `/name` is typed.
 [palette]

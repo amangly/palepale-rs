@@ -66,14 +66,18 @@ pub async fn run(
         declined: Mutex::new(Vec::new()),
     };
     let emit = |event: AgentEvent| out.event(event);
-    let cx = RunCtx {
-        app,
-        model,
-        system: &system,
-        tools: &registry,
-        plan_file,
-        emit: &emit,
-    };
+    let cx =
+        RunCtx {
+            app,
+            model,
+            effort: transcript.state.effort.clone().filter(|effort| {
+                transcript.state.model == model.id && model.supports_effort(effort)
+            }),
+            system: &system,
+            tools: &registry,
+            plan_file,
+            emit: &emit,
+        };
 
     let interrupt = async {
         term::interrupted().await;
@@ -97,6 +101,7 @@ pub async fn run(
         messages: &proposed,
         tools: &registry.wire(),
         agent_profile: None,
+        effort: cx.effort.as_deref(),
     })
     .or_else(|error| {
         if error.kind == "context_budget" && crate::agent::compact::can_compact(&transcript) {

@@ -18,6 +18,7 @@ use crate::tools::Registry;
 pub struct RunCtx<'a> {
     pub app: &'a App,
     pub model: &'a Model,
+    pub effort: Option<String>,
     pub system: &'a str,
     pub tools: &'a Registry,
     /// Where PLAN mode writes its plan; the only file it may change.
@@ -48,7 +49,7 @@ pub async fn run(
     let state = crate::session::store::SavedState {
         model: cx.model.id.clone(),
         mode: shared.mode().id.clone(),
-        effort: transcript.state.effort.clone(),
+        effort: cx.effort.clone(),
         agent_profile: shared.agent_profile(),
         system_prompt: transcript.state.system_prompt.clone(),
     };
@@ -184,6 +185,7 @@ pub async fn run(
                 && crate::agent::compact::needed(&Turn {
                     model: cx.model,
                     agent_profile: agent_profile.as_deref(),
+                    effort: cx.effort.as_deref(),
                     system: cx.system,
                     messages: &messages,
                     tools: &tools,
@@ -198,6 +200,7 @@ pub async fn run(
             let turn = Turn {
                 model: cx.model,
                 agent_profile: agent_profile.as_deref(),
+                effort: cx.effort.as_deref(),
                 system: cx.system,
                 messages: &messages,
                 tools: &tools,
@@ -241,6 +244,7 @@ pub async fn run(
                 let round = RunCtx {
                     app: cx.app,
                     model: cx.model,
+                    effort: cx.effort.clone(),
                     system: cx.system,
                     tools: &registry,
                     plan_file: cx.plan_file.clone(),
@@ -607,6 +611,7 @@ mod tests {
             let cx = RunCtx {
                 app: &self.app,
                 model: &self.model,
+                effort: None,
                 system: "sys",
                 tools: &registry,
                 plan_file: self.plan_file(),
@@ -762,6 +767,7 @@ mod tests {
         let cx = RunCtx {
             app: &harness.app,
             model: &harness.model,
+            effort: None,
             system: "sys",
             tools: &registry,
             plan_file: harness.plan_file(),
