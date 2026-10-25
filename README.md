@@ -1,14 +1,18 @@
 # Palepale
 
-<p align="center"><img src="data/palepale-logo.svg" alt="Palepale logo" width="160"></p>
+<p align="center">
+  <img src="data/palepale-logo.svg" alt="Palepale logo" width="160">
+</p>
 
-[![CI](https://img.shields.io/github/actions/workflow/status/amangly/palepale-rs/ci.yml?branch=main&label=CI)](https://github.com/amangly/palepale-rs/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/amangly/palepale-rs?display_name=tag&sort=semver)](https://github.com/amangly/palepale-rs/releases)
-[![Rust](https://img.shields.io/badge/Rust-1.98%2B-orange?logo=rust&logoColor=white)](https://www.rust-lang.org/)
-[![Tokio](https://img.shields.io/badge/runtime-Tokio-2d3748?logo=rust&logoColor=white)](https://tokio.rs/)
-[![MCP](https://img.shields.io/badge/MCP-supported-6f42c1)](docs/mcp-and-skills.md)
-[![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20macOS%20%7C%20Linux-4c8bf5)](#install)
-[![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE-APACHE)
+<p align="center">
+  <a href="https://github.com/amangly/palepale-rs/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/amangly/palepale-rs/ci.yml?branch=main&label=CI" alt="CI"></a>
+  <a href="https://github.com/amangly/palepale-rs/releases"><img src="https://img.shields.io/github/v/release/amangly/palepale-rs?display_name=tag&sort=semver" alt="Release"></a>
+  <a href="https://www.rust-lang.org/"><img src="https://img.shields.io/badge/Rust-1.98%2B-orange?logo=rust&logoColor=white" alt="Rust 1.98+"></a>
+  <a href="https://tokio.rs/"><img src="https://img.shields.io/badge/runtime-Tokio-2d3748?logo=rust&logoColor=white" alt="Tokio runtime"></a>
+  <a href="docs/mcp-and-skills.md"><img src="https://img.shields.io/badge/MCP-supported-6f42c1" alt="MCP supported"></a>
+  <a href="#install"><img src="https://img.shields.io/badge/platforms-Windows%20%7C%20macOS%20%7C%20Linux-4c8bf5" alt="Windows, macOS, and Linux"></a>
+  <a href="LICENSE-APACHE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue" alt="Apache-2.0 license"></a>
+</p>
 
 Palepale is a terminal coding agent. It reads code, edits files, runs commands, and streams model responses in your project folder.
 
