@@ -24,6 +24,7 @@ pub struct Ui {
     pub reply_mark: String,
     pub placeholder: String,
     pub tips: Vec<String>,
+    pub box_style: BoxStyle,
     pub footer: Footer,
     pub text: Text,
     pub outcome: OutcomeText,
@@ -34,6 +35,17 @@ pub struct Ui {
     pub picker: PickerText,
     pub login: LoginText,
     pub forums: ForumsText,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct BoxStyle {
+    pub top_left: String,
+    pub top_right: String,
+    pub bottom_left: String,
+    pub bottom_right: String,
+    pub horizontal: String,
+    pub vertical: String,
 }
 
 /// A phrase with a count in it, in the form for one and for any other number.

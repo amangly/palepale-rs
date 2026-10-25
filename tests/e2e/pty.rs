@@ -1021,11 +1021,11 @@ async fn a_slash_opens_the_command_popup_which_completes_and_runs() {
     let ended = in_session(&fake, Sandbox::default(), Some(ENV_KEY), |s| {
         s.wait_for("AUTO");
         s.type_text("/mo");
-        s.wait_for("╭ commands");
+        s.wait_for("┌ commands");
         s.wait_for("/models");
         // Tab completes the first match and leaves room for arguments; the popup closes.
         s.send("\t");
-        s.wait_gone("╭ commands");
+        s.wait_gone("┌ commands");
         // The bar never leaves the bottom row, whatever opened and closed above it.
         assert!(s.bottom_row().contains("demo-2"), "{}", s.contents());
         s.send("\r");
@@ -1034,16 +1034,16 @@ async fn a_slash_opens_the_command_popup_which_completes_and_runs() {
         });
         // Down picks the second match and Enter runs it.
         s.type_text("/mo");
-        s.wait_for("╭ commands");
+        s.wait_for("┌ commands");
         s.send("\x1b[B");
         s.send("\r");
-        s.wait_for("╭ Models");
+        s.wait_for("┌ Models");
         s.wait_for("fake-coder");
-        s.wait_gone("╭ commands");
+        s.wait_gone("┌ commands");
         let picked = s.contents();
         // ← closes the picker, like Esc.
         s.send("\x1b[D");
-        s.wait_gone("╭ Models");
+        s.wait_gone("┌ Models");
         picked
     })
     .await;
@@ -1152,7 +1152,7 @@ async fn slash_forums_logs_in_with_a_hidden_password_and_retries_a_wrong_one() {
         s.wait_for("AUTO");
         s.type_text("/forums");
         s.send("\r");
-        s.wait_for("╭ Forums");
+        s.wait_for("┌ Forums");
         s.wait_for("Fake Forum");
         s.send("\r");
         s.wait_for("1 Log in");
@@ -1172,7 +1172,7 @@ async fn slash_forums_logs_in_with_a_hidden_password_and_retries_a_wrong_one() {
         s.wait_for("Logged in to Fake Forum as demo.");
         s.wait_for("logged in as demo");
         s.send("\x1b");
-        s.wait_gone("╭ Forums");
+        s.wait_gone("┌ Forums");
     })
     .await;
     assert!(!ended.screen.contains(FORUM_PASSWORD), "{}", ended.screen);
@@ -1322,7 +1322,7 @@ async fn the_context_share_uses_the_selected_models_latest_request() {
         });
         s.type_text("/models");
         s.send("\r");
-        s.wait_for("╭ Models");
+        s.wait_for("┌ Models");
         s.send("\x1b[B");
         s.send("\r");
         s.wait_for("Model: fake-coder. Saved as your default.");
@@ -1376,7 +1376,7 @@ async fn slash_status_refreshes_account_balance_with_local_model_and_mode() {
         s.wait_for("AUTO");
         s.type_text("/status");
         s.send("\r");
-        s.wait_for("╭ Status");
+        s.wait_for("┌ Status");
         s.wait_for("Available: $12.30");
         let screen = s.contents();
         assert!(screen.contains("Model: demo-2"), "{screen}");
@@ -1411,7 +1411,7 @@ async fn slash_status_refreshes_account_balance_with_local_model_and_mode() {
         s.wait_for("Refreshing…");
         s.wait_gone("Refreshing…");
         s.send("\x1b");
-        s.wait_gone("╭ Status");
+        s.wait_gone("┌ Status");
     })
     .await;
     assert_eq!(fake.hits("/v1/account/summary"), 2);
@@ -1425,17 +1425,17 @@ async fn status_loads_without_blocking_input_and_does_not_reopen_after_dismissal
     in_session(&fake, Sandbox::default(), Some(ENV_KEY), |s| {
         s.type_text("/status");
         s.send("\r");
-        s.wait_for("╭ Status");
+        s.wait_for("┌ Status");
         s.wait_for("Refreshing…");
         s.send("\x1b[Z");
         s.wait_for("Mode: MANUAL");
         s.send("\x1b");
-        s.wait_gone("╭ Status");
+        s.wait_gone("┌ Status");
         s.type_text("still typing");
         s.wait_for("still typing");
         std::thread::sleep(Duration::from_millis(700));
         s.pump();
-        assert!(!s.contents().contains("╭ Status"), "{}", s.contents());
+        assert!(!s.contents().contains("┌ Status"), "{}", s.contents());
         s.send("\x15");
     })
     .await;
@@ -1453,7 +1453,7 @@ async fn unavailable_account_usage_keeps_the_balance_without_inventing_zero_usag
         s.wait_for("Usage unavailable:");
         assert!(!s.contents().contains("Charged: $0.00"));
         s.send("\x1b");
-        s.wait_gone("╭ Status");
+        s.wait_gone("┌ Status");
     })
     .await;
 }
@@ -1465,7 +1465,7 @@ async fn slash_godmode_selects_server_profile_and_clears_it() {
     in_session(&fake, Sandbox::default(), Some(ENV_KEY), |s| {
         s.type_text("/godmode");
         s.send("\r");
-        s.wait_for("╭ Coding profile");
+        s.wait_for("┌ Coding profile");
         s.wait_for("jb-1  (GLM 5.3)");
         s.wait_for("CINDER");
         s.wait_for("XYRO");
@@ -1506,7 +1506,7 @@ async fn slash_godmode_refetches_edited_admin_labels() {
         s.send("\r");
         s.wait_for("jb-1  (GLM 5.3)");
         s.send("\x1b");
-        s.wait_gone("╭ Coding profile");
+        s.wait_gone("┌ Coding profile");
         s.type_text("/godmode");
         s.send("\r");
         s.wait_for("GLM  (Updated in admin)");
@@ -1534,7 +1534,7 @@ async fn slash_godmode_syncs_created_deleted_and_empty_profiles() {
         s.wait_for("Coding profile: jb-4");
         s.type_text("/godmode");
         s.send("\r");
-        s.wait_for("╭ Coding profile");
+        s.wait_for("┌ Coding profile");
         assert!(!s.contents().contains("Custom  (From admin)"));
         s.send("\r");
         s.wait_for("Coding profile: off");
@@ -1558,10 +1558,10 @@ async fn choosing_a_model_keeps_refresh_responsive_and_uses_server_reasoning() {
         });
         s.send("\x1b[Z");
         s.wait_for("MANUAL");
-        assert!(!s.contents().contains("╭ Models"), "{}", s.contents());
-        s.wait_for("╭ Models");
+        assert!(!s.contents().contains("┌ Models"), "{}", s.contents());
+        s.wait_for("┌ Models");
         s.send("\r");
-        s.wait_gone("╭ Models");
+        s.wait_gone("┌ Models");
         s.type_text("hi");
         s.send("\r");
         s.wait_for("Hello there!");
@@ -1594,12 +1594,12 @@ async fn a_completed_turn_syncs_context_window_and_keeps_cached_list() {
         });
         s.type_text("/models");
         s.send("\r");
-        s.wait_for("╭ Models");
+        s.wait_for("┌ Models");
         s.wait_for("Cached list");
         s.wait_for("Could not reach palepale");
         s.wait_for("demo-2");
         s.send("\x1b");
-        s.wait_gone("╭ Models");
+        s.wait_gone("┌ Models");
         s.poll(WAIT, "cached window stays current", |s| {
             s.bottom_row().contains("ctx 50%").then_some(())
         });
@@ -1678,7 +1678,7 @@ async fn slash_models_picks_the_model_for_the_rest_of_the_session() {
         s.wait_for("AUTO");
         s.type_text("/models");
         s.send("\r");
-        s.wait_for("╭ Models");
+        s.wait_for("┌ Models");
         // The list opens on the model in use; the next one down is picked with Enter.
         s.send("\x1b[B");
         s.send("\r");
@@ -1704,12 +1704,12 @@ async fn the_command_popup_floats_over_the_conversation_without_moving_it() {
         for _ in 0..3 {
             s.type_text("/help");
             s.send("\r");
-            s.wait_gone("╭ commands");
+            s.wait_gone("┌ commands");
         }
         s.wait_quiet();
         let top: Vec<String> = (0..8).map(|i| s.row(i)).collect();
         s.send("/");
-        s.wait_for("╭ commands");
+        s.wait_for("┌ commands");
         let with_popup: Vec<String> = (0..8).map(|i| s.row(i)).collect();
         assert_eq!(
             with_popup,
@@ -1718,7 +1718,7 @@ async fn the_command_popup_floats_over_the_conversation_without_moving_it() {
             s.contents()
         );
         s.send("\x7f");
-        s.wait_gone("╭ commands");
+        s.wait_gone("┌ commands");
         let after: Vec<String> = (0..8).map(|i| s.row(i)).collect();
         assert_eq!(
             after,
@@ -1754,7 +1754,7 @@ async fn disconnected_session_keeps_local_commands_and_restores_the_terminal() {
         s.wait_for("Offline");
         assert!(!s.contents().contains("Balance"));
         s.send("\x1b");
-        s.wait_gone("╭ Status");
+        s.wait_gone("┌ Status");
         s.type_text("hello");
         s.send("\r");
         s.wait_for("PALEPALE_API_URL to connect");

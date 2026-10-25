@@ -222,6 +222,14 @@ reason = "a closest line less alike than this points the model at the wrong plac
 value = 16
 reason = "about 60 frames a second; streaming never needs more"
 
+[tui.intro_boost_ms]
+value = 350
+reason = "keep the intro responsive while a user is actively typing"
+
+[tui.intro_boost_frames]
+value = 3
+reason = "advance several intro frames per tick during active typing"
+
 [tui.spinner_ms]
 value = 80
 reason = "a braille spinner reads as motion at this step"

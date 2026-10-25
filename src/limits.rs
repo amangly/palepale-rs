@@ -219,6 +219,8 @@ pub struct EditLimits {
 #[serde(deny_unknown_fields)]
 pub struct TuiLimits {
     pub frame_ms: Limit<u64>,
+    pub intro_boost_ms: Limit<u64>,
+    pub intro_boost_frames: Limit<usize>,
     pub spinner_ms: Limit<u64>,
     pub paste_gap_ms: Limit<u64>,
     pub paste_min_keys: Limit<usize>,

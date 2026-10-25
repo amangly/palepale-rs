@@ -163,12 +163,12 @@ mod tests {
         let mut view = View::default();
         let mut long = feed(20);
         let before = texts(&compose(&mut long, &mut view, &bar, &[], (40, 10), now));
-        let popup = [Line::plain("╭ commands"), Line::plain("╰──")];
+        let popup = [Line::plain("┌ commands"), Line::plain("└──")];
         let frame = compose(&mut long, &mut view, &bar, &popup, (40, 10), now);
         let after = texts(&frame);
         // Everything above the card is exactly where it was.
         assert_eq!(after[..7], before[..7]);
-        assert_eq!(&after[7..], ["╭ commands", "╰──", "bar"]);
+        assert_eq!(&after[7..], ["┌ commands", "└──", "bar"]);
         assert_eq!(
             frame.blocks[7], None,
             "clicks on the card toggle nothing beneath"

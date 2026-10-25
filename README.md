@@ -8,110 +8,39 @@ Palepale is a terminal coding agent. It reads code, edits files, runs commands, 
 
 Download the latest build for [Windows x64](https://api.palepale.tech/cli/latest/palepale-x86_64-pc-windows-msvc.exe), [macOS Apple Silicon](https://api.palepale.tech/cli/latest/palepale-aarch64-apple-darwin), or [Linux x64](https://api.palepale.tech/cli/latest/palepale-x86_64-unknown-linux-musl).
 
-Run it from your project folder:
+On Windows, rename the downloaded file to `palepale.exe` and run it from your project folder:
 
 ```powershell
 .\palepale.exe
 ```
 
-On macOS or Linux:
+On macOS or Linux, rename the downloaded file to `palepale`, then run:
 
 ```bash
 chmod +x palepale
 ./palepale
 ```
 
-For the Bun gateway, set `PALEPALE_API_KEY` to an inference key (`pk_`). Account numbers and owner credentials do not authorize chat. See [Bun gateway compatibility](docs/bun-gateway.md) for signup, browser pairing, and owner key management.
+Use `/login` to pair the device or enter an inference key. You can also set `PALEPALE_API_KEY` to a `pk_` key. For a new account, run `palepale signup`; see [account setup](docs/bun-gateway.md) for owner credentials and recovery.
 
-## Before and after `/godmode`
+## Start a session
 
-On a backend that exposes server profiles, run `/godmode` and choose a profile. The Bun gateway does not yet expose this legacy feature.
+Type a task and press Enter. Use `/models` to choose a model and `/help` to see commands. New sessions start in AUTO, which runs tools without asking. Use `/mode manual` for approval prompts or `/mode plan` to investigate before editing.
 
-<table>
-  <tr>
-    <th>Before</th>
-    <th>After</th>
-  </tr>
-  <tr>
-    <td><img src="docs/images/palepale-session.png" alt="Palepale before godmode"></td>
-    <td><img src="docs/images/palepale-godmode.png" alt="Palepale after choosing godmode"></td>
-  </tr>
-</table>
+Press Escape to stop a turn and Ctrl+D to quit. Resume the latest conversation with `palepale --continue`.
 
-The server keeps profile instructions private. The CLI receives the profile ID, name, and description.
+The [command reference](docs/commands.md) covers slash commands, shortcuts, and session controls.
 
-## Controls
+## Guides
 
-| Command | Action |
-| --- | --- |
-| `/models` | Choose a model |
-| `/sessions` | Resume a saved conversation |
-| `/resume` | Alias for `/sessions` |
-| `/undo` | Take back the last prompt and restore its file checkpoint |
-| `/retry` | Take back the last prompt and send it again |
-| `/compact [focus]` | Summarize older turns while retaining recent context |
-| `/prompt` | List local system prompts and choose a default |
-| `/godmode` | Choose a coding profile |
-| `/godmode off` | Clear the profile |
-| `/status` | View session and usage |
-| `/keys` | List, create, or revoke inference keys using a separate owner credential |
-| `/mcp` | Manage MCP servers |
-| `/skills` | Browse reusable skills |
-| `/help` | Show commands |
-| `Escape` | Stop the current turn |
-| `Ctrl+D` | Quit |
+- [Commands and keyboard shortcuts](docs/commands.md)
+- [Sessions, recovery, and project instructions](docs/reliable-sessions.md)
+- [MCP servers and skills](docs/mcp-and-skills.md)
+- [Accounts and Bun gateway compatibility](docs/bun-gateway.md)
+- [Local builds and development](CONTRIBUTING.md)
+- [Publishing releases](docs/releases.md)
 
-New sessions start in AUTO. Use `/mode` or `Shift+Tab` to switch to MANUAL or PLAN.
-
-Choosing a model in `/models` saves it for future sessions. A `--model` flag overrides that
-choice for one launch. The backend continues to select the default model on a fresh install
-and controls reasoning effort.
-
-Undo checkpoints cover files inside a Git work tree and respect its ignore rules. Files edited
-after a completed turn are kept. An interrupted turn without a final checkpoint rewinds the
-conversation only. Snapshots live under the CLI home, and concurrent sessions cannot share an
-active snapshot index.
-
-Long conversations compact automatically near the context limit. The original messages stay
-in the session file. The `task` tool can delegate work to an `explore` agent with read-only
-tools or a `general` agent with the parent's tool set and permission mode. Child tasks have
-bounded depth, concurrency, and turns; stopping the parent cancels its children.
-
-Tool calls from the same reply share a rail in the transcript. Expand a task card to inspect
-its child tool calls; saved sessions reconstruct the tree when resumed. Expanded command cards
-show multi-line input and complete output.
-
-The optional `decompile` tool lists functions and requests pseudocode from a local `kuna`
-executable. It follows file-read permissions and reports a missing executable without
-installing anything. Disassembly through `bash` remains available.
-
-The opening turn includes a bounded directory listing and Git status. A successful command
-that starts with one literal `cd` keeps that directory for the next `bash` call. Shell
-variables, substitutions, and later directory changes stay local to the command.
-
-Set `verify = "cargo test"` in user settings or trusted project settings to run a check after
-the agent changes files. A failed check returns its output to the agent for a bounded repair
-attempt. Verification is off by default and follows normal command permissions.
-
-Run `palepale mcp discover` to list MCP definitions from supported local clients. Import one
-with `palepale mcp import <name> --fingerprint <fingerprint>`, optionally adding `--scope project`.
-Imports start disabled; review the configuration in `/mcp` before enabling it. Discovery does
-not start servers or print environment/header values.
-
-Use `palepale --continue` to reopen the latest project conversation, or
-`palepale --resume <id>` for a specific one. Local prompt files and `/godmode`
-profiles have separate selections. See [sessions and prompts](docs/reliable-sessions.md)
-for recovery, instruction scopes, and model compatibility checks.
-
-## MCP and skills
-
-Use `/mcp` to add local or remote MCP servers and `/skills` to find project workflows. See [MCP and skills](docs/mcp-and-skills.md) for configuration and permissions.
-
-## Updates and development
-
-Running `palepale` checks for updates, verifies the release checksum, and installs a newer CLI when one is available. Set `auto_update = false` in `~/.palepale/config.toml` to disable it.
-
-See [Contributing](CONTRIBUTING.md) for local builds and checks. The server defaults to `https://api.palepale.tech`; local development can point the CLI at a local API with `PALEPALE_API_URL`.
+Palepale checks for updates at interactive startup and verifies downloads before installing them. Set `auto_update = false` in `~/.palepale/config.toml` to disable this. The default API is `https://api.palepale.tech`; use `PALEPALE_API_URL` for another backend.
 
 ## License
 

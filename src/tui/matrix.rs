@@ -45,6 +45,11 @@ pub struct Intro {
 }
 
 impl Intro {
+    #[cfg(test)]
+    pub fn frame_count(&self) -> usize {
+        self.frames
+    }
+
     pub fn new(width: usize, height: usize, seed: u64) -> Option<Self> {
         let logo = welcome::logo();
         let columns = logo.iter().map(Line::width).max()?;

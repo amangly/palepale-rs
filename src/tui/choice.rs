@@ -263,7 +263,7 @@ mod tests {
     fn a_permission_card_shows_the_diff_and_answers_by_number() {
         let mut card = permission();
         let text: Vec<String> = card.render(50).iter().map(Line::text).collect();
-        assert!(text[0].starts_with("╭ edit src/calc.txt"), "{text:?}");
+        assert!(text[0].starts_with("┌ edit src/calc.txt"), "{text:?}");
         assert!(text.iter().any(|l| l.contains("+2 + 2 = 4")));
         assert!(text.iter().all(|l| crate::text::styled::width(l) <= 50));
         assert!(matches!(

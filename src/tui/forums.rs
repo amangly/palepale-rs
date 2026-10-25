@@ -537,7 +537,7 @@ mod tests {
             None,
         );
         let text = shown(&card);
-        assert!(text.starts_with("╭ Forums"), "{text}");
+        assert!(text.starts_with("┌ Forums"), "{text}");
         assert!(text.contains("› Alpha"), "{text}");
         assert!(text.contains("alpha.example"), "{text}");
         assert!(text.contains("logged in as demo"), "{text}");

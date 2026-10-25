@@ -203,7 +203,7 @@ mod tests {
         let found = p.open("/mo");
         p.key(Action::Down, "/mo");
         let text: Vec<String> = p.render(&found, 60).iter().map(Line::text).collect();
-        assert!(text[0].starts_with("╭ commands"), "{text:?}");
+        assert!(text[0].starts_with("┌ commands"), "{text:?}");
         assert!(text[1].starts_with("│   /mode    "), "{text:?}");
         assert!(text[2].starts_with("│ › /models  "), "{text:?}");
         assert!(text.iter().all(|l| width(l) == 60));

@@ -22,7 +22,7 @@ use crate::api::account;
 use crate::api::models::{self, Catalog, Model};
 use crate::app::App;
 use crate::commands::{self, Effect, Outcome as CommandOutcome, Scope, Session};
-use crate::io::term::{self, Button, Input, KeyCode};
+use crate::io::term::{self, Button, Input, KeyCode, KeyModifiers};
 use crate::io::{clipboard, clock};
 use crate::limits;
 use crate::mode;
@@ -196,6 +196,7 @@ struct Tui<'a> {
     last_verb: Option<usize>,
     rng: fastrand::Rng,
     braille: bool,
+    intro_boost_until: Option<Instant>,
     last_ctrl_c: Option<Instant>,
     toast: Option<Toast>,
     cost_micros: u64,
@@ -257,6 +258,7 @@ impl<'a> Tui<'a> {
             last_verb: None,
             rng: fastrand::Rng::new(),
             braille: term::braille(),
+            intro_boost_until: None,
             last_ctrl_c: None,
             toast: None,
             cost_micros: 0,
@@ -274,12 +276,27 @@ impl<'a> Tui<'a> {
     }
 
     fn advance_intro(&mut self) {
-        if let Some(intro) = &mut self.intro {
+        self.advance_intro_at(clock::instant());
+    }
+
+    fn advance_intro_at(&mut self, now: Instant) {
+        let frames = if self.intro_boost_until.is_some_and(|until| now < until) {
+            limits::get().tui.intro_boost_frames.value.max(1)
+        } else {
+            1
+        };
+        for _ in 0..frames {
+            let Some(intro) = &mut self.intro else {
+                break;
+            };
             let art = intro.advance();
             if art.is_none() {
                 self.intro = None;
             }
             self.feed.welcome_art(art);
+            if self.intro.is_none() {
+                break;
+            }
         }
     }
 
@@ -723,9 +740,12 @@ impl<'a> Tui<'a> {
     }
 
     fn input(&mut self, input: Input, running: bool) -> Step<'a> {
-        // Terminal startup can report a resize before any key is pressed.
-        if !matches!(&input, Input::Resize(..)) && self.intro.take().is_some() {
-            self.feed.welcome_art(None);
+        if self.intro.is_some()
+            && (matches!(&input, Input::Paste(text) if !text.is_empty())
+                || matches!(&input, Input::Key(key) if matches!(key.code, KeyCode::Char(_))
+                    && !key.modifiers.intersects(KeyModifiers::CONTROL | KeyModifiers::ALT)))
+        {
+            self.intro_boost_until = Some(clock::instant() + limits::get().tui.intro_boost_ms.ms());
         }
         // Inside a burst of keys (a paste where the terminal sends one as keystrokes), Enter
         // and Tab are text for whatever field has the keys, never commands.
@@ -1684,6 +1704,42 @@ fn text_of(parts: &[Part]) -> String {
 mod account_tests {
     use super::*;
     use crate::api::error::ErrorInfo;
+
+    #[test]
+    fn typing_keeps_the_intro_and_temporarily_accelerates_it() {
+        let home = tempfile::tempdir().unwrap();
+        let app = App::for_tests(home.path());
+        let shared = Shared::new(mode::get(&app.settings.mode).unwrap());
+        let catalog = Catalog {
+            models: Vec::new(),
+            source: models::Source::Unavailable,
+            fetched_at: None,
+            note: None,
+        };
+        let mut tui = Tui::new(&app, catalog, None, &shared, None, String::new());
+        tui.intro = matrix::Intro::new(100, 30, 1);
+        tui.advance_intro();
+        assert_eq!(tui.intro.as_ref().unwrap().frame_count(), 1);
+        tui.input(Input::Resize(100, 30), false);
+        assert!(tui.intro_boost_until.is_none());
+        let key = term::KeyEvent::new(KeyCode::Char('a'), KeyModifiers::NONE);
+        tui.input(Input::Key(key), false);
+        assert_eq!(tui.editor.text(), "a");
+        assert_eq!(tui.intro.as_ref().unwrap().frame_count(), 1);
+        let until = tui.intro_boost_until.unwrap();
+        tui.advance_intro_at(until - limits::get().tui.intro_boost_ms.ms());
+        let boosted = tui.intro.as_ref().unwrap().frame_count();
+        assert_eq!(boosted, 1 + limits::get().tui.intro_boost_frames.value);
+        tui.advance_intro_at(until);
+        assert_eq!(tui.intro.as_ref().unwrap().frame_count(), boosted + 1);
+        tui.input(Input::Paste(" pasted".into()), false);
+        assert_eq!(tui.editor.text(), "a pasted");
+        assert!(tui.intro.is_some());
+        while tui.intro.is_some() {
+            tui.advance_intro_at(until);
+        }
+        assert_eq!(tui.editor.text(), "a pasted");
+    }
 
     #[test]
     fn late_dashboard_results_cannot_replace_a_newer_card_or_account() {

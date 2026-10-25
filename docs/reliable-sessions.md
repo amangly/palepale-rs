@@ -36,7 +36,8 @@ finished its work.
 The reader accepts sessions up to 64 MiB. The list considers the newest 1,000
 session filenames and shows up to 100, ordered by recorded activity. A specific
 older ID can still be opened directly. Active heads and settings are additive
-records; turn undo, redo, and compaction remain separate roadmap items.
+records. See [session commands](commands.md#models-and-sessions) for undo, retry,
+and compaction.
 
 ## Instruction scopes
 
@@ -88,6 +89,6 @@ metadata, and context/output limits before connecting to inference. The CLI uses
 the model's advertised output limit. Input budgeting estimates serialized
 request size at three bytes per token plus per-message overhead, including
 instructions and tool schemas. This estimate is not a tokenizer or billing
-measurement; the gateway remains authoritative. Automatic compaction is still
-planned under issue #5. A rejected terminal request keeps its text in the
-composer.
+measurement; the gateway remains authoritative. Long conversations compact
+automatically near the context limit. A rejected terminal request keeps its text
+in the composer.

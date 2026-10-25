@@ -1,12 +1,12 @@
 # Releases
 
-Source and build artifacts live in the private `amangly/palepale-rs` repository. Public binaries, checksums, `LICENSE-APACHE`, and `NOTICE` are served by the Azure gateway at `https://api.palepale.tech/cli/latest/`.
+Source and build artifacts live in the public `amangly/palepale-rs` repository. Public binaries, checksums, `LICENSE-APACHE`, and `NOTICE` are served at `https://api.palepale.tech/cli/latest/`.
 
 ## Publishing
 
 1. Set the package version in `Cargo.toml` and `Cargo.lock`. Each release needs a new version.
 2. After an explicit release request, merge the reviewed `main` commit into `prod` and push `prod`.
-3. Publish the completed release to Azure with `deploy/publish-cli.py` in the server repository. It verifies all assets before atomically switching the public feed. A GitHub release alone does not update customers.
+3. Publish the verified assets to the current backend host and atomically switch the public feed. Check the server repository's `docs/SSH-VPS.md` for the current host. The old `deploy/publish-cli.py` and Azure Run Command scripts target a retired VM. A GitHub release alone does not update customers.
 
 The workflow uses GitHub's built-in token. Only the publishing job has Contents write permission; no personal release token is needed.
 

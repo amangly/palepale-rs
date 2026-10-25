@@ -11,6 +11,14 @@ tips = [
   "/help commands · /status usage · /models model",
 ]
 
+[box_style]
+top_left = "┌"
+top_right = "┐"
+bottom_left = "└"
+bottom_right = "┘"
+horizontal = "─"
+vertical = "│"
+
 [footer]
 # All the status, right-aligned on the rule under the message bar, in this order.
 # The rule above the bar is plain, in the mode's colour.
