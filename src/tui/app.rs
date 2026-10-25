@@ -1726,6 +1726,7 @@ impl<'a> Tui<'a> {
         live.push(frame::bottom(
             mode,
             &frame::Info {
+                effort: self.effort.as_deref(),
                 model: self
                     .model
                     .as_ref()

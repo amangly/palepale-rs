@@ -15,6 +15,7 @@ const TAIL: usize = 2;
 
 pub struct Info<'a> {
     pub model: &'a str,
+    pub effort: Option<&'a str>,
     pub agent_profile: Option<&'a str>,
     /// Share of the context window the last request used.
     pub context_pct: Option<u64>,
@@ -70,6 +71,10 @@ fn item_line(mode: &Mode, info: &Info<'_>, item: &str) -> Option<Line> {
             Style::fg("accent"),
         ),
         "model" => Line::styled(info.model, muted.clone()),
+        "effort" => Line::styled(
+            crate::text::template::fill(&ui::get().footer.effort, &[("effort", info.effort?)]),
+            Style::fg("accent"),
+        ),
         "context" => Line::styled(format!("ctx {}%", info.context_pct?), muted),
         "cost" => Line::styled(
             format!(
@@ -94,6 +99,7 @@ mod tests {
     fn info() -> Info<'static> {
         Info {
             model: "demo-2",
+            effort: None,
             agent_profile: None,
             context_pct: Some(12),
             cost_micros: 42_000,
@@ -102,6 +108,23 @@ mod tests {
 
     fn manual() -> &'static Mode {
         mode::get("manual").unwrap()
+    }
+
+    #[test]
+    fn selected_effort_stays_beside_the_model_and_fits_narrow_terminals() {
+        let selected = Info {
+            effort: Some("max"),
+            ..info()
+        };
+        assert!(
+            bottom(manual(), &selected, 100)
+                .text()
+                .contains("demo-2 · effort max")
+        );
+        for width in [4, 20, 40, 80] {
+            assert_eq!(bottom(manual(), &selected, width).width(), width);
+        }
+        assert!(!bottom(manual(), &info(), 100).text().contains("effort"));
     }
 
     #[test]

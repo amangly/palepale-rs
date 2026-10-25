@@ -183,6 +183,7 @@ pub struct Pricing {
 pub struct Capabilities {
     pub streaming: bool,
     pub reasoning: bool,
+    pub reasoning_content: bool,
     pub tool_calling: bool,
     pub temperature: bool,
     pub caching: bool,

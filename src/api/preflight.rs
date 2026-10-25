@@ -99,7 +99,7 @@ pub fn estimated_input(turn: &Turn<'_>) -> u64 {
         turn.messages,
         &crate::api::wire::Replay {
             model: &model.id,
-            reasoning: model.capabilities.reasoning,
+            reasoning_content: model.capabilities.reasoning_content,
             tools: model.capabilities.tool_calling,
         },
     );

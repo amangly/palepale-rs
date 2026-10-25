@@ -195,6 +195,7 @@ pub enum PermissionReply {
 pub struct Footer {
     pub items: Vec<String>,
     pub separator: String,
+    pub effort: String,
 }
 
 #[derive(Debug, Deserialize)]

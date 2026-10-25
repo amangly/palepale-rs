@@ -140,7 +140,7 @@ async fn attempt_once(
 fn request(turn: &Turn<'_>) -> wire::Request {
     let replay = Replay {
         model: &turn.model.id,
-        reasoning: turn.model.capabilities.reasoning,
+        reasoning_content: turn.model.capabilities.reasoning_content,
         tools: turn.model.capabilities.tool_calling,
     };
     let mut messages = vec![WireMessage::System {
@@ -287,6 +287,40 @@ mod tests {
             "high"
         );
         assert_eq!(recorded(&turn).as_deref(), Some("high"));
+    }
+
+    #[test]
+    fn effort_support_does_not_enable_reasoning_content_in_followups() {
+        let m = crate::api::models::fixture().remove(0);
+        assert!(m.supports_effort("high"));
+        let history = [
+            Message::Assistant(Assistant {
+                parts: vec![crate::agent::message::Part::Text {
+                    text: "Hello".into(),
+                }],
+                model: m.id.clone(),
+                effort: Some("high".into()),
+                usage: None,
+                finish: Finish::Done,
+                error: None,
+                request_id: None,
+            }),
+            Message::user_text("Continue"),
+        ];
+        let turn = Turn {
+            model: &m,
+            agent_profile: None,
+            effort: Some("high"),
+            system: "sys",
+            messages: &history,
+            tools: &[],
+        };
+        let body = serde_json::to_value(request(&turn)).unwrap();
+        assert_eq!(body["reasoning_effort"], "high");
+        assert!(
+            body["messages"][1].get("reasoning_content").is_none(),
+            "{body}"
+        );
     }
 
     #[test]

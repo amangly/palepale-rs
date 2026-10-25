@@ -1591,6 +1591,11 @@ async fn model_effort_choice_reaches_the_gateway_and_survives_resume() {
         s.send("\x1b[B");
         s.send("\r");
         s.wait_for("Reasoning effort: high.");
+        s.poll(WAIT, "selected effort in footer", |s| {
+            s.bottom_row()
+                .contains("demo-2 · effort high")
+                .then_some(())
+        });
         s.type_text("hi");
         s.send("\r");
         s.wait_for("Hello there!");
@@ -1603,6 +1608,14 @@ async fn model_effort_choice_reaches_the_gateway_and_survives_resume() {
         .await
         .success();
     assert_eq!(fake.chat_bodies()[1]["reasoning_effort"], "high");
+    let bodies = fake.chat_bodies();
+    let assistant = bodies[1]["messages"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|message| message["role"] == "assistant")
+        .expect("resumed conversation includes the assistant reply");
+    assert!(assistant.get("reasoning_content").is_none(), "{assistant}");
     in_session(&fake, ended.sandbox, Some(ENV_KEY), |s| {
         s.type_text("/sessions");
         s.send("\r");
@@ -1615,6 +1628,7 @@ async fn model_effort_choice_reaches_the_gateway_and_survives_resume() {
         s.send("\r");
         s.wait_for("┌ Reasoning effort");
         s.wait_for("› high");
+        assert!(s.bottom_row().contains("effort high"));
         s.send("\x1b");
         s.wait_gone("┌ Reasoning effort");
         s.type_text("/models");
@@ -1624,6 +1638,7 @@ async fn model_effort_choice_reaches_the_gateway_and_survives_resume() {
         s.send("\r");
         s.wait_for("Model: fake-coder.");
         assert!(!s.contents().contains("┌ Reasoning effort"));
+        assert!(!s.bottom_row().contains("effort high"));
         s.type_text("use this model");
         s.send("\r");
         s.wait_for("use this model");

@@ -22,8 +22,9 @@ vertical = "│"
 [footer]
 # All the status, right-aligned on the rule under the message bar, in this order.
 # The rule above the bar is plain, in the mode's colour.
-items = ["mode", "profile", "model", "context"]
+items = ["mode", "profile", "model", "effort", "context"]
 separator = " · "
+effort = "effort {effort}"
 
 [text]
 chat_only = "Chat only · this model route has no tools. /models switches models."
