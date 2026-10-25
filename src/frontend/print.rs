@@ -59,6 +59,8 @@ pub async fn run(
     let out = Printer {
         format,
         shared: &shared,
+        output_limit: crate::api::preflight::output_limit(model),
+        tools_enabled: model.capabilities.tool_calling,
         at_line_start: AtomicBool::new(true),
         last: Mutex::new(None),
         declined: Mutex::new(Vec::new()),
@@ -114,6 +116,8 @@ pub async fn run(
 struct Printer<'a> {
     format: Format,
     shared: &'a Shared,
+    output_limit: u64,
+    tools_enabled: bool,
     /// Whether stdout ends at a line start, so stderr notes do not land mid-sentence.
     at_line_start: AtomicBool,
     last: Mutex<Option<Assistant>>,
@@ -220,7 +224,17 @@ impl Printer<'_> {
         }
         let last = self.last.lock().unwrap().take();
         if last.as_ref().is_some_and(|m| m.finish == Finish::Length) {
-            term::err("palepale: the reply hit the configured backend output limit\n");
+            if self.tools_enabled {
+                term::err(&format!(
+                    "palepale: the reply reached the {}-token output limit; an incomplete tool call was not run\n",
+                    self.output_limit
+                ));
+            } else {
+                term::err(&format!(
+                    "palepale: the reply reached the {}-token output limit\n",
+                    self.output_limit
+                ));
+            }
         }
         match outcome {
             Outcome::Aborted => {
