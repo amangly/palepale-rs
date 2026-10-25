@@ -8,6 +8,8 @@ Each model turn sends one completion request with a new `Idempotency-Key`. It ne
 
 The client ignores SSE heartbeat comments and treats an error frame as failure even when `[DONE]` follows it. Tool calls run locally under the client's permissions. The gateway only forwards tool definitions and results.
 
-Device pairing, signup, owner key management and server profiles still need the corresponding Bun contract and client migration. Their legacy endpoints are not covered by this compatibility batch. Model tool support and larger context limits must be qualified per provider route before the catalog advertises them.
+Device login starts at `POST /v1/pair/start` and polls `POST /v1/pair/poll`, keeping the device code in the body. The client follows the server's polling interval and expiry. After owner approval it collects an inference key once and saves it in the existing protected local credential store. The website's `/pair` page previews the requesting device and accepts approval or denial through an expiring browser session. These changes require matching backend and website releases.
+
+Signup, owner key management and server profiles still need client migration. Their legacy endpoints are not covered by this compatibility batch. Model tool support and larger context limits must be qualified per provider route before the catalog advertises them.
 
 These changes require matching client and gateway releases. Local fixtures and database tests do not establish live inference or payment acceptance.

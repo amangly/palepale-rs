@@ -98,8 +98,8 @@ impl Fake {
             .route("/api/me/keys", get(keys))
             .route("/api/me/keys/{reference}/revoke", post(revoke_key))
             .route("/v1/account/usage/summary", get(overview))
-            .route("/api/pair/start", post(pair_start))
-            .route("/api/pair/{code}", get(pair_poll))
+            .route("/v1/pair/start", post(pair_start))
+            .route("/v1/pair/poll", post(pair_poll))
             .route("/api/pow", get(pow))
             .route("/api/signup", post(signup))
             .route("/web/ok", get(web_ok))
@@ -417,11 +417,12 @@ async fn overview(State(inner): State<Shared>, headers: HeaderMap) -> Response {
 
 async fn pair_start() -> impl IntoResponse {
     axum::Json(
-        json!({"device_code": "synthetic-device-code-00000000000000000001", "user_code": "012345", "ttl": 60}),
+        json!({"device_code": "synthetic-device-code-00000000000000000001", "user_code": "012345", "ttl": 60, "interval": 1}),
     )
 }
 
-async fn pair_poll(State(inner): State<Shared>, Path(code): Path<String>) -> Response {
+async fn pair_poll(State(inner): State<Shared>, axum::Json(body): axum::Json<Value>) -> Response {
+    let code = body["device_code"].as_str().unwrap_or_default();
     let mut inner = inner.lock().unwrap();
     if code != "synthetic-device-code-00000000000000000001" || inner.pair_collected {
         return error(410, "pair_expired", None);

@@ -228,6 +228,7 @@ mod tests {
             device_code: "synthetic-device-code-00000000000000000001".into(),
             user_code: "012345".into(),
             ttl: 60,
+            interval: 1,
         };
         let next = login.finished(Done::Started(started));
         assert!(matches!(next, Next::Run(Job::Wait(_))));

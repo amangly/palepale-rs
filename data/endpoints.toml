@@ -55,12 +55,12 @@ auth = true
 [endpoints.pair_start]
 origin = "api"
 method = "POST"
-path = "/api/pair/start"
+path = "/v1/pair/start"
 
 [endpoints.pair_poll]
 origin = "api"
-method = "GET"
-path = "/api/pair/{code}"
+method = "POST"
+path = "/v1/pair/poll"
 
 # A web page, not an API: where a person approves a pairing code.
 [endpoints.pair_page]

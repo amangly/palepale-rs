@@ -17,6 +17,7 @@ pub struct Started {
     pub user_code: String,
     /// Seconds the code stays valid.
     pub ttl: u64,
+    pub interval: u64,
 }
 
 pub enum Poll {
@@ -42,15 +43,24 @@ pub async fn start(api: &Api) -> Result<Started, ApiError> {
             limits::get().http.request_timeout_ms.ms(),
         )
         .await?;
-    serde_json::from_slice(&resp.body).map_err(|e| unreadable(&e))
+    let started: Started = serde_json::from_slice(&resp.body).map_err(|e| unreadable(&e))?;
+    if !(1..=900).contains(&started.ttl) || !(1..=30).contains(&started.interval) {
+        return Err(ErrorInfo::local(
+            "bad_response",
+            "invalid pairing lifetime or polling interval",
+        )
+        .into());
+    }
+    Ok(started)
 }
 
 pub async fn poll(api: &Api, device_code: &str) -> Result<Poll, ApiError> {
+    let body = serde_json::json!({ "device_code": device_code });
     let resp = api
         .call(
             "pair_poll",
             Call {
-                args: &[("code", device_code)],
+                body: Some(&body),
                 ..Call::default()
             },
             limits::get().http.request_timeout_ms.ms(),
@@ -73,7 +83,10 @@ pub async fn wait(api: &Api, started: &Started) -> Result<String, ApiError> {
                 Ok(Poll::Ready(key)) => return Ok(key),
                 Ok(Poll::Pending) => {
                     attempt = 1;
-                    io::clock::sleep(limits.poll_interval_ms.ms()).await;
+                    io::clock::sleep(
+                        Duration::from_secs(started.interval).max(limits.poll_interval_ms.ms()),
+                    )
+                    .await;
                 }
                 Err(e) if retry::retryable(&e.info) => {
                     let Some(delay) = retry::delay(&e.info, e.retry_after, attempt) else {

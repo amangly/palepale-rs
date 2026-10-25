@@ -389,7 +389,7 @@ async fn automatic_login_pairs_on_first_open_and_reuses_the_key_on_next_open() {
     .await
     .unwrap();
     assert!(sandbox.home().join("auth.json").exists());
-    assert_eq!(fake.hits("/api/pair/start"), 1);
+    assert_eq!(fake.hits("/v1/pair/start"), 1);
     for path in sandbox.sessions() {
         assert!(
             !std::fs::read_to_string(path)
@@ -428,7 +428,7 @@ async fn automatic_login_reconnects_a_revoked_key_but_keeps_it_on_a_server_outag
         })
         .await
         .unwrap();
-        assert_eq!(fake.hits("/api/pair/start"), usize::from(status == 401));
+        assert_eq!(fake.hits("/v1/pair/start"), usize::from(status == 401));
         if status == 503 {
             assert_eq!(
                 original,

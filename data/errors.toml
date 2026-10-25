@@ -170,6 +170,10 @@ hint = "Update palepale; the API may have moved on."
 title = "The pairing code expired or was already used"
 hint = "Log in again for a fresh code."
 
+[slow_down]
+title = "Wait before checking this pairing again"
+retry = true
+
 [pow_required]
 title = "The proof of work expired before it was used"
 

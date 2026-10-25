@@ -17,10 +17,7 @@ async fn pairing_saves_a_device_key_that_chat_then_uses() {
     );
     assert!(out.contains("Logged in with device key …9999"), "{out}");
     assert!(out.contains("$12.30"), "{out}");
-    assert_eq!(
-        fake.hits("/api/pair/synthetic-device-code-00000000000000000001"),
-        2
-    );
+    assert_eq!(fake.hits("/v1/pair/poll"), 2);
 
     let stored = std::fs::read_to_string(sandbox.home().join("auth.json")).unwrap();
     assert!(stored.contains("\"device\""));
@@ -43,10 +40,7 @@ async fn pairing_waits_out_a_passing_error_and_stops_at_a_final_one() {
     let sandbox = Sandbox::default();
     let run = sandbox.run(&fake.url, &["login"], None).await;
     assert!(run.success().stdout().contains("Logged in with device key"));
-    assert_eq!(
-        fake.hits("/api/pair/synthetic-device-code-00000000000000000001"),
-        2
-    );
+    assert_eq!(fake.hits("/v1/pair/poll"), 2);
 
     let fake = Fake::start().await;
     fake.pair_polls([PairPoll::Error {
@@ -55,10 +49,7 @@ async fn pairing_waits_out_a_passing_error_and_stops_at_a_final_one() {
     }]);
     let run = sandbox.run(&fake.url, &["login"], None).await;
     assert_eq!(run.code(), Some(1));
-    assert_eq!(
-        fake.hits("/api/pair/synthetic-device-code-00000000000000000001"),
-        1
-    );
+    assert_eq!(fake.hits("/v1/pair/poll"), 1);
 }
 
 #[tokio::test(flavor = "multi_thread")]
