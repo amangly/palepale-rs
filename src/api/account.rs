@@ -58,20 +58,19 @@ pub async fn overview(api: &Api) -> Result<Overview, ApiError> {
 
 #[derive(Debug, Deserialize)]
 pub struct Key {
-    #[serde(rename = "ref")]
+    #[serde(rename = "id")]
     pub reference: String,
+    #[serde(rename = "label")]
     pub name: String,
-    pub hint: String,
+    #[serde(rename = "createdAt")]
     pub created_at: String,
-    pub expires_at: String,
-    pub revoked_at: Option<String>,
-    pub current: bool,
+    pub revoked: bool,
 }
 
 pub async fn keys(api: &Api) -> Result<Vec<Key>, ApiError> {
     #[derive(Deserialize)]
     struct Response {
-        keys: Vec<Key>,
+        data: Vec<Key>,
     }
     let response = api
         .call(
@@ -81,7 +80,7 @@ pub async fn keys(api: &Api) -> Result<Vec<Key>, ApiError> {
         )
         .await?;
     serde_json::from_slice::<Response>(&response.body)
-        .map(|response| response.keys)
+        .map(|response| response.data)
         .map_err(|e| ErrorInfo::local("bad_response", e.to_string()).into())
 }
 
@@ -96,14 +95,39 @@ pub async fn revoke_key(api: &Api, reference: &str) -> Result<(), ApiError> {
             limits::get().http.request_timeout_ms.ms(),
         )
         .await?;
-    #[derive(Deserialize)]
-    struct Response {
-        ok: bool,
-    }
-    match serde_json::from_slice::<Response>(&response.body) {
-        Ok(Response { ok: true }) => Ok(()),
+    match response.head.status {
+        204 => Ok(()),
         _ => Err(ErrorInfo::local("bad_response", "Key revocation was not acknowledged").into()),
     }
+}
+
+pub async fn create_key(api: &Api, label: &str) -> Result<String, ApiError> {
+    let body = serde_json::json!({"label": label});
+    let response = api
+        .call(
+            "create_key",
+            Call {
+                body: Some(&body),
+                ..Call::default()
+            },
+            limits::get().http.request_timeout_ms.ms(),
+        )
+        .await?;
+    #[derive(Deserialize)]
+    struct Issued {
+        key: String,
+    }
+    let issued: Issued = serde_json::from_slice(&response.body).map_err(|_| {
+        ErrorInfo::local("bad_response", "Key creation returned an invalid response")
+    })?;
+    if !crate::auth::is_inference(&issued.key) {
+        return Err(ErrorInfo::local(
+            "bad_response",
+            "Key creation did not return an inference key",
+        )
+        .into());
+    }
+    Ok(issued.key)
 }
 
 impl Me {

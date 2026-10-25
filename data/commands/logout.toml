@@ -3,3 +3,8 @@ hidden = false
 requires_backend = true
 summary = "Remove this machine's stored key"
 usage = "logout"
+
+[text]
+removed = "Logged out. The key still works until revoked through account key management."
+absent = "No key was stored on this machine."
+owner_retained = " The separate owner credential remains saved for account recovery and key management."

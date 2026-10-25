@@ -43,13 +43,19 @@ auth = true
 [endpoints.keys]
 origin = "api"
 method = "GET"
-path = "/api/me/keys"
+path = "/v1/account/keys"
 auth = true
 
 [endpoints.revoke_key]
 origin = "api"
+method = "DELETE"
+path = "/v1/account/keys/{ref}"
+auth = true
+
+[endpoints.create_key]
+origin = "api"
 method = "POST"
-path = "/api/me/keys/{ref}/revoke"
+path = "/v1/account/keys"
 auth = true
 
 [endpoints.pair_start]
@@ -68,15 +74,10 @@ origin = "chat"
 method = "GET"
 path = "/pair"
 
-[endpoints.pow]
-origin = "api"
-method = "GET"
-path = "/api/pow?kind={kind}"
-
 [endpoints.signup]
 origin = "api"
 method = "POST"
-path = "/api/signup"
+path = "/v1/accounts"
 
 # The newest release: its tag and its files.
 [endpoints.latest_release]

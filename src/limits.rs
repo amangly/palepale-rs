@@ -42,7 +42,6 @@ pub struct Limits {
     pub chat: ChatLimits,
     pub retry: RetryLimits,
     pub pair: PairLimits,
-    pub signup: SignupLimits,
     pub agent: AgentLimits,
     pub tools: ToolLimits,
     pub update: UpdateLimits,
@@ -145,13 +144,6 @@ pub struct RetryLimits {
 pub struct PairLimits {
     pub poll_interval_ms: Limit<u64>,
     pub backoff_ms: Limit<u64>,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct SignupLimits {
-    pub max_attempts: Limit<u32>,
-    pub max_bits: Limit<u32>,
 }
 
 #[derive(Debug, Deserialize)]

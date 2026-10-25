@@ -2,11 +2,11 @@ use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
 
 use axum::Router;
-use axum::extract::{Path, Request, State};
+use axum::extract::{Request, State};
 use axum::http::{HeaderMap, StatusCode, header};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{get, post};
+use axum::routing::{delete, get, post};
 use futures_util::StreamExt;
 use serde_json::{Value, json};
 
@@ -16,6 +16,8 @@ const MODELS: &str = include_str!("../fixtures/api/models.json");
 pub const ENV_KEY: &str = "test-key";
 pub const DEVICE_KEY: &str = "device-key-9999";
 pub const ACCOUNT_NUMBER: &str = "1234567890123456";
+pub const OWNER_KEY: &str = "po_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+pub const CLIENT_KEY: &str = "pk_BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB";
 /// The one password the fake forum's Tapatalk plugin accepts, and the session it hands back.
 pub const FORUM_PASSWORD: &str = "hunter2";
 pub const FORUM_COOKIE: &str = "bbsessionhash=fake; path=/; HttpOnly";
@@ -56,8 +58,8 @@ struct Inner {
     pair_polls: VecDeque<PairPoll>,
     pair_collected: bool,
     me_errors: VecDeque<u16>,
-    /// Signups to refuse with 428 before accepting one.
-    stale_proofs: usize,
+    /// Key issuance failures before accepting a request.
+    key_failures: usize,
 }
 
 type Shared = Arc<Mutex<Inner>>;
@@ -95,13 +97,12 @@ impl Fake {
             .route("/v1/agent-profiles", get(agent_profiles))
             .route("/v1/chat/completions", post(chat))
             .route("/v1/account/summary", get(me))
-            .route("/api/me/keys", get(keys))
-            .route("/api/me/keys/{reference}/revoke", post(revoke_key))
+            .route("/v1/account/keys", get(keys).post(create_key))
+            .route("/v1/account/keys/{reference}", delete(revoke_key))
             .route("/v1/account/usage/summary", get(overview))
             .route("/v1/pair/start", post(pair_start))
             .route("/v1/pair/poll", post(pair_poll))
-            .route("/api/pow", get(pow))
-            .route("/api/signup", post(signup))
+            .route("/v1/accounts", post(signup))
             .route("/web/ok", get(web_ok))
             .route("/skills/index.json", get(skill_index))
             .route("/skills/native-check/SKILL.md", get(skill_body))
@@ -167,8 +168,8 @@ impl Fake {
         self.inner.lock().unwrap().pair_polls.extend(polls);
     }
 
-    pub fn stale_proofs(&self, count: usize) {
-        self.inner.lock().unwrap().stale_proofs = count;
+    pub fn key_failures(&self, count: usize) {
+        self.inner.lock().unwrap().key_failures = count;
     }
 
     pub fn hits(&self, path: &str) -> usize {
@@ -195,7 +196,10 @@ fn authorized(headers: &HeaderMap) -> bool {
         .get(header::AUTHORIZATION)
         .and_then(|v| v.to_str().ok())
         .and_then(|v| v.strip_prefix("Bearer "));
-    matches!(bearer, Some(ENV_KEY | DEVICE_KEY | ACCOUNT_NUMBER))
+    matches!(
+        bearer,
+        Some(ENV_KEY | DEVICE_KEY | ACCOUNT_NUMBER | CLIENT_KEY)
+    )
 }
 
 fn error(status: u16, kind: &str, retry_after: Option<u64>) -> Response {
@@ -380,23 +384,40 @@ async fn me(State(inner): State<Shared>, headers: HeaderMap) -> Response {
     axum::Json(json!({"account_hint": "3456", "balance_microdollars": 12_300_000, "available_microdollars": 12_300_000, "reserved_microdollars":0,"token_budget":100000,"used_tokens":25000,"reserved_tokens":0,"can_spend": true})).into_response()
 }
 
+fn owner_authorized(headers: &HeaderMap) -> bool {
+    headers
+        .get(header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        == Some(format!("Bearer {OWNER_KEY}").as_str())
+}
 async fn keys(headers: HeaderMap) -> Response {
-    if !authorized(&headers) {
+    if !owner_authorized(&headers) {
         return error(401, "invalid_api_key", None);
     }
-    axum::Json(json!({"keys":[{"ref":"00000000-0000-0000-0000-000000000001", "name":"This terminal", "hint":"9999", "created_at":"2026-01-01T00:00:00Z", "expires_at":"2027-01-01T00:00:00Z", "revoked_at":null, "current":true}]})).into_response()
+    axum::Json(json!({"data":[{"id":"00000000-0000-0000-0000-000000000001", "label":"This terminal", "createdAt":"2026-01-01T00:00:00Z", "revoked":false}]})).into_response()
 }
-
-async fn revoke_key(Path(reference): Path<String>, headers: HeaderMap) -> Response {
-    if !authorized(&headers) {
+async fn create_key(
+    State(inner): State<Shared>,
+    headers: HeaderMap,
+    axum::Json(body): axum::Json<Value>,
+) -> Response {
+    if !owner_authorized(&headers) {
         return error(401, "invalid_api_key", None);
     }
-    if reference.ends_with('1') {
-        return error(409, "cannot_revoke_current", None);
+    assert!(body["label"].is_string());
+    let mut inner = inner.lock().unwrap();
+    if inner.key_failures > 0 {
+        inner.key_failures -= 1;
+        return error(503, "unavailable", None);
     }
-    axum::Json(json!({"ok":true})).into_response()
+    (StatusCode::CREATED, axum::Json(json!({"key":CLIENT_KEY}))).into_response()
 }
-
+async fn revoke_key(headers: HeaderMap) -> Response {
+    if !owner_authorized(&headers) {
+        return error(401, "invalid_api_key", None);
+    }
+    StatusCode::NO_CONTENT.into_response()
+}
 async fn overview(State(inner): State<Shared>, headers: HeaderMap) -> Response {
     if !authorized(&headers) {
         return error(401, "invalid_api_key", None);
@@ -442,39 +463,12 @@ async fn pair_poll(State(inner): State<Shared>, axum::Json(body): axum::Json<Val
     axum::Json(json!({"status": "ready", "api_key": DEVICE_KEY})).into_response()
 }
 
-const POW_BITS: u32 = 8;
-
-async fn pow() -> impl IntoResponse {
-    axum::Json(json!({"challenge": "fakechallenge", "bits": POW_BITS, "ttl": 60}))
-}
-
-async fn signup(State(inner): State<Shared>, headers: HeaderMap) -> Response {
-    use sha2::{Digest, Sha256};
-    let proof = headers
-        .get("x-pow")
-        .and_then(|v| v.to_str().ok())
-        .unwrap_or_default();
-    let Some((challenge, nonce)) = proof.split_once('.') else {
-        return error(428, "pow_required", None);
-    };
-    let hash = Sha256::digest(format!("{challenge}:{nonce}"));
-    let zeros = hash
-        .iter()
-        .scan(true, |counting, b| {
-            let bits = if *counting { b.leading_zeros() } else { 0 };
-            *counting &= *b == 0;
-            Some(bits)
-        })
-        .sum::<u32>();
-    let mut inner = inner.lock().unwrap();
-    if challenge != "fakechallenge" || zeros < POW_BITS || inner.stale_proofs > 0 {
-        inner.stale_proofs = inner.stale_proofs.saturating_sub(1);
-        return error(428, "pow_required", None);
-    }
-    axum::Json(json!({
-        "account_number": ACCOUNT_NUMBER,
-        "formatted": "1234 5678 9012 3456",
-        "api_base": "https://api.palepale.sh/v1"
-    }))
-    .into_response()
+async fn signup() -> Response {
+    (
+        StatusCode::CREATED,
+        axum::Json(
+            json!({"ownerCredential":OWNER_KEY,"accountId":"00000000-0000-0000-0000-000000000001"}),
+        ),
+    )
+        .into_response()
 }

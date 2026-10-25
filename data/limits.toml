@@ -76,14 +76,6 @@ reason = "the same cadence palepale's own installer uses; approval is a human ac
 value = 5000
 reason = "pause after palepale rate-limits the polling"
 
-[signup.max_attempts]
-value = 3
-reason = "palepale raises the difficulty per address; a third stale challenge means something else is wrong"
-
-[signup.max_bits]
-value = 30
-reason = "the most work a person waits for on one machine; palepale itself caps signup at 28 bits"
-
 [agent.max_turns]
 value = 100
 reason = "a runaway agent loop costs real money; a run that needs more should be continued deliberately"

@@ -88,7 +88,7 @@ title = "commands"
 [login]
 title = "Log in to palepale"
 pair = "Pair this device (approve in your browser)"
-number = "Enter my account number"
+number = "Enter my inference key"
 starting = "Asking palepale for a pairing code…"
 open = "Open {url}"
 code = "Confirm this code in your browser: "

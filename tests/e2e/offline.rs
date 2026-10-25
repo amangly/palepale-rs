@@ -43,7 +43,7 @@ async fn help_exposes_device_login_but_offline_account_commands_require_a_backen
     let sandbox = Sandbox::default();
     let help = sandbox.run("", &["help"], None).await;
     let out = help.success().stdout();
-    assert!(out.contains("palepale login") && !out.contains("palepale signup"));
+    assert!(out.contains("palepale login") && out.contains("palepale signup"));
     for command in ["login", "signup", "logout"] {
         let run = sandbox.run("", &[command], None).await;
         assert_eq!(run.code(), Some(1));

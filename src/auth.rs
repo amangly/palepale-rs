@@ -5,6 +5,7 @@ use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
+use std::{path::Path, sync::LazyLock};
 
 use crate::api::account::{self, Me};
 use crate::app::App;
@@ -15,7 +16,7 @@ use crate::settings;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum KeyKind {
-    /// The 16-digit account number itself; there is no recovery if it is lost.
+    /// An owner credential, or the legacy account-number tag in older files.
     Account,
     /// A per-machine key from pairing, revocable without touching the account.
     Device,
@@ -52,10 +53,14 @@ fn version() -> u32 {
 
 /// The key this process uses: the environment's, else the stored one.
 pub fn load(paths: &Paths) -> anyhow::Result<Option<Key>> {
-    match from_env() {
-        Some(key) => Ok(Some(key)),
-        None => stored(paths),
+    let key = match from_env() {
+        Some(key) => Some(key),
+        None => stored(paths)?,
+    };
+    if let Some(key) = &key {
+        require_inference(&key.secret)?;
     }
+    Ok(key)
 }
 
 /// The variable a key in the environment comes from.
@@ -71,15 +76,28 @@ pub fn from_env() -> Option<Key> {
 
 /// The key saved on this machine, whatever the environment says.
 pub fn stored(paths: &Paths) -> anyhow::Result<Option<Key>> {
-    let path = paths.auth();
-    let Some(text) = io::fs::read_string(&path)? else {
+    stored_at(&paths.auth())
+}
+
+fn stored_at(path: &Path) -> anyhow::Result<Option<Key>> {
+    let Some(text) = io::fs::read_string(path)? else {
         return Ok(None);
     };
     let unreadable = || {
-        format!(
-            "{} is unreadable; `palepale logout` removes it",
-            path.display()
-        )
+        if path
+            .file_name()
+            .is_some_and(|name| name == OWNER.file.as_str())
+        {
+            format!(
+                "{} is unreadable; restore its protected backup or supply PALEPALE_OWNER_CREDENTIAL",
+                path.display()
+            )
+        } else {
+            format!(
+                "{} is unreadable; `palepale logout` removes it",
+                path.display()
+            )
+        }
     };
     let stored: Stored = serde_json::from_str(&text).with_context(unreadable)?;
     let origin = crate::api::endpoints::origin("api");
@@ -100,6 +118,10 @@ pub fn stored(paths: &Paths) -> anyhow::Result<Option<Key>> {
 }
 
 pub fn save(paths: &Paths, secret: &str, kind: KeyKind) -> anyhow::Result<()> {
+    save_at(&paths.auth(), secret, kind)
+}
+
+fn save_at(path: &Path, secret: &str, kind: KeyKind) -> anyhow::Result<()> {
     let secret = normalize(secret);
     let (scheme, sealed) = io::secret::seal(secret.as_bytes())?;
     let stored = Stored {
@@ -111,23 +133,90 @@ pub fn save(paths: &Paths, secret: &str, kind: KeyKind) -> anyhow::Result<()> {
         scheme: scheme.to_owned(),
         secret: BASE64.encode(sealed),
     };
-    io::fs::write_atomic(
-        &paths.auth(),
-        &serde_json::to_vec_pretty(&stored)?,
-        Access::Private,
-    )?;
+    io::fs::write_atomic(path, &serde_json::to_vec_pretty(&stored)?, Access::Private)?;
     Ok(())
 }
 
 /// Checks `secret` with palepale, stores it, and makes it the key this process uses from now on.
 pub async fn adopt(app: &App, secret: &str, kind: KeyKind) -> anyhow::Result<Me> {
     let secret = normalize(secret);
+    require_inference(&secret)?;
     let me = account::me(&app.api.with_key(secret.clone()))
         .await
         .context("checking that key with palepale")?;
     save(&app.paths, &secret, kind)?;
     app.api.set_key(Some(secret));
     Ok(me)
+}
+
+#[derive(Deserialize)]
+struct OwnerConfig {
+    env: String,
+    file: String,
+    required: String,
+    invalid: String,
+    inference_only: String,
+    lock: String,
+    busy: String,
+}
+static OWNER: LazyLock<OwnerConfig> =
+    LazyLock::new(|| toml::from_str(include_str!("../data/owner.toml")).expect("owner settings"));
+
+pub fn is_owner(secret: &str) -> bool {
+    token_shape(secret, "po_")
+}
+pub fn is_inference(secret: &str) -> bool {
+    token_shape(secret, "pk_")
+}
+fn token_shape(secret: &str, prefix: &str) -> bool {
+    secret.len() == 46
+        && secret.starts_with(prefix)
+        && secret[3..]
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
+}
+pub fn owner_path(paths: &Paths) -> std::path::PathBuf {
+    paths.home.join(&OWNER.file)
+}
+pub fn owner_stored(paths: &Paths) -> anyhow::Result<bool> {
+    Ok(io::fs::read_string(&owner_path(paths))?.is_some())
+}
+pub fn owner_lock(paths: &Paths) -> anyhow::Result<io::fs::FileLock> {
+    io::fs::lock(&paths.home.join(&OWNER.lock)).context(OWNER.busy.clone())
+}
+fn require_inference(secret: &str) -> anyhow::Result<()> {
+    anyhow::ensure!(
+        !secret.starts_with("po_") && !secret.starts_with("ps_"),
+        OWNER.inference_only.clone()
+    );
+    Ok(())
+}
+pub fn save_owner(paths: &Paths, secret: &str) -> anyhow::Result<()> {
+    anyhow::ensure!(is_owner(secret), OWNER.invalid.clone());
+    save_at(&owner_path(paths), secret, KeyKind::Account)
+}
+pub fn owner_api(app: &App) -> anyhow::Result<crate::api::Api> {
+    Ok(app.api.with_key(owner_secret(app)?))
+}
+pub fn export_owner(app: &App, destination: &Path) -> anyhow::Result<()> {
+    let secret = owner_secret(app)?;
+    Ok(io::fs::write_new(
+        destination,
+        secret.as_bytes(),
+        Access::Private,
+    )?)
+}
+fn owner_secret(app: &App) -> anyhow::Result<String> {
+    let secret = match settings::env(&OWNER.env) {
+        Some(secret) => normalize(&secret),
+        None => {
+            stored_at(&owner_path(&app.paths))?
+                .context(OWNER.required.clone())?
+                .secret
+        }
+    };
+    anyhow::ensure!(is_owner(&secret), OWNER.invalid.clone());
+    Ok(secret)
 }
 
 /// `Ok(false)` when there was no stored key.
@@ -159,6 +248,41 @@ pub fn normalize(secret: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn owner_storage_is_separate_and_signup_lock_is_exclusive() {
+        let home = tempfile::tempdir().unwrap();
+        let paths = Paths::at(home.path().into(), home.path().into());
+        let owner = format!("po_{}", "A".repeat(43));
+        let client = format!("pk_{}", "B".repeat(43));
+        assert!(save_owner(&paths, &client).is_err());
+        let lock = owner_lock(&paths).unwrap();
+        assert!(owner_lock(&paths).is_err());
+        save_owner(&paths, &owner).unwrap();
+        save(&paths, &client, KeyKind::Device).unwrap();
+        assert_eq!(stored(&paths).unwrap().unwrap().secret, client);
+        assert_eq!(
+            stored_at(&owner_path(&paths)).unwrap().unwrap().secret,
+            owner
+        );
+        assert!(require_inference(&owner).is_err());
+        assert!(require_inference(&format!("ps_{}", "C".repeat(43))).is_err());
+        remove(&paths).unwrap();
+        assert!(owner_stored(&paths).unwrap());
+        drop(lock);
+        assert!(owner_lock(&paths).is_ok());
+        let mut record: serde_json::Value =
+            serde_json::from_str(&io::fs::read_string(&owner_path(&paths)).unwrap().unwrap())
+                .unwrap();
+        record["api_origin"] = "https://other.invalid".into();
+        io::fs::write_atomic(
+            &owner_path(&paths),
+            record.to_string().as_bytes(),
+            Access::Private,
+        )
+        .unwrap();
+        assert!(stored_at(&owner_path(&paths)).is_err());
+    }
 
     #[test]
     fn save_load_remove_round_trip() {

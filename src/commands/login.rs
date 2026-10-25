@@ -72,8 +72,8 @@ impl Command for Login {
             let text = match number {
                 None => pair_here(cx.app).await?,
                 Some(number) => {
-                    let me = auth::adopt(cx.app, &number, KeyKind::Account).await?;
-                    logged_in(KeyKind::Account, &number, &me)
+                    let me = auth::adopt(cx.app, &number, KeyKind::Device).await?;
+                    logged_in(KeyKind::Device, &number, &me)
                 }
             };
             Ok(text.into())

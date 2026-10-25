@@ -21,7 +21,7 @@ chmod +x palepale
 ./palepale
 ```
 
-For the Bun gateway, set `PALEPALE_API_KEY` to an inference key (`pk_`). Account numbers and owner credentials do not authorize chat. See [Bun gateway compatibility](docs/bun-gateway.md) for the current endpoint migration and remaining onboarding work.
+For the Bun gateway, set `PALEPALE_API_KEY` to an inference key (`pk_`). Account numbers and owner credentials do not authorize chat. See [Bun gateway compatibility](docs/bun-gateway.md) for signup, browser pairing, and owner key management.
 
 ## Before and after `/godmode`
 
@@ -54,7 +54,7 @@ The server keeps profile instructions private. The CLI receives the profile ID, 
 | `/godmode` | Choose a coding profile |
 | `/godmode off` | Clear the profile |
 | `/status` | View session and usage |
-| `/keys` | List account keys; revoke another device with `/keys revoke <ref> --yes` |
+| `/keys` | List, create, or revoke inference keys using a separate owner credential |
 | `/mcp` | Manage MCP servers |
 | `/skills` | Browse reusable skills |
 | `/help` | Show commands |

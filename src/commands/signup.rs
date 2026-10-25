@@ -1,23 +1,35 @@
-use std::sync::LazyLock;
-
-use anyhow::bail;
-use futures_util::future::BoxFuture;
-
 use super::{Command, Ctx, Outcome, Spec};
-use crate::api::signup;
-use crate::auth::{self, KeyKind};
-use crate::io::term;
-
-static SPEC: LazyLock<Spec> =
-    LazyLock::new(|| Spec::parse(include_str!("../../data/commands/signup.toml")));
-
+use crate::{
+    api::{account, signup},
+    auth::{self, KeyKind},
+    text::template::fill,
+};
+use anyhow::{Context, bail};
+use futures_util::future::BoxFuture;
+use serde::Deserialize;
+use std::sync::LazyLock;
+const SOURCE: &str = include_str!("../../data/commands/signup.toml");
+static SPEC: LazyLock<Spec> = LazyLock::new(|| Spec::parse(SOURCE));
+#[derive(Deserialize)]
+struct Text {
+    existing: String,
+    owner_exists: String,
+    recovery: String,
+    done: String,
+    label: String,
+}
+static TEXT: LazyLock<Text> = LazyLock::new(|| {
+    #[derive(Deserialize)]
+    struct File {
+        text: Text,
+    }
+    toml::from_str::<File>(SOURCE).expect("signup text").text
+});
 pub struct Signup;
-
 impl Command for Signup {
     fn spec(&self) -> &Spec {
         &SPEC
     }
-
     fn run<'a>(
         &'a self,
         cx: &'a Ctx<'a>,
@@ -25,56 +37,35 @@ impl Command for Signup {
     ) -> BoxFuture<'a, anyhow::Result<Outcome>> {
         Box::pin(async move {
             let app = cx.app;
+            let _lock = auth::owner_lock(&app.paths)?;
             let force = match args {
                 [] => false,
                 [flag] if flag == "--force" => true,
                 _ => return Err(cx.usage(&SPEC)),
             };
-            // A new account would replace the stored key, and an account number has no recovery.
-            if !force && auth::stored(&app.paths)?.is_some() {
-                bail!(
-                    "this machine is already logged in; `palepale logout` first, or pass --force if the current key is saved elsewhere"
-                );
+            if auth::owner_stored(&app.paths)? {
+                bail!(TEXT.owner_exists.clone());
             }
-            term::out("Creating a palepale account (solving a proof-of-work challenge)…\n");
+            if !force && auth::stored(&app.paths)?.is_some() {
+                bail!(TEXT.existing.clone());
+            }
             let account = signup::register(&app.api).await?;
-            // Saved before it is shown, so an interrupted terminal cannot lose the only copy.
-            auth::save(&app.paths, &account.account_number, KeyKind::Account)?;
-            term::out(&format!(
-                "\nYour account number:  {}\n\nThis number is your login and your API key. There is no email and no recovery,\nso store it in a password manager now. A copy is saved in {}.\n",
-                account.formatted,
-                app.paths.auth().display()
-            ));
-            confirm(&account.account_number)?;
+            // Persist the only recovery credential before requesting a client key.
+            auth::save_owner(&app.paths, &account.owner_credential)?;
+            let api = app.api.with_key(account.owner_credential);
+            let key = account::create_key(&api, &TEXT.label)
+                .await
+                .context(TEXT.recovery.clone())?;
+            auth::save(&app.paths, &key, KeyKind::Device).context(TEXT.recovery.clone())?;
+            app.api.set_key(Some(key));
             Ok(Outcome::from(format!(
-                "Next: contact your configured backend about account access.{}",
+                "{}{}",
+                fill(
+                    &TEXT.done,
+                    &[("path", &auth::owner_path(&app.paths).display().to_string())]
+                ),
                 super::login::env_note()
             )))
         })
-    }
-}
-
-/// Asks for the last four digits back, when someone is at the keyboard to answer.
-fn confirm(number: &str) -> anyhow::Result<()> {
-    if !term::stdin_is_terminal() {
-        return Ok(());
-    }
-    let tail: String = number
-        .chars()
-        .rev()
-        .take(4)
-        .collect::<String>()
-        .chars()
-        .rev()
-        .collect();
-    loop {
-        term::out("Type its last 4 digits to confirm you saved it: ");
-        let Some(line) = term::read_line()? else {
-            return Ok(());
-        };
-        if line.trim() == tail {
-            return Ok(());
-        }
-        term::out("That does not match; check what you saved.\n");
     }
 }

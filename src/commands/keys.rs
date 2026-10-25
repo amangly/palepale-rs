@@ -1,5 +1,9 @@
-use super::{Command, Ctx, Outcome, Spec};
-use crate::{api::account, text::template::fill};
+use super::{Command, Ctx, Outcome, Scope, Spec};
+use crate::{
+    api::account,
+    auth::{self, KeyKind},
+    text::template::fill,
+};
 use futures_util::future::BoxFuture;
 use serde::Deserialize;
 use std::sync::LazyLock;
@@ -9,13 +13,14 @@ static SPEC: LazyLock<Spec> = LazyLock::new(|| Spec::parse(SOURCE));
 struct Text {
     empty: String,
     row: String,
-    current: String,
     revoked: String,
     active: String,
     limit: String,
     confirm: String,
     done: String,
     bad_ref: String,
+    created: String,
+    exported: String,
 }
 static TEXT: LazyLock<Text> = LazyLock::new(|| {
     #[derive(Deserialize)]
@@ -35,8 +40,16 @@ impl Command for Keys {
         args: &'a [String],
     ) -> BoxFuture<'a, anyhow::Result<Outcome>> {
         Box::pin(async move {
+            if let [action, destination, flag] = args
+                && action == "export-owner"
+                && flag == "--yes"
+                && cx.scope == Scope::Cli
+            {
+                auth::export_owner(cx.app, &cx.app.paths.project.join(destination))?;
+                return Ok(TEXT.exported.clone().into());
+            }
             if args.is_empty() || args == ["list"] {
-                let keys = account::keys(&cx.app.api).await?;
+                let keys = account::keys(&auth::owner_api(cx.app)?).await?;
                 let mut rows: Vec<_> = keys
                     .iter()
                     .map(|key| {
@@ -45,14 +58,10 @@ impl Command for Keys {
                             &[
                                 ("ref", &key.reference),
                                 ("name", &key.name),
-                                ("hint", &key.hint),
                                 ("created", &key.created_at),
-                                ("expires", &key.expires_at),
                                 (
                                     "state",
-                                    if key.current {
-                                        &TEXT.current
-                                    } else if key.revoked_at.is_some() {
+                                    if key.revoked {
                                         &TEXT.revoked
                                     } else {
                                         &TEXT.active
@@ -84,8 +93,17 @@ impl Command for Keys {
                 {
                     anyhow::bail!(TEXT.bad_ref.clone());
                 }
-                account::revoke_key(&cx.app.api, reference).await?;
+                account::revoke_key(&auth::owner_api(cx.app)?, reference).await?;
                 return Ok(fill(&TEXT.done, &[("ref", reference)]).into());
+            }
+            if let [action, label, flag] = args
+                && action == "create"
+                && flag == "--use"
+            {
+                let key = account::create_key(&auth::owner_api(cx.app)?, label).await?;
+                auth::save(&cx.app.paths, &key, KeyKind::Device)?;
+                cx.app.api.set_key(Some(key));
+                return Ok(format!("{}{}", TEXT.created, super::login::env_note()).into());
             }
             Err(cx.usage(&SPEC))
         })

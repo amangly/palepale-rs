@@ -109,34 +109,27 @@ async fn a_corrupt_key_file_is_explained_and_logout_still_clears_it() {
     assert!(status.success().stdout().contains("Not logged in"));
 }
 #[tokio::test(flavor = "multi_thread")]
-async fn key_management_requires_explicit_revocation_and_preserves_current_key_errors() {
+async fn key_management_requires_owner_and_explicit_revocation() {
     let fake = crate::fake_palepale::Fake::start().await;
     let sandbox = crate::Sandbox::default();
-    let listed = sandbox
+    let denied = sandbox
         .run(&fake.url, &["keys", "list"], crate::WITH_KEY)
         .await;
+    assert_ne!(denied.code(), Some(0));
+    assert!(denied.stderr().contains("owner credential"));
+    assert_eq!(fake.hits("/v1/account/keys"), 0);
+    sandbox.run(&fake.url, &["signup"], None).await.success();
+    let listed = sandbox.run(&fake.url, &["keys", "list"], None).await;
     assert!(listed.success().stdout().contains("This terminal"));
-    let current = "00000000-0000-0000-0000-000000000001";
-    let other = "00000000-0000-0000-0000-000000000002";
+    let reference = "00000000-0000-0000-0000-000000000001";
     let refused = sandbox
-        .run(&fake.url, &["keys", "revoke", other], crate::WITH_KEY)
+        .run(&fake.url, &["keys", "revoke", reference], None)
         .await;
     assert_ne!(refused.code(), Some(0));
-    assert_eq!(fake.hits(&format!("/api/me/keys/{other}/revoke")), 0);
-    let refused = sandbox
-        .run(
-            &fake.url,
-            &["keys", "revoke", current, "--yes"],
-            crate::WITH_KEY,
-        )
-        .await;
-    assert_ne!(refused.code(), Some(0));
+    assert_eq!(fake.hits(&format!("/v1/account/keys/{reference}")), 0);
     let revoked = sandbox
-        .run(
-            &fake.url,
-            &["keys", "revoke", other, "--yes"],
-            crate::WITH_KEY,
-        )
+        .run(&fake.url, &["keys", "revoke", reference, "--yes"], None)
         .await;
     assert!(revoked.success().stdout().contains("Revoked key"));
+    assert_eq!(fake.hits(&format!("/v1/account/keys/{reference}")), 1);
 }

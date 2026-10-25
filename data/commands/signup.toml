@@ -1,6 +1,12 @@
 name = "signup"
-hidden = true
 requires_backend = true
-summary = "Create a palepale account on this machine (no email, no password)"
+summary = "Create an account and save a separate client key"
 usage = "signup [--force]"
 scope = ["cli"]
+
+[text]
+existing = "This machine is already logged in; logout first, or pass --force if the current key is saved elsewhere."
+owner_exists = "An owner credential is already saved. Signup will not overwrite it, even with --force. Use keys create <label> --use to reconnect, or select a different PALEPALE_HOME for another account."
+recovery = "Your owner credential was saved, but client key setup did not complete. Use keys list to inspect issued keys, then keys create <label> --use to connect."
+done = "Account created. A client key is saved for model requests. Your owner credential is stored separately in {path}; protect this file as account recovery material. Logout retains it. Fund your account through the website before sending model requests."
+label = "CLI signup"

@@ -936,7 +936,7 @@ async fn a_command_typed_during_a_run_never_reaches_the_model() {
         s.wait_for("sleep 3");
         s.type_text("/login --key 1234 5678 9012 3456");
         s.send("\r");
-        s.wait_for("Logged in with account number …3456");
+        s.wait_for("Logged in with device key …3456");
         s.wait_for("Hello there!");
         s.contents()
     })
@@ -1090,7 +1090,7 @@ async fn slash_login_takes_a_masked_account_number_and_retries_a_wrong_one() {
         s.wait_for("•••• •••• •••• 3456");
         assert!(!s.contents().contains("1234 5678"), "{}", s.contents());
         s.send("\r");
-        s.wait_for("Logged in with account number …3456");
+        s.wait_for("Logged in with device key …3456");
     })
     .await;
     assert!(!ended.screen.contains("1234 5678"), "{}", ended.screen);
@@ -1107,7 +1107,7 @@ async fn slash_login_takes_the_same_arguments_as_the_command_line() {
         s.wait_for("Not logged in. Run /login");
         s.type_text("/login --key 1234 5678 9012 3456");
         s.send("\r");
-        s.wait_for("Logged in with account number …3456");
+        s.wait_for("Logged in with device key …3456");
     })
     .await;
     assert!(ended.sandbox.home().join("auth.json").exists());

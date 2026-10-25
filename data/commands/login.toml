@@ -1,8 +1,8 @@
 name = "login"
 hidden = false
 requires_backend = true
-summary = "Log in: pair this machine, or use an account number"
-usage = "login [--key <account number> | --status]"
+summary = "Log in: pair this machine, or use an inference key"
+usage = "login [--key <inference key> | --status]"
 secret = ["--key"]
 
 # What login says; {placeholders} are filled in. The session shows the same results.

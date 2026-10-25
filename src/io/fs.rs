@@ -31,6 +31,12 @@ pub fn write_atomic(path: &Path, bytes: &[u8], access: Access) -> io::Result<()>
     written
 }
 
+/// Creates a private export without replacing an existing file or following a link.
+pub fn write_new(path: &Path, bytes: &[u8], access: Access) -> io::Result<()> {
+    ensure_parent(path)?;
+    fill(open_new(path, access)?, bytes, path, access)
+}
+
 /// A new file beside `path`, never one already there: not a leftover, not a planted link.
 fn create_temp(path: &Path, access: Access) -> io::Result<(PathBuf, std::fs::File)> {
     let name = path.file_name().unwrap_or_default().to_string_lossy();

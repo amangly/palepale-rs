@@ -11,6 +11,7 @@ use serde::Deserialize;
 pub enum Method {
     Get,
     Post,
+    Delete,
 }
 
 pub struct Request<'a> {
@@ -118,6 +119,7 @@ impl Http {
         let mut builder = match req.method {
             Method::Get => self.client.get(&req.url),
             Method::Post => self.client.post(&req.url),
+            Method::Delete => self.client.delete(&req.url),
         };
         if let Some(key) = &req.bearer {
             builder = builder.bearer_auth(key);

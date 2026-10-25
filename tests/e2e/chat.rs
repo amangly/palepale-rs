@@ -405,7 +405,7 @@ async fn help_names_the_commands_and_what_print_does_with_them() {
         "{out}"
     );
     assert!(
-        out.contains(", login,") && out.contains(", logout,") && !out.contains(", signup,"),
+        out.contains(", login,") && out.contains(", logout,") && out.contains(", signup,"),
         "{out}"
     );
     assert!(out.contains("never a command"), "{out}");

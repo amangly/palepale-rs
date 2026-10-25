@@ -72,7 +72,8 @@ User settings live in `~/.palepale/config.toml`; a project can add `.palepale/co
 | --- | --- |
 | `PALEPALE_API_URL` | Override the API origin |
 | `PALEPALE_CHAT_URL` | Override the chat endpoint |
-| `PALEPALE_API_KEY` | Supply an explicit credential |
+| `PALEPALE_API_KEY` | Supply an inference credential |
+| `PALEPALE_OWNER_CREDENTIAL` | Supply a separate owner credential for key management |
 | `PALEPALE_HOME` | Change the state folder |
 | `PALEPALE_NO_AUTO_LOGIN=1` | Skip startup pairing |
 | `PALEPALE_NO_BROWSER=1` | Show the pairing link without opening it |

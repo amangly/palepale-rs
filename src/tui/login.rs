@@ -1,4 +1,4 @@
-//! `/login` inside a session: pair this device or type an account number, in a card in place of
+//! `/login` inside a session: pair this device or type an inference key, in a card in place of
 //! the editor. The network work is a `Job` the session loop runs beside input, so the screen
 //! stays live and closing the card drops it.
 
@@ -71,7 +71,7 @@ pub fn run(app: &App, job: Job) -> BoxFuture<'_, Done> {
                     Err(e) => return Done::Failed(format!("{e:#}")),
                 }
             }
-            Job::Check(number) => (number, KeyKind::Account),
+            Job::Check(number) => (number, KeyKind::Device),
         };
         match auth::adopt(app, &key, kind).await {
             Ok(me) => Done::LoggedIn(logged_in(kind, &key, &me)),
@@ -131,7 +131,7 @@ impl Login {
         }
     }
 
-    /// Typed or pasted text, for the account number line.
+    /// Typed or pasted text, for the inference key line.
     pub fn insert(&mut self, text: &str) {
         if let Stage::Choose(card) = &mut self.stage {
             card.insert(text);
@@ -256,6 +256,6 @@ mod tests {
             Next::Error(error) => assert!(error.contains("invalid_api_key"), "{error}"),
             _ => panic!("expected the error"),
         }
-        assert!(text(&login).contains("2 Enter my account number"));
+        assert!(text(&login).contains("2 Enter my inference key"));
     }
 }

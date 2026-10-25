@@ -1,12 +1,26 @@
 use std::sync::LazyLock;
 
 use futures_util::future::BoxFuture;
+use serde::Deserialize;
 
 use super::{Command, Ctx, Outcome, Spec};
 use crate::auth;
 
-static SPEC: LazyLock<Spec> =
-    LazyLock::new(|| Spec::parse(include_str!("../../data/commands/logout.toml")));
+const SOURCE: &str = include_str!("../../data/commands/logout.toml");
+static SPEC: LazyLock<Spec> = LazyLock::new(|| Spec::parse(SOURCE));
+#[derive(Deserialize)]
+struct Text {
+    removed: String,
+    absent: String,
+    owner_retained: String,
+}
+static TEXT: LazyLock<Text> = LazyLock::new(|| {
+    #[derive(Deserialize)]
+    struct File {
+        text: Text,
+    }
+    toml::from_str::<File>(SOURCE).expect("logout text").text
+});
 
 pub struct Logout;
 
@@ -27,12 +41,13 @@ impl Command for Logout {
             let left = auth::load(&cx.app.paths)?.map(|key| key.secret);
             cx.app.api.set_key(left);
             let mut out = if removed {
-                // palepale refuses to revoke the key making the request, so it can only go elsewhere.
-                "Logged out. The key still works until revoked by your configured backend."
-                    .to_owned()
+                TEXT.removed.clone()
             } else {
-                "No key was stored on this machine.".to_owned()
+                TEXT.absent.clone()
             };
+            if auth::owner_stored(&cx.app.paths)? {
+                out.push_str(&TEXT.owner_retained);
+            }
             out.push_str(super::login::env_note());
             Ok(out.into())
         })
