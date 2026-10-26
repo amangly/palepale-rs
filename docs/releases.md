@@ -1,5 +1,13 @@
 # Releases
 
+## v0.1.24 — 2026-10-26
+
+Released commit `a19bba13fc35491663981f8dbcc57160005bbaeb` through the `prod` workflow. The CLI authenticates profile discovery and sends `/godmode` selections as `server_profile`, matching the deployed Bun gateway. Profile instructions remain on the server; account instructions are managed on the website.
+
+[Release run 40308737668](https://github.com/amangly/palepale-rs/actions/runs/40308737668) passed lint, unit tests, end-to-end tests, platform builds and packaged updater checks. The backend verified the published checksums and Linux version before atomically switching `/srv/palepale-cli/latest` from v0.1.23 to v0.1.24. Public downloads of all six assets matched GitHub's SHA-256 digests; the feed and latest download URLs were checked, and the downloaded Windows binary reported `palepale 0.1.24 (v0.1.24)`.
+
+Matching backend commit `85f0e55` and website commit `5254b55` are deployed. Live account instruction save/reload/clear checks passed without payments or inference. Run `palepale update` to install the release.
+
 Source and build artifacts live in the public `amangly/palepale-rs` repository. Public binaries, checksums, `LICENSE-APACHE`, and `NOTICE` are served at `https://api.palepale.tech/cli/latest/`.
 
 ## Publishing
