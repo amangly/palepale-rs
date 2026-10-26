@@ -22,12 +22,20 @@ pub struct Info<'a> {
     pub cost_micros: u64,
 }
 
-pub fn top(mode: &Mode, width: usize) -> Line {
-    Line::styled(RULE.repeat(width), Style::fg(&mode.color))
+pub fn color(mode: &Mode, profile: bool) -> &str {
+    if profile {
+        &godmode::text().input_color
+    } else {
+        &mode.color
+    }
+}
+
+pub fn top(mode: &Mode, profile: bool, width: usize) -> Line {
+    Line::styled(RULE.repeat(width), Style::fg(color(mode, profile)))
 }
 
 pub fn bottom(mode: &Mode, info: &Info<'_>, width: usize) -> Line {
-    let style = Style::fg(&mode.color);
+    let style = Style::fg(color(mode, info.agent_profile.is_some()));
     // Dashes, a space, the items, a space, the tail.
     let room = width.saturating_sub(LEAD + TAIL + 2);
     let items = items(mode, info);
@@ -68,7 +76,7 @@ fn item_line(mode: &Mode, info: &Info<'_>, item: &str) -> Option<Line> {
                 &godmode::text().badge,
                 &[("profile", info.agent_profile?)],
             ),
-            Style::fg("accent"),
+            Style::fg(&godmode::text().input_color),
         ),
         "model" => Line::styled(info.model, muted.clone()),
         "effort" => Line::styled(
@@ -129,7 +137,7 @@ mod tests {
 
     #[test]
     fn the_top_rule_is_a_plain_rule_across_the_width() {
-        let line = top(manual(), 30);
+        let line = top(manual(), false, 30);
         assert_eq!(line.text(), "─".repeat(30));
         assert!(line.to_tagged().starts_with("[mode_manual]"));
     }

@@ -23,6 +23,7 @@ static TEXT: LazyLock<Text> = LazyLock::new(|| {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Text {
+    pub input_color: String,
     pub title: String,
     pub off: String,
     pub off_summary: String,
@@ -66,13 +67,15 @@ impl Command for Godmode {
                     ..Outcome::default()
                 }),
                 [] | [_] => {
-                    let profiles = agent_profiles::load(&cx.app.api).await.map_err(|error| {
-                        if error.info.status == Some(404) {
-                            anyhow!(text().unavailable.clone())
-                        } else {
-                            anyhow!(error)
-                        }
-                    })?;
+                    let profiles = agent_profiles::load(&cx.app.api, &session.model)
+                        .await
+                        .map_err(|error| {
+                            if error.info.status == Some(404) {
+                                anyhow!(text().unavailable.clone())
+                            } else {
+                                anyhow!(error)
+                            }
+                        })?;
                     let effect = match args {
                         [] => Effect::PickAgentProfile(profiles),
                         [id] => {

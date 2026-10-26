@@ -19,11 +19,14 @@ struct Listing {
     data: Vec<Profile>,
 }
 
-pub async fn load(api: &Api) -> Result<Vec<Profile>, ApiError> {
+pub async fn load(api: &Api, model: &str) -> Result<Vec<Profile>, ApiError> {
     let response = api
         .call(
             "agent_profiles",
-            Call::default(),
+            Call {
+                args: &[("model", model)],
+                ..Call::default()
+            },
             limits::get().models.fetch_timeout_ms.ms(),
         )
         .await?;

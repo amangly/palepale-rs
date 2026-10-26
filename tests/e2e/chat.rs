@@ -229,12 +229,41 @@ async fn a_mid_stream_error_keeps_the_partial_reply() {
     assert_eq!(run.code(), Some(1));
     assert_eq!(run.stdout(), "Partial answ\n");
     assert!(
-        run.stderr().contains("model response failed"),
+        run.stderr().contains("Reply interrupted"),
         "{}",
         run.stderr()
     );
     // Output already streamed (and billed), so it is not retried.
+    assert!(run.stderr().contains("Check account usage before retrying"));
     assert_eq!(fake.hits("/v1/chat/completions"), 1);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn unconfirmed_reply_preserves_text_without_running_tools_or_retrying() {
+    let fake = Fake::start().await;
+    fake.script([Reply::sse("unconfirmed-tools.sse")]);
+    let sandbox = Sandbox::default();
+    let run = sandbox
+        .run(
+            &fake.url,
+            &["--json", "--mode", "auto", "write a file"],
+            WITH_KEY,
+        )
+        .await;
+    assert_eq!(run.code(), Some(1));
+    let events: Vec<Value> = run
+        .stdout()
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect();
+    assert!(!events.iter().any(|e| e["type"] == "tool_start"));
+    let end = events.iter().find(|e| e["type"] == "message_end").unwrap();
+    assert_eq!(end["message"]["error"]["partial"], true);
+    assert_eq!(end["message"]["error"]["type"], "pending_usage");
+    assert!(!sandbox.project.path().join("unconfirmed.txt").exists());
+    assert_eq!(fake.hits("/v1/chat/completions"), 1);
+    let session = std::fs::read_to_string(&sandbox.sessions()[0]).unwrap();
+    assert!(session.contains("Preparing the file."));
 }
 
 #[tokio::test(flavor = "multi_thread")]

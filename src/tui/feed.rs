@@ -644,12 +644,14 @@ fn error_lines(error: &ErrorInfo, width: usize) -> Vec<Line> {
     let entry = error.entry();
     let mut lines = vec![Line::styled(
         format!("● {}", entry.title),
-        Style::fg("error").bold(),
+        Style::fg(if entry.warning { "warn" } else { "error" }).bold(),
     )];
     let indent = Line::plain("  ");
-    let mut detail = indent.clone();
-    detail.push(&error.message, Style::default().dim());
-    lines.extend(detail.wrap(width, &indent));
+    if !error.partial {
+        let mut detail = indent.clone();
+        detail.push(&error.message, Style::default().dim());
+        lines.extend(detail.wrap(width, &indent));
+    }
     if let Some(hint) = &entry.hint {
         let mut line = indent.clone();
         line.push(hint, Style::fg("muted"));
@@ -1014,6 +1016,22 @@ mod tests {
         let lines = texts(&mut feed, now);
         assert_eq!(lines[0], "● Out of funds");
         assert!(lines.iter().any(|l| l.contains("req_9")));
+    }
+
+    #[test]
+    fn interrupted_reply_has_one_warning_without_generic_service_error() {
+        let now = crate::io::clock::instant();
+        let mut feed = Feed::new();
+        feed.event(&delta(DeltaKind::Text, "Kept reply"), now);
+        let mut error = ErrorInfo::local("unavailable", "This service is currently unavailable.");
+        error.partial = true;
+        error.request_id = Some("req_partial".into());
+        feed.event(&end(Some(error), Finish::Error), now);
+        let lines = texts(&mut feed, now).join("\n");
+        assert!(lines.contains("Kept reply"));
+        assert!(lines.contains("Reply interrupted"));
+        assert!(lines.contains("req_partial"));
+        assert!(!lines.contains("This service is currently unavailable"));
     }
 
     #[test]

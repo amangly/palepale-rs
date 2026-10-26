@@ -248,6 +248,10 @@ impl Printer<'_> {
             }
             Outcome::Failed => {
                 if let Some(error) = last.and_then(|m| m.error) {
+                    if error.partial {
+                        term::err(&format!("palepale: {error}\n"));
+                        return ExitCode::from(1);
+                    }
                     let entry = error.entry();
                     term::err(&format!("palepale: {}: {error}\n", entry.title));
                     if let Some(hint) = &entry.hint {

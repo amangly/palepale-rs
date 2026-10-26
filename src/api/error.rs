@@ -26,6 +26,10 @@ pub struct Entry {
     /// Retry only an HTTP refusal with a bounded Retry-After header.
     #[serde(default)]
     pub retry_after_required: bool,
+    #[serde(default)]
+    pub after_output: bool,
+    #[serde(default)]
+    pub warning: bool,
 }
 
 /// An error as stored in sessions and shown to the user. `kind` is palepale's `error.type`, or
@@ -40,6 +44,9 @@ pub struct ErrorInfo {
     pub status: Option<u16>,
     #[serde(default)]
     pub request_id: Option<String>,
+    /// Output arrived, but the turn was not confirmed complete.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub partial: bool,
 }
 
 impl ErrorInfo {
@@ -49,10 +56,14 @@ impl ErrorInfo {
             message: message.into(),
             status: None,
             request_id: None,
+            partial: false,
         }
     }
 
     pub fn entry(&self) -> &'static Entry {
+        if self.partial {
+            return &CATALOG["reply_interrupted"];
+        }
         CATALOG
             .get(&self.kind)
             .unwrap_or_else(|| &CATALOG["unknown"])
@@ -61,6 +72,16 @@ impl ErrorInfo {
 
 impl fmt::Display for ErrorInfo {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.partial {
+            write!(f, "{}", self.entry().title)?;
+            if let Some(hint) = &self.entry().hint {
+                write!(f, ". {hint}")?;
+            }
+            if let Some(id) = &self.request_id {
+                write!(f, " (request {id})")?;
+            }
+            return Ok(());
+        }
         write!(f, "{} ({}", self.message, self.kind)?;
         if let Some(status) = self.status {
             write!(f, ", HTTP {status}")?;

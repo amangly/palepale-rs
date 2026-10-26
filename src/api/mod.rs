@@ -10,6 +10,7 @@ pub mod error;
 pub mod models;
 pub mod pair;
 pub mod preflight;
+mod reply_prefix;
 pub mod retry;
 pub mod signup;
 pub mod sse;

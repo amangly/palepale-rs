@@ -1461,7 +1461,7 @@ async fn unavailable_account_usage_keeps_the_balance_without_inventing_zero_usag
 #[tokio::test(flavor = "multi_thread")]
 async fn slash_godmode_selects_server_profile_and_clears_it() {
     let fake = Fake::start().await;
-    fake.script([Reply::sse("hello.sse"), Reply::sse("hello.sse")]);
+    fake.script([Reply::sse("persona-hello.sse"), Reply::sse("hello.sse")]);
     in_session(&fake, Sandbox::default(), Some(ENV_KEY), |s| {
         s.type_text("/godmode");
         s.send("\r");
@@ -1478,6 +1478,7 @@ async fn slash_godmode_selects_server_profile_and_clears_it() {
         s.type_text("first");
         s.send("\r");
         s.wait_for("Hello there!");
+        assert!(!s.contents().contains("[D]"));
         s.type_text("/godmode off");
         s.send("\r");
         s.wait_for("Coding profile: off");
@@ -1491,6 +1492,10 @@ async fn slash_godmode_selects_server_profile_and_clears_it() {
     assert_eq!(fake.hits("/v1/agent-profiles"), 1);
     let requests = fake.chat_bodies();
     assert_eq!(requests[0]["server_profile"], "jb-2");
+    assert_eq!(
+        fake.profile_queries(),
+        vec![format!("model={}", requests[0]["model"].as_str().unwrap())]
+    );
     assert!(requests[0].get("agent_profile").is_none());
     assert!(requests[1].get("server_profile").is_none());
 }

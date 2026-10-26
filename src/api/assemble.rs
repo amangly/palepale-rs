@@ -26,6 +26,7 @@ pub struct Assembler {
     usage: Option<WireUsage>,
     finish_reason: Option<String>,
     error: Option<ErrorInfo>,
+    prefix: Option<super::reply_prefix::ReplyPrefix>,
 }
 
 pub struct Assembled {
@@ -36,6 +37,13 @@ pub struct Assembled {
 }
 
 impl Assembler {
+    pub fn for_profile(enabled: bool) -> Self {
+        Self {
+            prefix: enabled.then(super::reply_prefix::ReplyPrefix::default),
+            ..Self::default()
+        }
+    }
+
     pub fn apply(&mut self, chunk: Chunk, emit: &mut dyn FnMut(Delta<'_>)) {
         if chunk.usage.is_some() {
             self.usage = chunk.usage;
@@ -50,8 +58,14 @@ impl Assembler {
                 emit(Delta::Reasoning(&text));
             }
             if let Some(text) = delta.content.filter(|t| !t.is_empty()) {
-                self.append(&text, false);
-                emit(Delta::Text(&text));
+                let text = self
+                    .prefix
+                    .as_mut()
+                    .map_or_else(|| text.clone(), |p| p.push(&text));
+                if !text.is_empty() {
+                    self.append(&text, false);
+                    emit(Delta::Text(&text));
+                }
             }
             for fragment in delta.tool_calls {
                 let slot = *self.tool_slots.entry(fragment.index).or_insert_with(|| {
@@ -90,7 +104,14 @@ impl Assembler {
     }
 
     /// Consumes the stream state; `cut` is why reading stopped early, if it did.
-    pub fn finish(mut self, cut: Option<ErrorInfo>) -> Assembled {
+    pub fn finish(mut self, cut: Option<ErrorInfo>, emit: &mut dyn FnMut(Delta<'_>)) -> Assembled {
+        if let Some(prefix) = &mut self.prefix {
+            let text = prefix.finish();
+            if !text.is_empty() {
+                self.append(&text, false);
+                emit(Delta::Text(&text));
+            }
+        }
         for (index, slot) in &self.tool_slots {
             if let Part::ToolCall(call) = &mut self.parts[*slot]
                 && call.id.is_empty()
@@ -99,7 +120,7 @@ impl Assembler {
             }
         }
         let has_tools = !self.tool_slots.is_empty();
-        let (finish, error) = match (self.error.or(cut), self.finish_reason.as_deref()) {
+        let (finish, mut error) = match (self.error.or(cut), self.finish_reason.as_deref()) {
             (Some(error), _) => (Finish::Error, Some(error)),
             (None, Some("length")) => (Finish::Length, None),
             // Vendors disagree on whether a tool-calling turn finishes with "tool_calls" or "stop".
@@ -120,6 +141,12 @@ impl Assembler {
                 )),
             ),
         };
+        if !self.parts.is_empty()
+            && let Some(error) = &mut error
+            && error.entry().after_output
+        {
+            error.partial = true;
+        }
         Assembled {
             parts: self.parts,
             finish,
@@ -154,7 +181,7 @@ mod tests {
                 seen.push(format!("{d:?}"))
             });
         }
-        (asm.finish(None), seen)
+        (asm.finish(None, &mut |_| {}), seen)
     }
 
     #[test]
@@ -221,8 +248,51 @@ mod tests {
             r#"{"error":{"message":"upstream died","type":"upstream_error"}}"#,
         ]);
         assert_eq!(out.finish, Finish::Error);
-        assert_eq!(out.error.unwrap().kind, "upstream_error");
+        let error = out.error.unwrap();
+        assert_eq!(error.kind, "upstream_error");
+        assert!(error.partial);
+        assert!(!crate::api::retry::retryable(&error));
         assert_eq!(out.parts, vec![Part::Text { text: "par".into() }]);
+    }
+
+    #[test]
+    fn godmode_tags_are_hidden_in_stream_and_transcript_only_when_enabled() {
+        for enabled in [false, true] {
+            let mut asm = Assembler::for_profile(enabled);
+            let mut visible = String::new();
+            for text in ["[", "D", "]", " ", "Hello"] {
+                asm.apply(
+                    serde_json::from_value(
+                        serde_json::json!({"choices":[{"delta":{"content":text}}]}),
+                    )
+                    .unwrap(),
+                    &mut |d| {
+                        if let Delta::Text(t) = d {
+                            visible.push_str(t);
+                        }
+                    },
+                );
+            }
+            let out = asm.finish(None, &mut |_| {});
+            let expected = if enabled { "Hello" } else { "[D] Hello" };
+            assert_eq!(visible, expected);
+            assert_eq!(
+                out.parts,
+                vec![Part::Text {
+                    text: expected.into()
+                }]
+            );
+            assert_eq!(out.finish, Finish::Error);
+        }
+    }
+
+    #[test]
+    fn failures_without_output_and_policy_stops_keep_their_own_errors() {
+        let (out, _) = run(&[r#"{"error":{"type":"unavailable","message":"offline"}}"#]);
+        assert!(!out.error.unwrap().partial);
+        let (out, _) =
+            run(&[r#"{"choices":[{"delta":{"content":"No"},"finish_reason":"content_filter"}]}"#]);
+        assert!(!out.error.unwrap().partial);
     }
 
     #[test]

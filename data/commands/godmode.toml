@@ -4,6 +4,7 @@ usage = "godmode [profile|off|status]"
 scope = ["session"]
 
 [text]
+input_color = "error"
 title = "Coding profile"
 off = "off"
 off_summary = "Use the usual coding instructions"
@@ -11,5 +12,5 @@ status = "Coding profile: {profile}"
 badge = "profile {profile}"
 label = "Profile"
 unknown = "Unknown coding profile `{profile}`; open /godmode to see choices."
-no_profiles = "No coding profiles are available."
+no_profiles = "No coding profile is assigned to this model."
 unavailable = "Coding profiles are unavailable on this server."

@@ -81,7 +81,7 @@ async fn attempt_once(
         limits.max_event_bytes.value,
     );
     let mut events = std::pin::pin!(events);
-    let mut asm = Assembler::default();
+    let mut asm = Assembler::for_profile(turn.agent_profile.is_some());
     let mut cut = None;
     let mut aborted = false;
     loop {
@@ -106,7 +106,7 @@ async fn attempt_once(
     }
 
     let request_id = resp.head.request_id.clone();
-    let done = asm.finish(cut);
+    let done = asm.finish(cut, &mut |d| on(Event::Delta(d)));
     let (finish, error) = if aborted {
         (Finish::Aborted, None)
     } else if !turn.model.capabilities.tool_calling

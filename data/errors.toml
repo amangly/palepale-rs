@@ -27,11 +27,13 @@ hint = "Check the wallet and held credit in your Palepale account."
 retry = false
 
 [unavailable]
+after_output = true
 title = "The gateway could not complete this request"
 hint = "Check account usage before trying again; a provider may already have accepted it."
 retry = false
 
 [pending_usage]
+after_output = true
 title = "Usage needs reconciliation"
 hint = "Credit remains held. Keep the request ID for support and do not retry automatically."
 retry = false
@@ -52,23 +54,28 @@ retry = false
 title = "palepale answered with an error"
 
 [network]
+after_output = true
 title = "Could not reach palepale"
 hint = "Check your connection and PALEPALE_API_URL."
 retry = true
 
 [timeout]
+after_output = true
 title = "palepale took too long to answer"
 retry = true
 
 [idle_timeout]
+after_output = true
 title = "The response stalled"
 retry = true
 
 [stream_ended]
+after_output = true
 title = "The response ended early"
 retry = true
 
 [bad_stream]
+after_output = true
 title = "palepale sent something unreadable"
 
 [not_logged_in]
@@ -129,6 +136,7 @@ hint = "Pick another model from `palepale models`."
 retry = false
 
 [upstream_unavailable]
+after_output = true
 title = "The model's upstream is unavailable"
 hint = "palepale's side, not yours; try again or pick another model."
 retry = true
@@ -151,9 +159,11 @@ retry = false
 
 # An accepted streaming failure has no retryable status; never assume refusal.
 [upstream_error]
+after_output = true
 title = "The model response failed"
 
 [output_limit_exceeded]
+after_output = true
 title = "The model exceeded the request's output limit"
 hint = "The request was stopped; billing is pending review."
 retry = false
@@ -193,3 +203,9 @@ retry = false
 title = "Backend not configured"
 hint = "Connect your Palepale server with PALEPALE_API_URL when it is ready."
 retry = false
+
+[reply_interrupted]
+title = "Reply interrupted"
+hint = "The text above is kept, but completion is unconfirmed. Tool calls from this reply were not run. Check account usage before retrying."
+retry = false
+warning = true

@@ -46,6 +46,7 @@ struct Inner {
     /// The sandbox's palepale home, filled in as `{home}`, with `/` separators.
     home: String,
     paths: Vec<String>,
+    profile_queries: Vec<String>,
     chat_bodies: Vec<Value>,
     chat_operations: Vec<String>,
     model_lists: VecDeque<String>,
@@ -84,6 +85,9 @@ impl Reply {
 }
 
 impl Fake {
+    pub fn profile_queries(&self) -> Vec<String> {
+        self.inner.lock().unwrap().profile_queries.clone()
+    }
     pub fn chat_operations(&self) -> Vec<String> {
         self.inner.lock().unwrap().chat_operations.clone()
     }
@@ -183,6 +187,13 @@ impl Fake {
 }
 
 async fn record(State(inner): State<Shared>, req: Request, next: Next) -> Response {
+    if req.uri().path() == "/v1/agent-profiles" {
+        inner
+            .lock()
+            .unwrap()
+            .profile_queries
+            .push(req.uri().query().unwrap_or_default().to_owned());
+    }
     inner
         .lock()
         .unwrap()
