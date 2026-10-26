@@ -43,6 +43,17 @@ Press Escape to stop a turn and Ctrl+D to quit. Resume the latest conversation w
 
 The [command reference](docs/commands.md) covers slash commands, shortcuts, and session controls.
 
+## Godmode
+
+Use `/godmode` to toggle the server-managed coding profile for the selected model. The profile stays on the backend; the CLI only sends the toggle.
+
+<p align="center">
+  <video controls muted loop playsinline width="960">
+    <source src="https://github.com/amangly/palepale-rs/raw/main/docs/media/godmode-demo.mp4" type="video/mp4">
+  </video>
+</p>
+
+[Watch the Godmode demo](docs/media/godmode-demo.mp4)
 ## Guides
 
 - [Commands and keyboard shortcuts](docs/commands.md)
