@@ -1490,8 +1490,9 @@ async fn slash_godmode_selects_server_profile_and_clears_it() {
     .await;
     assert_eq!(fake.hits("/v1/agent-profiles"), 1);
     let requests = fake.chat_bodies();
-    assert_eq!(requests[0]["agent_profile"], "jb-2");
-    assert!(requests[1].get("agent_profile").is_none());
+    assert_eq!(requests[0]["server_profile"], "jb-2");
+    assert!(requests[0].get("agent_profile").is_none());
+    assert!(requests[1].get("server_profile").is_none());
 }
 
 #[tokio::test(flavor = "multi_thread")]

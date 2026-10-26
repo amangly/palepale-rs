@@ -17,6 +17,7 @@ pub struct Request {
     pub stream: bool,
     pub stream_options: StreamOptions,
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "server_profile")]
     pub agent_profile: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reasoning_effort: Option<String>,

@@ -16,6 +16,10 @@ Run `palepale signup` to create an account through `POST /v1/accounts`. It saves
 
 Signup never overwrites a saved owner credential, including with `--force`. If client key setup fails after account creation, the owner file remains available: inspect `keys list` and run `keys create <label> --use` to connect. A failed signup response is not retried automatically. `logout` removes only `auth.json` and retains the owner file. Use a separate `PALEPALE_HOME` for another account.
 
-Server profiles still need client migration. Model tool support and larger context limits must be qualified per provider route before the catalog advertises them.
+`/godmode` fetches the authenticated `/v1/agent-profiles` catalog and sends the selected ID as `server_profile`. Only profile names and descriptions reach the CLI; the gateway adds the instructions. `/godmode off` omits the selector. Saved sessions retain their profile ID. A disabled or deleted profile must be replaced before continuing; requests are never retried without it.
+
+Personal instructions saved under the website's Account → Instructions apply on the server to all of that account's inference keys. They also apply when the selected profile is off. Both profile and personal instructions count toward context and billing; local token estimates cannot see this private text. Tool permissions still come from the CLI.
+
+Model tool support and larger context limits must be qualified per provider route before the catalog advertises them.
 
 These changes require matching client and gateway releases. Local fixtures and database tests do not establish live inference or payment acceptance.

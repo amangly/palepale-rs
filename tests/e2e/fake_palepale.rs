@@ -231,15 +231,19 @@ async fn skill_index() -> impl IntoResponse {
     )
 }
 
-async fn agent_profiles(State(state): State<Shared>) -> impl IntoResponse {
+async fn agent_profiles(State(state): State<Shared>, headers: HeaderMap) -> Response {
+    if !authorized(&headers) {
+        return StatusCode::UNAUTHORIZED.into_response();
+    }
     if let Some(catalog) = state.lock().unwrap().agent_profile_lists.pop_front() {
-        return axum::Json(serde_json::from_str::<Value>(&catalog).unwrap());
+        return axum::Json(serde_json::from_str::<Value>(&catalog).unwrap()).into_response();
     }
     axum::Json(json!({"object":"list","data":[
         {"id":"jb-1","name":"jb-1","description":"GLM 5.3"},
         {"id":"jb-2","name":"CINDER","description":"CINDER"},
         {"id":"jb-3","name":"XYRO","description":"XYRO"}
     ]}))
+    .into_response()
 }
 
 async fn skill_body() -> &'static str {

@@ -826,9 +826,9 @@ mod tests {
         shared.set_agent_profile(None);
         h.run(&shared, |_, _| {}).await;
         let requests = h.requests();
-        assert_eq!(requests[0]["agent_profile"], "direct");
-        assert_eq!(requests[1]["agent_profile"], "deep");
-        assert!(requests[2].get("agent_profile").is_none());
+        assert_eq!(requests[0]["server_profile"], "direct");
+        assert_eq!(requests[1]["server_profile"], "deep");
+        assert!(requests[2].get("server_profile").is_none());
         assert_eq!(shared.mode().id, "auto");
         shared.set_agent_profile(Some("review".into()));
         shared.start_over();

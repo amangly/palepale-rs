@@ -335,10 +335,19 @@ mod tests {
             tools: &[],
         };
         assert_eq!(request(&turn).agent_profile.as_deref(), Some("jb-2"));
+        let body = serde_json::to_value(request(&turn)).unwrap();
+        assert_eq!(body["server_profile"], "jb-2");
+        assert!(body.get("agent_profile").is_none());
         let off = Turn {
             agent_profile: None,
             ..turn
         };
         assert_eq!(request(&off).agent_profile, None);
+        assert!(
+            serde_json::to_value(request(&off))
+                .unwrap()
+                .get("server_profile")
+                .is_none()
+        );
     }
 }
