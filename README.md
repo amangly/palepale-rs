@@ -47,9 +47,7 @@ The [command reference](docs/commands.md) covers slash commands, shortcuts, and 
 
 Use `/godmode` to toggle the server-managed coding profile for the selected model. The profile stays on the backend; the CLI only sends the toggle.
 
-<video controls loop muted playsinline width="960" src="https://raw.githubusercontent.com/amangly/palepale-rs/main/docs/media/godmode-demo.mp4"></video>
-
-[Open the Godmode demo](https://raw.githubusercontent.com/amangly/palepale-rs/main/docs/media/godmode-demo.mp4)
+https://github.com/user-attachments/assets/b2fdc082-ca27-4072-a5a2-e3253d2cdf64
 ## Guides
 
 - [Commands and keyboard shortcuts](docs/commands.md)
