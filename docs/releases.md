@@ -1,5 +1,13 @@
 # Releases
 
+## v0.1.25 — 2026-10-27
+
+Released commit `e9de99e7a9c3acc11e8d21a0805c61e34390a345`. Godmode uses a red input field and hides leading persona tags. Profile discovery is scoped to the selected model. Interrupted replies retain their text and show one warning with the request ID; unconfirmed tool calls remain unexecuted and requests are not automatically repeated.
+
+[Release run 40397370577](https://github.com/amangly/palepale-rs/actions/runs/40397370577) passed platform lint, unit and end-to-end tests, builds, and packaged updater checks. Local validation passed 469 unit tests, the fake MCP test, 97 end-to-end tests and four battery tests; two opt-in battery tests were skipped. The downloaded Windows release also passed three godmode terminal tests and the interrupted-tool-call test.
+
+The backend verified the release checksums and Linux version before switching `/srv/palepale-cli/latest` to v0.1.25. All six public downloads matched GitHub's SHA-256 digests. The installed Windows updater completed the v0.1.24 to v0.1.25 upgrade and reported the new version. Matching backend commit `bb94fd4` is deployed. These changes clarify interrupted output; they do not establish that every provider interruption is resolved or reconcile older usage holds.
+
 ## v0.1.24 — 2026-10-26
 
 Released commit `a19bba13fc35491663981f8dbcc57160005bbaeb` through the `prod` workflow. The CLI authenticates profile discovery and sends `/godmode` selections as `server_profile`, matching the deployed Bun gateway. Profile instructions remain on the server; account instructions are managed on the website.
