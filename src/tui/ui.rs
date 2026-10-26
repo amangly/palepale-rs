@@ -241,6 +241,7 @@ mod tests {
     fn parses() {
         let ui = super::get();
         assert!(!ui.spinner.is_empty());
+        assert_eq!(ui.status.frames, ui.spinner);
         assert!(!ui.footer.items.is_empty());
     }
 }

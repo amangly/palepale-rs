@@ -76,7 +76,7 @@ fn item_line(mode: &Mode, info: &Info<'_>, item: &str) -> Option<Line> {
                 &godmode::text().badge,
                 &[("profile", info.agent_profile?)],
             ),
-            Style::fg(&godmode::text().input_color),
+            Style::fg("accent"),
         ),
         "model" => Line::styled(info.model, muted.clone()),
         "effort" => Line::styled(

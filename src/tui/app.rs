@@ -1711,7 +1711,6 @@ impl<'a> Tui<'a> {
             Some(lines) => live.extend(lines),
             None => {
                 let profile = self.shared.agent_profile().is_some();
-                let input_color = frame::color(mode, profile);
                 live.push(frame::top(mode, profile, width));
                 if !running {
                     let found = self.palette.open(&self.editor.text());
@@ -1720,15 +1719,9 @@ impl<'a> Tui<'a> {
                     }
                 }
                 let ui = ui::get();
-                let prompt = Line::styled(&ui.prompt, Style::fg(input_color).bold());
+                let prompt = Line::styled(&ui.prompt, Style::fg(&mode.color).bold());
                 let rows = (height * limits::get().tui.editor_max_rows_pct.value / 100).max(3);
-                let mut input = self.editor.render(width, rows, &prompt, &ui.placeholder);
-                if profile {
-                    for span in input.iter_mut().flat_map(|line| &mut line.spans) {
-                        span.style.fg = Some(input_color.to_owned());
-                    }
-                }
-                live.extend(input);
+                live.extend(self.editor.render(width, rows, &prompt, &ui.placeholder));
             }
         }
         live.push(frame::bottom(
