@@ -1,5 +1,15 @@
 # Releases
 
+## v0.1.26 — 2026-10-27 (Windows)
+
+Built from clean source commit `38610ac` and published directly, without CI/CD. Main activity loading uses the same braille sequence as tool cards. Godmode colors only input borders red; typed text, prompt and cursor retain their normal colors. The unrelated local forum change is excluded.
+
+Local lint, 468 unit tests, one fake-MCP test, 97 end-to-end tests and four battery tests passed; two opt-in battery tests were skipped. The tagged release binary also passed packaged checksum/update, startup replacement and three godmode terminal checks.
+
+GitHub and public-server downloads match SHA-256 `4f7ec0917363009c947a581a2d4596a9e738e5be7065c10a2669aa754cca5b8c`. The release includes SHA256SUMS, LICENSE-APACHE and NOTICE. The updater feed advertises only the new Windows asset. macOS/Linux remain on v0.1.25; their existing latest download URLs still work. Their updaters retain the installed binary when the new release lacks a matching asset.
+
+On the host, `/srv/palepale-cli/latest` points to `current-windows-v0.1.26`, which links the Windows files to `v0.1.26` and the two other binaries to `v0.1.25`. Its checksum manifest covers these current downloads. The immutable `v0.1.26` directory and release feed contain Windows-only assets. A later complete release can replace the latest symlink normally.
+
 ## v0.1.25 — 2026-10-27
 
 Released commit `e9de99e7a9c3acc11e8d21a0805c61e34390a345`. Godmode uses a red input field and hides leading persona tags. Profile discovery is scoped to the selected model. Interrupted replies retain their text and show one warning with the request ID; unconfirmed tool calls remain unexecuted and requests are not automatically repeated.
