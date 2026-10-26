@@ -114,9 +114,9 @@ without installing anything. Disassembly through `bash` remains available.
 
 ## Server profiles
 
-On a backend that exposes profiles, `/godmode` opens the profile picker. The server
-keeps profile instructions private; the CLI receives the ID, name, and description.
-The Bun gateway does not yet expose this legacy feature.
+On the Palepale Bun gateway, `/godmode` opens the profile picker. The server keeps
+profile instructions private; the CLI receives the profile ID, name, and description.
+Use `/godmode off` to clear the selection and `/godmode status` to inspect it.
 
 These screenshots show the legacy profile flow:
 
