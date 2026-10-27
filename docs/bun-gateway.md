@@ -1,6 +1,6 @@
 # Bun gateway compatibility
 
-The client reads the public model catalog at `/v1/models`, accepts decimal-string retail rates, and refuses to select a model marked unavailable. Automatic coding turns cap the catalog's default output budget at 8,192 tokens so a long history does not ask a provider for its entire maximum on every turn; explicit request limits remain bounded by the model's published ceiling. Displayed token-cost estimates are not wallet charges; the gateway's ledger is authoritative, including supplier minimums and rounding.
+The client reads the public model catalog at `/v1/models`, accepts decimal-string retail rates, and refuses to select a model marked unavailable. Coding turns use the catalog's default output budget, falling back to its maximum when no default is supplied. Compaction requests use the configured summary budget. Displayed token-cost estimates are not wallet charges; the gateway's ledger is authoritative, including supplier minimums and rounding.
 
 Set `PALEPALE_API_KEY` to an inference key (`pk_`) issued by the Bun gateway. Owner credentials (`po_`) manage accounts and cannot authorize chat. The client reads its wallet at `/v1/account/summary` and confirmed usage at `/v1/account/usage/summary?days=0`. Both endpoints permit inference keys to read their own account only.
 

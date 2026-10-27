@@ -44,10 +44,6 @@ reason = "keepalives restart the idle bound, and one battery run hung 15 minutes
 value = 8388608
 reason = "an event is a few tokens, a whole reply at most; megabytes past that without a newline is a broken stream"
 
-[chat.automatic_output_tokens]
-value = 8192
-reason = "keep the automatic coding reply small enough that long histories leave provider input and output headroom"
-
 [retry.max_attempts]
 value = 5
 reason = "enough to ride out a brief upstream blip without hiding a real outage"

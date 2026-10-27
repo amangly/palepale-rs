@@ -23,11 +23,11 @@ fn cut(transcript: &Transcript) -> Option<usize> {
         .and_then(|c| transcript.ids.iter().position(|id| id == &c.kept))
         .unwrap_or(0);
     let last = workflow::last_prompt(transcript)?;
-    if last <= from {
-        return None;
-    }
     let budget = crate::limits::get().compaction.keep_tokens.value
         * preflight::config().bytes_per_token as usize;
+    if last <= from {
+        return tool_round_cut(transcript, from, budget);
+    }
     let mut bytes = 0;
     let mut candidate = last;
     for i in (from..transcript.messages.len()).rev() {
@@ -44,9 +44,45 @@ fn cut(transcript: &Transcript) -> Option<usize> {
     Some(candidate)
 }
 
+// A task may run many tool rounds without another user prompt.
+fn tool_round_cut(transcript: &Transcript, from: usize, budget: usize) -> Option<usize> {
+    let mut open = std::collections::HashSet::new();
+    let mut boundaries = Vec::new();
+    let mut seen_assistant = false;
+    for (index, message) in transcript.messages.iter().enumerate().skip(from) {
+        match message {
+            Message::Assistant(reply) => {
+                if seen_assistant && open.is_empty() {
+                    boundaries.push(index);
+                }
+                seen_assistant = true;
+                if matches!(reply.finish, Finish::Done | Finish::ToolCalls) {
+                    open.extend(reply.tool_calls().map(|call| call.id.as_str()));
+                }
+            }
+            Message::Tool(result) => {
+                open.remove(result.call_id.as_str());
+            }
+            Message::User { .. } => {}
+        }
+    }
+    let mut bytes = 0;
+    let mut candidate = None;
+    for index in (from..transcript.messages.len()).rev() {
+        bytes += serde_json::to_vec(&transcript.messages[index]).map_or(0, |v| v.len());
+        if boundaries.last() == Some(&index) {
+            candidate = boundaries.pop();
+            if bytes >= budget {
+                break;
+            }
+        }
+    }
+    candidate
+}
+
 pub fn needed(turn: &Turn<'_>) -> bool {
     preflight::estimated_input(turn)
-        .saturating_add(turn.model.max_output_tokens)
+        .saturating_add(preflight::output_limit(turn.model))
         .saturating_mul(100)
         >= turn
             .model
@@ -112,6 +148,7 @@ async fn summarize(
     model.max_output_tokens = model
         .max_output_tokens
         .min(crate::limits::get().compaction.summary_tokens.value);
+    model.default_max_output_tokens = Some(model.max_output_tokens);
     let from = transcript
         .compactions
         .last()
@@ -172,6 +209,54 @@ async fn summarize(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn a_single_long_task_compacts_between_complete_tool_rounds() {
+        let mut transcript = Transcript::new(None);
+        assert!(
+            transcript
+                .push(Message::user_text("finish the original task"))
+                .is_ok()
+        );
+        for id in ["old", "recent"] {
+            let assistant = serde_json::from_value(serde_json::json!({
+                "role":"assistant", "model":"fixture", "finish":"tool_calls",
+                "parts":[{"type":"tool_call","id":id,"name":"read","arguments":"{}"}]
+            }))
+            .unwrap();
+            assert!(transcript.push(assistant).is_ok());
+            let result = serde_json::from_value(serde_json::json!({
+                "role":"tool", "call_id":id, "name":"read", "content":"read completed"
+            }))
+            .unwrap();
+            assert!(transcript.push(result).is_ok());
+        }
+        assert_eq!(cut(&transcript), Some(3));
+        let mut incomplete = Transcript::new(None);
+        for (index, message) in transcript.messages.iter().enumerate() {
+            if index != 2 {
+                assert!(incomplete.push(message.clone()).is_ok());
+            }
+        }
+        assert!(cut(&incomplete).is_none());
+        assert!(
+            transcript
+                .compact(
+                    3,
+                    "Finish the original task; old read completed".into(),
+                    None
+                )
+                .is_ok()
+        );
+        let context = transcript.context();
+        assert!(
+            matches!(&context[1], Message::Assistant(a) if a.tool_calls().next().unwrap().id == "recent")
+        );
+        assert!(matches!(&context[2], Message::Tool(t) if t.call_id == "recent"));
+        assert_eq!(context.len(), 3);
+        assert_eq!(transcript.messages.len(), 5);
+        assert!(cut(&transcript).is_none());
+    }
+
     #[test]
     fn summaries_keep_the_latest_prompt_and_never_summarize_the_same_prefix_twice() {
         let mut transcript = Transcript::new(None);

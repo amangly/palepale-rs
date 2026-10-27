@@ -754,7 +754,10 @@ mod tests {
 
     #[tokio::test]
     async fn manual_compaction_uses_no_tools_and_keeps_original_messages() {
-        let harness = Harness::new(vec![text("Earlier work summarized")]).await;
+        let mut harness = Harness::new(vec![text("Earlier work summarized")]).await;
+        harness.model.context_window = 1_000_000;
+        harness.model.max_output_tokens = 65_536;
+        harness.model.default_max_output_tokens = Some(65_536);
         let registry = Registry::builtin(&harness.app);
         let state = shared("auto");
         let mut transcript = Transcript::new(None);
@@ -780,6 +783,10 @@ mod tests {
         assert_eq!(transcript.compactions.len(), 1);
         let requests = harness.requests();
         assert_eq!(requests.len(), 1);
+        assert_eq!(
+            requests[0]["max_completion_tokens"],
+            crate::limits::get().compaction.summary_tokens.value
+        );
         assert!(
             requests[0]
                 .get("tools")
