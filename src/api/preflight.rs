@@ -29,9 +29,16 @@ pub fn config() -> &'static Config {
 }
 
 pub fn output_limit(model: &crate::api::models::Model) -> u64 {
+    // A coding turn normally needs a small answer budget. Sending the model's
+    // full advertised ceiling on every turn makes providers with a smaller
+    // effective input+output window reject otherwise valid long histories.
+    // Explicit per-request limits are still validated against max_output_tokens;
+    // this only bounds the CLI's automatic default.
+    const AUTOMATIC_OUTPUT_BUDGET: u64 = 8_192;
     model
         .default_max_output_tokens
         .unwrap_or(model.max_output_tokens)
+        .min(AUTOMATIC_OUTPUT_BUDGET)
 }
 
 pub fn check(turn: &Turn<'_>) -> Result<(), ErrorInfo> {
@@ -186,7 +193,7 @@ mod tests {
             })
         };
         assert!(check_model(&model).is_ok());
-        assert_eq!(output_limit(&model), model.max_output_tokens);
+        assert_eq!(output_limit(&model), 8_192);
         model.capabilities.streaming = false;
         assert!(
             check_model(&model)
@@ -206,6 +213,27 @@ mod tests {
                 .message
                 .contains("reasoning")
         );
+    }
+
+    #[test]
+    fn long_history_uses_a_bounded_automatic_output_budget() {
+        let mut model = crate::api::models::fixture().remove(0);
+        model.context_window = 65_536;
+        model.max_output_tokens = 32_768;
+        let text = "x".repeat(120_000);
+        let messages = vec![Message::User {
+            parts: vec![Part::Text { text }],
+        }];
+        let turn = Turn {
+            model: &model,
+            agent_profile: None,
+            effort: None,
+            system: "sys",
+            messages: &messages,
+            tools: &[],
+        };
+        assert!(check(&turn).is_ok());
+        assert_eq!(output_limit(&model), 8_192);
     }
 
     #[test]
