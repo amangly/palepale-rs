@@ -28,6 +28,12 @@ pub fn delay(error: &ErrorInfo, retry_after: Option<Duration>, attempt: u32) -> 
 /// The catalog's flag, where it has one; otherwise rate limits and server errors are worth
 /// another try, and client errors would fail the same way again.
 pub fn retryable(error: &ErrorInfo) -> bool {
+    if error.partial {
+        return false;
+    }
+    if let Some(retry) = error.server_retry {
+        return retry && error.status.is_some();
+    }
     // Only the HTTP admission refusal proves this turn was never dispatched.
     if error.entry().retry_after_required && !matches!(error.status, Some(429 | 500..=599)) {
         return false;
@@ -47,6 +53,30 @@ mod tests {
             status,
             ..ErrorInfo::local(kind, "x")
         }
+    }
+
+    #[test]
+    fn server_advice_never_retries_partial_or_unconfirmed_streams() {
+        let mut err = error("unavailable", Some(503));
+        err.server_retry = Some(false);
+        assert!(!retryable(&err));
+        err.server_retry = Some(true);
+        assert!(retryable(&err));
+        err.partial = true;
+        assert!(!retryable(&err));
+        err.partial = false;
+        err.status = None;
+        assert!(!retryable(&err));
+        assert!(!retryable(&error("quota_exceeded", Some(503))));
+        assert!(delay(&error("capacity_limited", Some(429)), None, 1).is_none());
+        assert_eq!(
+            delay(
+                &error("capacity_limited", Some(429)),
+                Some(Duration::from_secs(5)),
+                1
+            ),
+            Some(Duration::from_secs(5))
+        );
     }
 
     #[test]

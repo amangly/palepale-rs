@@ -42,8 +42,10 @@ pub struct ErrorInfo {
     pub message: String,
     #[serde(default)]
     pub status: Option<u16>,
-    #[serde(default)]
+    #[serde(default, alias = "reference")]
     pub request_id: Option<String>,
+    #[serde(default, rename = "retry", skip_serializing_if = "Option::is_none")]
+    pub server_retry: Option<bool>,
     /// Output arrived, but the turn was not confirmed complete.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub partial: bool,
@@ -56,6 +58,7 @@ impl ErrorInfo {
             message: message.into(),
             status: None,
             request_id: None,
+            server_retry: None,
             partial: false,
         }
     }
@@ -119,7 +122,9 @@ impl ApiError {
             ),
         };
         info.status = Some(resp.head.status);
-        info.request_id.clone_from(&resp.head.request_id);
+        if resp.head.request_id.is_some() {
+            info.request_id.clone_from(&resp.head.request_id);
+        }
         Self {
             info,
             retry_after: resp.head.retry_after,
@@ -187,6 +192,18 @@ mod tests {
         assert_eq!(err.info.request_id.as_deref(), Some("req_1"));
         assert_eq!(err.retry_after, Some(Duration::from_secs(3)));
         assert!(err.to_string().contains("request req_1"));
+    }
+
+    #[test]
+    fn reads_gateway_reference_and_retry_advice() {
+        let mut resp = response(
+            503,
+            r#"{"error":{"type":"unavailable","message":"Unavailable","reference":"held-request","retry":false}}"#,
+        );
+        resp.head.request_id = None;
+        let err = ApiError::from_response(&resp);
+        assert_eq!(err.info.request_id.as_deref(), Some("held-request"));
+        assert_eq!(err.info.server_retry, Some(false));
     }
 
     #[test]

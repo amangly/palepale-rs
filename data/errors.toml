@@ -38,6 +38,17 @@ title = "Usage needs reconciliation"
 hint = "Credit remains held. Keep the request ID for support and do not retry automatically."
 retry = false
 
+[capacity_limited]
+title = "The gateway is at capacity"
+hint = "Wait for the Retry-After delay before trying again."
+retry = true
+retry_after_required = true
+
+[quota_exceeded]
+title = "A usage limit has been reached"
+hint = "Check account limits and current model availability before trying again."
+retry = false
+
 [unknown]
 title = "Request failed"
 
