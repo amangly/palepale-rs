@@ -126,6 +126,7 @@ pub struct ChatLimits {
     pub idle_timeout_secs: Limit<u64>,
     pub stall_timeout_secs: Limit<u64>,
     pub max_event_bytes: Limit<usize>,
+    pub automatic_output_tokens: Limit<u64>,
 }
 
 #[derive(Debug, Deserialize)]
