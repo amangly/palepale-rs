@@ -220,6 +220,29 @@ async fn an_error_whose_body_stalls_is_not_redispatched() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn a_broken_response_preserves_its_reference_without_replaying_inference() {
+    let fake = Fake::start().await;
+    fake.script([Reply::BrokenBody, Reply::sse("hello.sse")]);
+    let sandbox = Sandbox::default();
+    let run = sandbox.run(&fake.url, &["-p", "hi"], WITH_KEY).await;
+    assert_eq!(run.code(), Some(1));
+    assert!(
+        run.stderr()
+            .contains("The response was interrupted during transfer"),
+        "{}",
+        run.stderr()
+    );
+    assert!(run.stderr().contains("req_body"));
+    assert!(!run.stderr().contains("Could not reach palepale"));
+    assert!(!run.stderr().contains("PALEPALE_API_URL"));
+    assert_eq!(fake.hits("/v1/chat/completions"), 1);
+    let session = std::fs::read_to_string(&sandbox.sessions()[0]).unwrap();
+    assert!(session.contains("req_body"));
+    assert!(session.contains("response_body"));
+    assert!(!run.stdout().contains("Hello there!"));
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn a_mid_stream_error_keeps_the_partial_reply() {
     let fake = Fake::start().await;
     fake.script([Reply::sse("error_midstream.sse")]);

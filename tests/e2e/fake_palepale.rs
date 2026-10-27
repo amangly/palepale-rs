@@ -36,6 +36,8 @@ pub enum Reply {
     },
     /// An error that sends its headers (retry at once) and the start of its body, then nothing.
     Stall { status: u16 },
+    /// Headers arrive, then the HTTP body breaks after a keepalive.
+    BrokenBody,
 }
 
 #[derive(Default)]
@@ -374,6 +376,22 @@ async fn chat(State(inner): State<Shared>, headers: HeaderMap, body: String) -> 
                 StatusCode::from_u16(status).unwrap(),
                 [("x-request-id", "req_fake"), ("retry-after", "0")],
                 body,
+            )
+                .into_response()
+        }
+        Some(Reply::BrokenBody) => {
+            let start =
+                futures_util::stream::once(async { Ok::<_, std::io::Error>(": keepalive\n\n") });
+            let broken = futures_util::stream::once(async {
+                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                Err::<&str, _>(std::io::Error::other("fixture body interruption"))
+            });
+            (
+                [
+                    ("content-type", "text/event-stream"),
+                    ("x-request-id", "req_body"),
+                ],
+                axum::body::Body::from_stream(start.chain(broken)),
             )
                 .into_response()
         }

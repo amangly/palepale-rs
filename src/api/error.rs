@@ -149,6 +149,7 @@ impl From<HttpError> for ApiError {
     fn from(e: HttpError) -> Self {
         let kind = match e {
             HttpError::Timeout => "timeout",
+            HttpError::ResponseBody => "response_body",
             HttpError::Connect(_) | HttpError::Other(_) => "network",
         };
         ErrorInfo::local(kind, e.to_string()).into()

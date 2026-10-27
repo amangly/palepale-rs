@@ -75,6 +75,12 @@ after_output = true
 title = "palepale took too long to answer"
 retry = true
 
+[response_body]
+after_output = true
+title = "The response was interrupted during transfer"
+hint = "Completion is unconfirmed. Check account usage before submitting again."
+retry = false
+
 [idle_timeout]
 after_output = true
 title = "The response stalled"

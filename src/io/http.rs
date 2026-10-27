@@ -69,6 +69,8 @@ pub enum HttpError {
     Timeout,
     #[error("could not connect: {0}")]
     Connect(String),
+    #[error("the connection opened, but the response body could not be read completely")]
+    ResponseBody,
     #[error("{0}")]
     Other(String),
 }
@@ -165,6 +167,8 @@ fn classify(e: reqwest::Error) -> HttpError {
         HttpError::Connect(cause.to_string())
     } else if e.is_timeout() {
         HttpError::Timeout
+    } else if e.is_body() || e.is_decode() {
+        HttpError::ResponseBody
     } else {
         HttpError::Other(e.to_string())
     }
@@ -173,6 +177,53 @@ fn classify(e: reqwest::Error) -> HttpError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn a_truncated_response_is_not_a_connection_failure() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut request = [0u8; 4096];
+            let _ = socket.read(&mut request).await.unwrap();
+            socket.write_all(b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: 1000\r\nX-Request-Id: body-fixture\r\nConnection: close\r\n\r\n: hello\n\n").await.unwrap();
+            socket.shutdown().await.unwrap();
+        });
+        let http = Http::new(Duration::from_secs(2)).unwrap();
+        let mut response = http
+            .open(Request {
+                method: Method::Get,
+                url: format!("http://{address}/fixture/PRIVATE_MARKER"),
+                bearer: None,
+                headers: &[],
+                json: None,
+                timeout: Duration::from_secs(2),
+            })
+            .await
+            .unwrap();
+        assert_eq!(response.head.request_id.as_deref(), Some("body-fixture"));
+        let failure = loop {
+            match response.body.next().await {
+                Some(Ok(_)) => {}
+                Some(Err(error)) => break error,
+                None => panic!("truncation was accepted as a complete response"),
+            }
+        };
+        assert!(!failure.to_string().contains("PRIVATE_MARKER"));
+        let error = crate::api::error::ApiError::from(failure);
+        assert_eq!(error.info.kind, "response_body");
+        assert!(
+            !error
+                .info
+                .entry()
+                .hint
+                .as_deref()
+                .unwrap_or("")
+                .contains("PALEPALE_API_URL")
+        );
+        server.await.unwrap();
+    }
 
     #[tokio::test]
     async fn an_error_never_repeats_the_url() {
