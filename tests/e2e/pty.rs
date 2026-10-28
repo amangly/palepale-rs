@@ -1714,7 +1714,8 @@ async fn a_completed_turn_syncs_context_window_and_keeps_cached_list() {
         serde_json::from_str(include_str!("../fixtures/api/models.json")).unwrap();
     let mut changed = first.clone();
     changed["data"][0]["context_window"] = serde_json::json!(200_000);
-    fake.model_lists([first, changed, serde_json::json!({"data":[]})]);
+    // A malformed response falls back; a valid empty catalog now clears the list.
+    fake.model_lists([first, changed, serde_json::json!({"error":"offline"})]);
     fake.model_delays([Duration::ZERO, Duration::from_millis(400)]);
     fake.script([Reply::sse("pty/long_context.sse")]);
     in_session(&fake, Sandbox::default(), Some(ENV_KEY), |s| {
