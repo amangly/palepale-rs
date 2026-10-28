@@ -174,7 +174,7 @@ fn render(catalog: &Catalog, default_model: &str) -> String {
         .collect::<Vec<_>>()
         .join("|");
     let _ = writeln!(out, "|{rule}|");
-    for m in &catalog.models {
+    for m in catalog.models.iter().filter(|m| m.available) {
         let mut cells = cells(m);
         if m.id == default_model {
             cells[0] = format!("{} {}", cells[0], text.current);
@@ -182,7 +182,11 @@ fn render(catalog: &Catalog, default_model: &str) -> String {
         out.push_str(&row(cells));
     }
     let _ = writeln!(out, "\n{} {}", text.footnote, source_note(catalog));
-    if !catalog.models.iter().any(|m| m.id == default_model) {
+    if !catalog
+        .models
+        .iter()
+        .any(|m| m.id == default_model && m.available)
+    {
         let _ = writeln!(out, "{}", fill(&text.missing, &[("model", default_model)]));
     }
     out

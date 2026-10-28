@@ -304,25 +304,18 @@ async fn fetch(app: &App) -> Result<Vec<Model>, String> {
         .call("models", Call::default(), timeout)
         .await
         .map_err(|e| e.to_string())?;
-    let listing: Listing =
+    let mut listing: Listing =
         serde_json::from_slice(&resp.body).map_err(|e| format!("unreadable model list: {e}"))?;
-    if !usable(&listing.data) {
-        return Err("palepale returned an empty model list".into());
-    }
+    // An empty live catalog is authoritative: do not revive unavailable cached models.
+    listing.data.retain(|model| model.available);
     Ok(listing.data)
-}
-
-/// An empty list must not read as "palepale has no models", whether it came live or from the
-/// cache; what we had before is kept instead.
-fn usable(models: &[Model]) -> bool {
-    !models.is_empty()
 }
 
 fn read_cache(path: &std::path::Path, origin: &str) -> Option<Cached> {
     let text = io::fs::read_string(path).ok().flatten()?;
     serde_json::from_str::<Cached>(&text)
         .ok()
-        .filter(|cache| cache.api_origin.as_deref() == Some(origin) && usable(&cache.data))
+        .filter(|cache| cache.api_origin.as_deref() == Some(origin))
 }
 
 fn is_fresh(fetched_at: Timestamp, now: Timestamp, ttl: SignedDuration) -> bool {
@@ -332,7 +325,12 @@ fn is_fresh(fetched_at: Timestamp, now: Timestamp, ttl: SignedDuration) -> bool 
 
 fn from_cache(cache: &Cached, note: Option<String>) -> Catalog {
     Catalog {
-        models: cache.data.clone(),
+        models: cache
+            .data
+            .iter()
+            .filter(|model| model.available)
+            .cloned()
+            .collect(),
         source: Source::Cache,
         fetched_at: Some(cache.fetched_at),
         note,
@@ -398,7 +396,7 @@ mod tests {
     }
 
     #[test]
-    fn an_empty_cache_counts_as_none() {
+    fn an_empty_catalog_is_preserved_and_cache_is_bound_to_origin() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("models.json");
         let write = |data: Vec<Model>| {
@@ -416,7 +414,12 @@ mod tests {
             .unwrap();
         };
         write(Vec::new());
-        assert!(read_cache(&path, "http://127.0.0.1:8080").is_none());
+        assert!(
+            read_cache(&path, "http://127.0.0.1:8080")
+                .unwrap()
+                .data
+                .is_empty()
+        );
         write(fixture());
         assert!(read_cache(&path, "http://127.0.0.1:8080").is_some());
         assert!(read_cache(&path, "https://api.palepale.tech").is_none());

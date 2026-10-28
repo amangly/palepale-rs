@@ -40,7 +40,7 @@ impl Picker {
                 .map(|t| Line::styled(t, Style::fg("muted").bold())),
         );
         let mut rows = vec![header];
-        for m in &catalog.models {
+        for m in catalog.models.iter().filter(|m| m.available) {
             let mut row = vec![if m.id == current {
                 Line::styled(mark, Style::fg("accent"))
             } else {
@@ -50,11 +50,17 @@ impl Picker {
             rows.push(row);
         }
         Self {
-            ids: catalog.models.iter().map(|m| m.id.clone()).collect(),
+            ids: catalog
+                .models
+                .iter()
+                .filter(|m| m.available)
+                .map(|m| m.id.clone())
+                .collect(),
             rows,
             selected: catalog
                 .models
                 .iter()
+                .filter(|m| m.available)
                 .position(|m| m.id == current)
                 .unwrap_or(0),
             note: models::source_note(catalog),
@@ -152,6 +158,16 @@ mod tests {
         let first = catalog.models[0].id.clone();
         assert!(matches!(picker.key(Some(Action::Right)), Step::Pick(id) if id == first));
         assert!(matches!(picker.key(Some(Action::Escape)), Step::Close));
+    }
+
+    #[test]
+    fn hidden_models_do_not_shift_the_current_selection() {
+        let mut catalog = catalog();
+        catalog.models[0].available = false;
+        let current = catalog.models[1].id.clone();
+        let mut picker = Picker::new(&catalog, &current);
+        assert_eq!(picker.ids, vec![current.clone()]);
+        assert!(matches!(picker.key(Some(Action::Submit)), Step::Pick(id) if id == current));
     }
 
     #[test]

@@ -55,7 +55,7 @@ async fn offline_reports_no_models_without_a_cache() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn an_unusable_live_list_uses_same_origin_cache() {
+async fn an_empty_live_list_removes_previously_cached_models() {
     let fake = Fake::start().await;
     let sandbox = Sandbox::default();
     fake.model_lists([
@@ -65,8 +65,10 @@ async fn an_unusable_live_list_uses_same_origin_cache() {
     sandbox.run(&fake.url, &["models"], None).await.success();
     let out = sandbox.run(&fake.url, &["models", "--refresh"], None).await;
     let out = out.success().stdout();
-    assert!(out.contains("fake-coder"), "{out}");
-    assert!(out.contains("Could not reach palepale"), "{out}");
+    assert!(!out.contains("fake-coder"), "{out}");
+    assert!(out.contains("Live list"), "{out}");
+    let cached = sandbox.run(&fake.url, &["models"], None).await;
+    assert!(!cached.success().stdout().contains("fake-coder"));
 }
 
 #[tokio::test(flavor = "multi_thread")]
