@@ -11,6 +11,17 @@ current `-zero-refusal` IDs when those models are available. Saved preferences
 migrate after catalog discovery; old session selections and explicit model flags
 also resolve. Exact IDs supplied by another backend still take precedence.
 
+Released commit `f1b800b` through [release run 40719775660](https://github.com/amangly/palepale-rs/actions/runs/40719775660).
+Local lint, 481 unit tests, one fake-MCP test, 101 end-to-end tests and four battery
+tests passed; two opt-in battery tests were skipped. All release-platform checks
+passed. The downloaded Windows package also passed the renamed-selection and
+filter terminal tests.
+
+The Azure feed and latest downloads now serve v0.1.29. All three binaries matched
+the release checksums, and the Linux version was checked before switching the feed.
+The installed Windows updater completed the v0.1.28 to v0.1.29 upgrade; its SHA-256 is
+`16a34bafec9e8eec2a407ed9913bd59d2e03f5dc9c78467b3d93cf33cdcad538`.
+
 ## v0.1.26 — 2026-10-27 (Windows)
 
 Built from clean source commit `38610ac` and published directly, without CI/CD. Main activity loading uses the same braille sequence as tool cards. Godmode colors only input borders red; typed text, prompt and cursor retain their normal colors. The unrelated local forum change is excluded.
