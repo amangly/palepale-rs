@@ -1,5 +1,52 @@
-use crate::fake_palepale::Fake;
+use crate::fake_palepale::{Fake, Reply};
 use crate::{DEAD_URL, Sandbox};
+
+#[tokio::test(flavor = "multi_thread")]
+async fn renamed_saved_model_resolves_and_public_presentation_is_visible() {
+    let fake = Fake::start().await;
+    let sandbox = Sandbox::default();
+    let old = "deepseek-v4.1-flash-uncensored-standard";
+    let current = "deepseek-v4.1-flash-uncensored-zero-refusal";
+    let mut listing: serde_json::Value =
+        serde_json::from_str(include_str!("../fixtures/api/models.json")).unwrap();
+    let mut model = listing["data"][0].clone();
+    model["id"] = current.into();
+    model.as_object_mut().unwrap().remove("display_name");
+    model["presentation"] = serde_json::json!({"name":"DeepSeek V4.1 Flash 1017 Uncensored","badges":["Uncensored","Zero Refusal"]});
+    listing["data"] = serde_json::json!([model]);
+    fake.model_lists([listing.clone(), listing.clone(), listing]);
+    fake.script([Reply::sse("hello.sse"), Reply::sse("hello.sse")]);
+    std::fs::write(
+        sandbox.home().join("prefs.json"),
+        serde_json::json!({"model":old}).to_string(),
+    )
+    .unwrap();
+    let result = sandbox.run(&fake.url, &["models"], None).await;
+    let out = result.success().stdout();
+    assert!(out.contains("DeepSeek V4.1 Flash 1017 Uncensored"), "{out}");
+    assert!(out.contains(&format!("{current} ●")), "{out}");
+    assert!(!out.contains("not in this list"), "{out}");
+    let prefs: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(sandbox.home().join("prefs.json")).unwrap()).unwrap();
+    assert_eq!(prefs["model"], current);
+    let cached = sandbox.run(&fake.url, &["models"], None).await;
+    assert!(
+        cached
+            .success()
+            .stdout()
+            .contains("DeepSeek V4.1 Flash 1017 Uncensored")
+    );
+    sandbox
+        .run(&fake.url, &["-p", "hi"], Some("test-key"))
+        .await
+        .success();
+    assert_eq!(fake.chat_bodies()[0]["model"], current);
+    sandbox
+        .run(&fake.url, &["--model", old, "-p", "hi"], Some("test-key"))
+        .await
+        .success();
+    assert_eq!(fake.chat_bodies()[1]["model"], current);
+}
 
 #[tokio::test(flavor = "multi_thread")]
 async fn lists_live_models_then_serves_them_from_cache() {

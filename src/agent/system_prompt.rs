@@ -142,6 +142,7 @@ mod tests {
         Model {
             id: "m".into(),
             display_name: String::new(),
+            presentation: None,
             description: String::new(),
             context_window: 1000,
             max_output_tokens: 100,

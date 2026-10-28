@@ -1,5 +1,7 @@
 use jiff::{SignedDuration, Timestamp};
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
+use std::sync::LazyLock;
 
 use crate::api::Call;
 use crate::app::App;
@@ -9,11 +11,26 @@ use crate::limits;
 #[cfg(test)]
 const FIXTURE: &str = include_str!("../../tests/fixtures/api/models.json");
 
+static ALIASES: LazyLock<BTreeMap<String, String>> = LazyLock::new(|| {
+    toml::from_str(include_str!("../../data/model-aliases.toml"))
+        .expect("model aliases are checked by tests")
+});
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct Presentation {
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub badges: Vec<String>,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Model {
     pub id: String,
     #[serde(default)]
     pub display_name: String,
+    #[serde(default)]
+    pub presentation: Option<Presentation>,
     #[serde(default)]
     pub description: String,
     pub context_window: u64,
@@ -43,6 +60,19 @@ fn available_by_default() -> bool {
 }
 
 impl Model {
+    pub fn name(&self) -> &str {
+        if let Some(presentation) = &self.presentation
+            && !presentation.name.trim().is_empty()
+        {
+            return &presentation.name;
+        }
+        if self.display_name.trim().is_empty() {
+            &self.id
+        } else {
+            &self.display_name
+        }
+    }
+
     pub fn supports_effort(&self, effort: &str) -> bool {
         self.capabilities.reasoning
             && self
@@ -220,7 +250,15 @@ impl Catalog {
     }
 
     pub fn get(&self, id: &str) -> Option<&Model> {
-        self.models.iter().find(|m| m.id == id && m.available)
+        // A backend's exact ID takes precedence over a historical alias.
+        self.models
+            .iter()
+            .find(|m| m.id == id)
+            .or_else(|| {
+                let current = ALIASES.get(id)?;
+                self.models.iter().find(|m| &m.id == current)
+            })
+            .filter(|m| m.available)
     }
 }
 
@@ -241,6 +279,17 @@ struct Cached {
 
 /// With an explicit backend: fresh cache, live list, stale cache, then an empty catalog.
 pub async fn load(app: &App, refresh: bool) -> Catalog {
+    let catalog = load_catalog(app, refresh).await;
+    if let Some(saved) = crate::prefs::load(&app.paths).model
+        && let Some(model) = catalog.get(&saved)
+        && model.id != saved
+    {
+        crate::prefs::remember_model(&app.paths, &model.id);
+    }
+    catalog
+}
+
+async fn load_catalog(app: &App, refresh: bool) -> Catalog {
     if !app.api.is_configured() {
         return Catalog {
             models: Vec::new(),
@@ -347,6 +396,46 @@ pub fn fixture() -> Vec<Model> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn historical_aliases_require_available_targets_and_preserve_exact_ids() {
+        for (old, current) in ALIASES.iter() {
+            let mut model = fixture().remove(0);
+            model.id.clone_from(current);
+            let mut catalog = Catalog {
+                models: vec![model],
+                source: Source::Live,
+                fetched_at: None,
+                note: None,
+            };
+            assert_eq!(catalog.selected(old).unwrap().id, *current);
+            catalog.models[0].available = false;
+            assert!(catalog.get(old).is_none());
+            catalog.models[0].available = true;
+            let mut exact = catalog.models[0].clone();
+            exact.id.clone_from(old);
+            catalog.models.push(exact);
+            assert_eq!(catalog.selected(old).unwrap().id, *old);
+            catalog.models[1].available = false;
+            assert!(catalog.get(old).is_none());
+        }
+    }
+
+    #[test]
+    fn names_use_public_presentation_then_legacy_name_then_id() {
+        let mut model = fixture().remove(0);
+        assert_eq!(model.name(), model.display_name);
+        model.display_name.clear();
+        assert_eq!(model.name(), model.id);
+        model.presentation = Some(Presentation {
+            name: "Public name".into(),
+            badges: vec!["Uncensored".into()],
+        });
+        let cached: Model = serde_json::from_value(serde_json::to_value(&model).unwrap()).unwrap();
+        assert_eq!(cached.name(), "Public name");
+        model.presentation.as_mut().unwrap().name.clear();
+        assert_eq!(model.name(), model.id);
+    }
 
     #[test]
     fn bun_decimal_rates_parse_without_changing_the_public_prices() {

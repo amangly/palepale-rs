@@ -1,5 +1,16 @@
 # Releases
 
+## v0.1.29 — 2026-10-28
+
+The model picker adds All, Uncensored and Cheapest filters, switched with Tab.
+Cheapest sorts by the combined price of 1M input and 1M output tokens. Model names
+come from the gateway's public presentation, with legacy names and IDs as fallbacks.
+
+The three initial uncensored model IDs ending in `-standard` resolve to their
+current `-zero-refusal` IDs when those models are available. Saved preferences
+migrate after catalog discovery; old session selections and explicit model flags
+also resolve. Exact IDs supplied by another backend still take precedence.
+
 ## v0.1.26 — 2026-10-27 (Windows)
 
 Built from clean source commit `38610ac` and published directly, without CI/CD. Main activity loading uses the same braille sequence as tool cards. Godmode colors only input borders red; typed text, prompt and cursor retain their normal colors. The unrelated local forum change is excluded.

@@ -105,7 +105,7 @@ pub fn cells(m: &Model) -> Vec<String> {
 fn cell(m: &Model, column: &str) -> String {
     match column {
         "id" => m.id.clone(),
-        "name" => m.display_name.clone(),
+        "name" => m.name().to_owned(),
         "context" => units::tokens(m.context_window),
         "input" => units::usd(m.pricing.input_per_1m_usd),
         "cached" => units::usd(m.pricing.cached_input_per_1m_usd),
@@ -163,6 +163,7 @@ fn render(catalog: &Catalog, default_model: &str) -> String {
         return source_note(catalog);
     }
     let text = &DATA.text;
+    let selected = catalog.get(default_model);
     let row = |cells: Vec<String>| format!("| {} |\n", cells.join(" | "));
     let mut out = row(titles());
     let rule = aligns()
@@ -176,17 +177,13 @@ fn render(catalog: &Catalog, default_model: &str) -> String {
     let _ = writeln!(out, "|{rule}|");
     for m in catalog.models.iter().filter(|m| m.available) {
         let mut cells = cells(m);
-        if m.id == default_model {
+        if selected.is_some_and(|selected| selected.id == m.id) {
             cells[0] = format!("{} {}", cells[0], text.current);
         }
         out.push_str(&row(cells));
     }
     let _ = writeln!(out, "\n{} {}", text.footnote, source_note(catalog));
-    if !catalog
-        .models
-        .iter()
-        .any(|m| m.id == default_model && m.available)
-    {
+    if selected.is_none() {
         let _ = writeln!(out, "{}", fill(&text.missing, &[("model", default_model)]));
     }
     out

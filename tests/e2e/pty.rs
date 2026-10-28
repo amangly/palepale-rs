@@ -1806,6 +1806,35 @@ async fn the_models_questions_are_answered_on_one_card() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn slash_models_filters_uncensored_then_selects_the_cheapest_model() {
+    let fake = Fake::start().await;
+    fake.script([Reply::sse("hello.sse")]);
+    let mut listing: serde_json::Value =
+        serde_json::from_str(include_str!("../fixtures/api/models.json")).unwrap();
+    listing["data"][0]["presentation"] =
+        serde_json::json!({"name":"Uncensored fixture","badges":["Uncensored","Zero Refusal"]});
+    fake.model_lists([listing.clone(), listing]);
+    in_session(&fake, Sandbox::default(), Some(ENV_KEY), |s| {
+        s.wait_for("AUTO");
+        s.type_text("/models");
+        s.send("\r");
+        s.wait_for("[All]");
+        s.send("\t");
+        s.wait_for("[Uncensored]");
+        assert!(!s.contents().contains("fake-coder"), "{}", s.contents());
+        s.send("\t");
+        s.wait_for("[Cheapest]");
+        s.send("\r");
+        s.wait_for("Model: fake-coder. Saved as your default.");
+        s.type_text("hi");
+        s.send("\r");
+        s.wait_for("Hello there!");
+    })
+    .await;
+    assert_eq!(fake.chat_bodies()[0]["model"], "fake-coder");
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn slash_models_picks_the_model_for_the_rest_of_the_session() {
     let fake = Fake::start().await;
     fake.script([Reply::sse("hello.sse")]);

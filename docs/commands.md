@@ -75,6 +75,11 @@ permits investigation and checks, with edits limited to the plan file.
 
 ## Models and sessions
 
+In `/models`, press Tab to cycle through All, Uncensored and Cheapest. Uncensored
+uses the catalog's badge. Cheapest sorts by the combined price of 1M uncached input
+and 1M output tokens; the table shows each rate separately. Only available models
+appear. Arrow keys move through the list and Enter selects a model.
+
 Choosing a model with `/models` saves it for future sessions. `--model <id>` overrides
 the choice for one launch. If the chosen model lists supported reasoning efforts,
 a second picker lets you choose one. Escape keeps the current effort, or the server

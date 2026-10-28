@@ -555,6 +555,7 @@ mod tests {
             let model = Model {
                 id: "m".into(),
                 display_name: String::new(),
+                presentation: None,
                 description: String::new(),
                 context_window: 100_000,
                 max_output_tokens: 1000,

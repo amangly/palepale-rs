@@ -88,7 +88,11 @@ gutter = "│ "
 # `/models` inside a session.
 [picker]
 title = "Models"
-hint = "↑↓ move · → or enter select · esc close"
+hint = "tab filter · ↑↓ move · enter select · esc close"
+filters = ["All", "Uncensored", "Cheapest"]
+uncensored_badge = "Uncensored"
+cheapest_note = "Sorted by price for 1M input + 1M output tokens."
+empty = "No available models match this filter."
 switched = "Model: {model}. Saved as your default."
 effort_title = "Reasoning effort"
 effort_hint = "↑↓ move · → or enter select · esc keep current"
