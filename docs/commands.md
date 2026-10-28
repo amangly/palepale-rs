@@ -28,7 +28,7 @@ starts with `//` sends a literal leading slash to the model.
 | `/mcp` | Open the MCP server manager. |
 | `/skills` | Open the skill browser. |
 | `/forums` | Manage forums and their login state. Alias: `/forum`. |
-| `/godmode [profile\|off\|status]` | Select, clear, or inspect a server coding profile. Requires backend support. |
+| `/godmode [profile\|custom [apply]\|off\|status]` | Choose a server profile or test your own system prompt. |
 | `/quit` | Leave the session. Alias: `/exit`. |
 
 `/mcp` and `/skills` also accept subcommands for adding, checking, enabling, disabling,
@@ -117,6 +117,18 @@ without installing anything. Disassembly through `bash` remains available.
 On the Palepale Bun gateway, `/godmode` opens the profile picker. The server keeps
 profile instructions private; the CLI receives the profile ID, name, and description.
 Use `/godmode off` to clear the selection and `/godmode status` to inspect it.
+
+Choose **Custom** to open your prompt in Notepad on Windows (the desktop text
+editor on other platforms). Save the file, return to Palepale, and select
+**Use saved prompt**. You can also open it with `/godmode custom` and apply it
+with `/godmode custom apply`.
+
+The UTF-8 prompt is saved in `~/.palepale/prompts/godmode-custom.md`, up to 32 KiB.
+It replaces the built-in base prompt for this conversation and turns off the server
+profile. Tool setup and workspace context remain. `/godmode off` restores the
+built-in prompt; choosing a server profile also clears the custom selection.
+Your default for new conversations stays unchanged. Leading `[Six]` persona tags
+are hidden in replies while a server profile is active.
 
 These screenshots show the legacy profile flow:
 

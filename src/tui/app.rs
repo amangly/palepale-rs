@@ -336,6 +336,7 @@ impl<'a> Tui<'a> {
                 }),
             mode: self.shared.mode().label.clone(),
             agent_profile: self.shared.agent_profile(),
+            system_prompt: self.selected_prompt.clone(),
             context_pct: self.context_pct(),
         }
     }
@@ -1112,6 +1113,19 @@ impl<'a> Tui<'a> {
         match picker.key(action) {
             godmode_picker::Step::Stay => {}
             godmode_picker::Step::Close => self.godmode_picker = None,
+            godmode_picker::Step::Custom => {
+                self.edit_custom_prompt();
+            }
+            godmode_picker::Step::ApplyCustom => match commands::godmode::custom_body(self.app) {
+                Ok(_) => {
+                    self.shared.set_agent_profile(None);
+                    self.selected_prompt = commands::godmode::text().custom_prompt_id.clone();
+                    self.godmode_picker = None;
+                    self.feed
+                        .notice(&commands::godmode::text().custom_applied, "done");
+                }
+                Err(error) => self.feed.notice(&format!("{error:#}"), "error"),
+            },
             godmode_picker::Step::Pick(id) => {
                 self.godmode_picker = None;
                 self.set_agent_profile(id);
@@ -1120,6 +1134,9 @@ impl<'a> Tui<'a> {
     }
 
     fn set_agent_profile(&mut self, id: Option<String>) {
+        if self.selected_prompt == commands::godmode::text().custom_prompt_id {
+            self.selected_prompt = "default".into();
+        }
         self.shared.set_agent_profile(id.clone());
         self.feed.notice(
             &template::fill(
@@ -1131,6 +1148,16 @@ impl<'a> Tui<'a> {
             ),
             "done",
         );
+    }
+
+    fn edit_custom_prompt(&mut self) {
+        match commands::godmode::open_custom(self.app) {
+            Ok(message) => {
+                self.godmode_picker = Some(godmode_picker::Picker::custom());
+                self.feed.notice(&message, "done");
+            }
+            Err(error) => self.feed.notice(&format!("{error:#}"), "error"),
+        }
     }
 
     fn refresh_status(&mut self) -> Step<'a> {
@@ -1510,15 +1537,21 @@ impl<'a> Tui<'a> {
                     }
                 }
                 Effect::PickAgentProfile(profiles) => {
+                    let server_profile = self.shared.agent_profile();
                     self.godmode_picker = Some(godmode_picker::Picker::new(
                         profiles,
-                        self.shared.agent_profile().as_deref(),
+                        if self.selected_prompt == commands::godmode::text().custom_prompt_id {
+                            Some(&self.selected_prompt)
+                        } else {
+                            server_profile.as_deref()
+                        },
                     ));
                 }
                 Effect::SetAgentProfile(id) => self.set_agent_profile(id),
                 Effect::SetSystemPrompt(id) => {
                     self.selected_prompt = id;
                 }
+                Effect::EditCustomPrompt => self.edit_custom_prompt(),
                 Effect::PickSession => match crate::session::store::list(&self.app.paths) {
                     Ok(sessions) => {
                         self.sessions_picker = Some(session_picker::Picker::new(sessions))
@@ -1710,7 +1743,8 @@ impl<'a> Tui<'a> {
         match card {
             Some(lines) => live.extend(lines),
             None => {
-                let profile = self.shared.agent_profile().is_some();
+                let profile = self.shared.agent_profile().is_some()
+                    || self.selected_prompt == commands::godmode::text().custom_prompt_id;
                 live.push(frame::top(mode, profile, width));
                 if !running {
                     let found = self.palette.open(&self.editor.text());
@@ -1724,6 +1758,7 @@ impl<'a> Tui<'a> {
                 live.extend(self.editor.render(width, rows, &prompt, &ui.placeholder));
             }
         }
+        let server_profile = self.shared.agent_profile();
         live.push(frame::bottom(
             mode,
             &frame::Info {
@@ -1734,7 +1769,12 @@ impl<'a> Tui<'a> {
                     .map_or(crate::backend::text().disconnected.as_str(), |m| {
                         m.id.as_str()
                     }),
-                agent_profile: self.shared.agent_profile().as_deref(),
+                agent_profile: if self.selected_prompt == commands::godmode::text().custom_prompt_id
+                {
+                    Some(&commands::godmode::text().custom)
+                } else {
+                    server_profile.as_deref()
+                },
                 context_pct: self.context_pct(),
                 cost_micros: self.cost_micros,
             },
@@ -1807,6 +1847,41 @@ fn text_of(parts: &[Part]) -> String {
 mod account_tests {
     use super::*;
     use crate::api::error::ErrorInfo;
+
+    #[test]
+    fn saved_custom_prompt_applies_from_the_card_and_off_restores_default() {
+        let home = tempfile::tempdir().unwrap();
+        let app = App::for_tests(home.path());
+        let shared = Shared::new(mode::get(&app.settings.mode).unwrap());
+        shared.set_agent_profile(Some("on".into()));
+        let catalog = Catalog {
+            models: Vec::new(),
+            source: models::Source::Unavailable,
+            fetched_at: None,
+            note: None,
+        };
+        let mut tui = Tui::new(&app, catalog, None, &shared, None, String::new());
+        tui.godmode_picker = Some(godmode_picker::Picker::custom());
+        let enter = term::KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE);
+        tui.godmode_key(&enter);
+        assert!(tui.godmode_picker.is_some());
+        assert_eq!(shared.agent_profile().as_deref(), Some("on"));
+        crate::io::fs::write_atomic(
+            &app.paths.home.join("prompts/godmode-custom.md"),
+            b"CUSTOM_TEST",
+            crate::io::fs::Access::Private,
+        )
+        .unwrap();
+        tui.godmode_key(&enter);
+        assert!(tui.godmode_picker.is_none());
+        assert!(shared.agent_profile().is_none());
+        assert_eq!(
+            tui.selected_prompt,
+            commands::godmode::text().custom_prompt_id
+        );
+        tui.set_agent_profile(None);
+        assert_eq!(tui.selected_prompt, "default");
+    }
 
     #[test]
     fn catalog_refresh_preserves_the_effort_picker_until_capabilities_change() {

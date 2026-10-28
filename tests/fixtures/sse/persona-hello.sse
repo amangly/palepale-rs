@@ -2,7 +2,7 @@
 
 data: {"id":"c1","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"role":"assistant","reasoning_content":"The user greets me."}}]}
 
-data: {"id":"c1","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"content":"[D] Hello "}}]}
+data: {"id":"c1","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"content":"[Six] Hello "}}]}
 
 : keepalive
 

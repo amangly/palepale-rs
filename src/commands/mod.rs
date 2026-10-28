@@ -130,6 +130,7 @@ pub struct Session {
     pub model: String,
     pub mode: String,
     pub agent_profile: Option<String>,
+    pub system_prompt: String,
     /// Share of the context window the last request used.
     pub context_pct: Option<u64>,
 }
@@ -174,6 +175,7 @@ pub enum Effect {
     /// Apply a server-owned coding profile to future requests.
     SetAgentProfile(Option<String>),
     SetSystemPrompt(String),
+    EditCustomPrompt,
     /// Put the model's last reply on the clipboard.
     CopyLastReply,
     /// Send this to the model as the user's next message (the transcript shows the command).

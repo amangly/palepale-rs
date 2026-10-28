@@ -11,12 +11,15 @@ pub struct Picker {
     ids: Vec<Option<String>>,
     rows: Vec<Line>,
     selected: usize,
+    custom: bool,
 }
 
 pub enum Step {
     Stay,
     Pick(Option<String>),
     Close,
+    Custom,
+    ApplyCustom,
 }
 
 impl Picker {
@@ -32,14 +35,37 @@ impl Picker {
             ids.push(Some(profile.id));
             rows.push(row);
         }
+        rows.push(Line::plain(format!(
+            "{}  {}",
+            words.custom, words.custom_summary
+        )));
         let selected = ids
             .iter()
             .position(|id| id.as_deref() == current)
-            .unwrap_or(0);
+            .unwrap_or_else(|| {
+                if current == Some(&words.custom_prompt_id) {
+                    rows.len() - 1
+                } else {
+                    0
+                }
+            });
         Self {
             ids,
             rows,
             selected,
+            custom: false,
+        }
+    }
+
+    pub fn custom() -> Self {
+        Self {
+            ids: vec![],
+            rows: vec![
+                Line::plain(&godmode::text().custom_apply),
+                Line::plain(&godmode::text().custom_cancel),
+            ],
+            selected: 0,
+            custom: true,
         }
     }
 
@@ -50,9 +76,17 @@ impl Picker {
                 Step::Stay
             }
             Some(Action::Down) => {
-                self.selected = (self.selected + 1).min(self.ids.len() - 1);
+                self.selected = (self.selected + 1).min(self.rows.len() - 1);
                 Step::Stay
             }
+            Some(Action::Right | Action::Submit) if self.custom => {
+                if self.selected == 0 {
+                    Step::ApplyCustom
+                } else {
+                    Step::Close
+                }
+            }
+            Some(Action::Right | Action::Submit) if self.selected == self.ids.len() => Step::Custom,
             Some(Action::Right | Action::Submit) => Step::Pick(self.ids[self.selected].clone()),
             Some(Action::Left | Action::Escape) => Step::Close,
             _ => Step::Stay,
@@ -69,5 +103,24 @@ impl Picker {
         );
         lines.push(Line::styled(&ui::get().picker.hint, Style::fg("muted")).truncate(width));
         lines
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn custom_is_available_without_server_profiles_and_apply_can_be_cancelled() {
+        let mut picker = Picker::new(vec![], None);
+        picker.key(Some(Action::Down));
+        assert!(matches!(picker.key(Some(Action::Submit)), Step::Custom));
+        let mut picker = Picker::custom();
+        assert!(matches!(
+            picker.key(Some(Action::Submit)),
+            Step::ApplyCustom
+        ));
+        picker.key(Some(Action::Down));
+        assert!(matches!(picker.key(Some(Action::Submit)), Step::Close));
     }
 }

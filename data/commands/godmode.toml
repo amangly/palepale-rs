@@ -1,6 +1,6 @@
 name = "godmode"
-summary = "Choose a server coding profile for this conversation"
-usage = "godmode [profile|off|status]"
+summary = "Choose a server profile or test a custom system prompt"
+usage = "godmode [profile|custom [apply]|off|status]"
 scope = ["session"]
 
 [text]
@@ -14,3 +14,12 @@ label = "Profile"
 unknown = "Unknown coding profile `{profile}`; open /godmode to see choices."
 no_profiles = "No coding profile is assigned to this model."
 unavailable = "Coding profiles are unavailable on this server."
+custom = "Custom"
+custom_summary = "Edit your system prompt in a text editor"
+custom_prompt_id = "godmode-custom"
+custom_opened = "Save your prompt in the text editor, then choose Use saved prompt here. File: {path}"
+custom_apply = "Use saved prompt"
+custom_cancel = "Cancel"
+custom_max_bytes = 32768
+custom_applied = "Custom system prompt applied to this conversation. Server profile off."
+custom_invalid = "Save a nonempty UTF-8 prompt of at most 32 KiB, then run /godmode custom apply."

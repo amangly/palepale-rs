@@ -165,7 +165,12 @@ impl Dashboard {
                 label(&labels.mode, &info.session.mode),
                 label(&labels.requests, &info.requests.to_string()),
             ));
-            if let Some(profile) = &info.session.agent_profile {
+            if info.session.system_prompt == crate::commands::godmode::text().custom_prompt_id {
+                body.push(label(
+                    &crate::commands::godmode::text().label,
+                    &crate::commands::godmode::text().custom,
+                ));
+            } else if let Some(profile) = &info.session.agent_profile {
                 body.push(label(&crate::commands::godmode::text().label, profile));
             }
             body.push(match info.session.context_pct {
@@ -331,6 +336,7 @@ mod tests {
             model: "gpt-6-astra".into(),
             mode: "MANUAL".into(),
             agent_profile: None,
+            system_prompt: "default".into(),
             context_pct: Some(8),
         };
         let info = Info {
@@ -385,6 +391,7 @@ mod tests {
             model: "demo".into(),
             mode: "MANUAL".into(),
             agent_profile: None,
+            system_prompt: "default".into(),
             context_pct: Some(120),
         };
         let info = Info {

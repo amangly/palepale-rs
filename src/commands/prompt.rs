@@ -57,6 +57,9 @@ pub fn files(app: &App) -> BTreeMap<String, PathBuf> {
 }
 
 pub fn body(app: &App, id: &str) -> anyhow::Result<Option<String>> {
+    if id == super::godmode::text().custom_prompt_id {
+        return super::godmode::custom_body(app).map(Some);
+    }
     if id == "default" {
         return Ok(None);
     }

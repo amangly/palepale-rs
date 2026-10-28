@@ -4,6 +4,28 @@
 use std::io;
 use std::path::{Path, PathBuf};
 
+/// Opens a prompt in a desktop editor without sharing the terminal's input.
+pub fn open_text_file(path: &Path) -> io::Result<()> {
+    let program = if cfg!(windows) {
+        "notepad.exe"
+    } else if cfg!(target_os = "macos") {
+        "open"
+    } else {
+        "xdg-open"
+    };
+    let mut command = std::process::Command::new(program);
+    if cfg!(target_os = "macos") {
+        command.args(["-a", "TextEdit"]);
+    }
+    command
+        .arg(path)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .map(drop)
+}
+
 /// Opens `url` in the default browser. Best effort: callers always print the URL as well.
 pub fn open_url(url: &str) -> io::Result<()> {
     #[cfg(windows)]

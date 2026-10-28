@@ -1478,7 +1478,7 @@ async fn slash_godmode_selects_server_profile_and_clears_it() {
         s.type_text("first");
         s.send("\r");
         s.wait_for("Hello there!");
-        assert!(!s.contents().contains("[D]"));
+        assert!(!s.contents().contains("[Six]"));
         s.type_text("/godmode off");
         s.send("\r");
         s.wait_for("Coding profile: off");
@@ -1498,6 +1498,58 @@ async fn slash_godmode_selects_server_profile_and_clears_it() {
     );
     assert!(requests[0].get("agent_profile").is_none());
     assert!(requests[1].get("server_profile").is_none());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn custom_godmode_replaces_server_profile_and_off_restores_default() {
+    let fake = Fake::start().await;
+    fake.script([Reply::sse("hello.sse"), Reply::sse("hello.sse")]);
+    let sandbox = Sandbox::default();
+    std::fs::create_dir_all(sandbox.home().join("prompts")).unwrap();
+    std::fs::write(
+        sandbox.home().join("prompts/godmode-custom.md"),
+        "CUSTOM_SYSTEM_MARKER",
+    )
+    .unwrap();
+    in_session(&fake, sandbox, Some(ENV_KEY), |s| {
+        s.type_text("/godmode jb-2");
+        s.send("\r");
+        s.wait_for("Coding profile: jb-2");
+        s.type_text("/godmode custom apply");
+        s.send("\r");
+        s.wait_for("Custom system prompt applied");
+        s.type_text("/godmode status");
+        s.send("\r");
+        s.wait_for("Coding profile: Custom");
+        s.type_text("first");
+        s.send("\r");
+        s.wait_for("Hello there!");
+        s.type_text("/godmode off");
+        s.send("\r");
+        s.wait_for("Coding profile: off");
+        s.type_text("second");
+        s.send("\r");
+        s.poll(WAIT, "second response", |s| {
+            (s.contents().matches("Hello there!").count() == 2).then_some(())
+        });
+    })
+    .await;
+    let requests = fake.chat_bodies();
+    assert!(
+        requests[0]["messages"][0]["content"]
+            .as_str()
+            .unwrap()
+            .starts_with("CUSTOM_SYSTEM_MARKER")
+    );
+    assert!(
+        !requests[1]["messages"][0]["content"]
+            .as_str()
+            .unwrap()
+            .contains("CUSTOM_SYSTEM_MARKER")
+    );
+    for request in requests {
+        assert!(request.get("server_profile").is_none());
+    }
 }
 
 #[tokio::test(flavor = "multi_thread")]

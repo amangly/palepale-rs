@@ -260,7 +260,7 @@ mod tests {
         for enabled in [false, true] {
             let mut asm = Assembler::for_profile(enabled);
             let mut visible = String::new();
-            for text in ["[", "D", "]", " ", "Hello"] {
+            for text in ["[", "S", "i", "x", "]", " ", "Hello"] {
                 asm.apply(
                     serde_json::from_value(
                         serde_json::json!({"choices":[{"delta":{"content":text}}]}),
@@ -274,7 +274,7 @@ mod tests {
                 );
             }
             let out = asm.finish(None, &mut |_| {});
-            let expected = if enabled { "Hello" } else { "[D] Hello" };
+            let expected = if enabled { "Hello" } else { "[Six] Hello" };
             assert_eq!(visible, expected);
             assert_eq!(
                 out.parts,
