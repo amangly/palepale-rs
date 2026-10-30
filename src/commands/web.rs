@@ -1,7 +1,7 @@
 use futures_util::future::BoxFuture;
 use std::sync::LazyLock;
 use super::{Command, Ctx, Outcome, Scope, Spec};
-use crate::{api::account, auth, io::proc::open_url, text::template::fill};
+use crate::{api::account, auth, io::proc::open_url, settings, text::template::fill};
 use serde::Deserialize;
 
 const SOURCE: &str = include_str!("../../data/commands/web.toml");
@@ -17,7 +17,7 @@ impl Command for Web {
             anyhow::ensure!(cx.scope == Scope::Cli, "palepale web only runs from the CLI");
             let code = account::browser_handoff(&auth::owner_api(cx.app)?).await?;
             let url = format!("https://palepale.tech/login#handoff={code}");
-            let _ = open_url(&url);
+            if settings::env("PALEPALE_NO_BROWSER").is_none() { let _ = open_url(&url); }
             Ok(fill(&TEXT.opened, &[]).into())
         })
     }
