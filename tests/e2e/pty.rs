@@ -1320,7 +1320,11 @@ async fn the_context_share_uses_the_selected_models_latest_request() {
         s.poll(WAIT, "ctx 10% on demo-2", |s| {
             s.bottom_row().contains("ctx 10%").then_some(())
         });
-        s.type_text("/models");
+        // Wait for buffered input to be consumed before Enter, which otherwise
+        // joins the paste burst on a busy runner and inserts a newline.
+        s.send("/models");
+        s.wait_for("› /models");
+        s.wait_quiet();
         s.send("\r");
         s.wait_for("┌ Models");
         s.send("\x1b[B");
