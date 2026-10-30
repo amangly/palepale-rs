@@ -1,5 +1,12 @@
 # Releases
 
+## v0.1.30 — 2026-10-31
+
+The CLI adds `palepale web`, which creates a short-lived one-use browser handoff
+from the owner credential saved by `palepale signup`. The browser receives its
+normal HttpOnly session cookie; owner credentials never enter the URL or browser
+storage. The handoff is headless-safe when `PALEPALE_NO_BROWSER=1` is set.
+
 ## v0.1.29 — 2026-10-28
 
 The model picker adds All, Uncensored and Cheapest filters, switched with Tab.
