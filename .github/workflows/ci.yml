@@ -42,6 +42,12 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
+      - name: Check shell installer against local fixtures
+        run: sh tests/install.sh
+      - name: Check Windows installer against local fixtures
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./tests/install.ps1
       - uses: ./.github/actions/setup
         with:
           target: ${{ matrix.target }}

@@ -18,20 +18,32 @@ Palepale is a terminal coding agent. It reads code, edits files, runs commands, 
 
 ## Install
 
-Download the latest build for [Windows x64](https://api.palepale.tech/cli/latest/palepale-x86_64-pc-windows-msvc.exe), [macOS Apple Silicon](https://api.palepale.tech/cli/latest/palepale-aarch64-apple-darwin), or [Linux x64](https://api.palepale.tech/cli/latest/palepale-x86_64-unknown-linux-musl).
+On macOS with Apple Silicon (M-series) or Linux x64:
 
-On Windows, rename the downloaded file to `palepale.exe` and run it from your project folder:
+```sh
+curl -fsSL https://raw.githubusercontent.com/amangly/palepale-rs/main/data/install.sh | sh
+```
+
+On Windows x64, run in PowerShell:
 
 ```powershell
-.\palepale.exe
+irm https://raw.githubusercontent.com/amangly/palepale-rs/main/data/install.ps1 | iex
 ```
 
-On macOS or Linux, rename the downloaded file to `palepale`, then run:
+The installers download the matching release, verify its SHA-256 checksum, and run
+`palepale install` for your user. No administrator access is needed. The shell
+installer adds `~/.local/bin` to your shell profile; Windows adds its install folder
+to your user PATH. Open a new terminal, enter your project folder, and run:
 
 ```bash
-chmod +x palepale
-./palepale
+palepale
 ```
+
+macOS installation selects the Apple Silicon build even under Rosetta. Intel Macs,
+Linux ARM, and Windows ARM do not have release builds yet. You can also download
+the binaries directly for [Windows x64](https://api.palepale.tech/cli/latest/palepale-x86_64-pc-windows-msvc.exe),
+[macOS Apple Silicon](https://api.palepale.tech/cli/latest/palepale-aarch64-apple-darwin),
+or [Linux x64](https://api.palepale.tech/cli/latest/palepale-x86_64-unknown-linux-musl).
 
 Use `/login` to pair the device or enter an inference key. You can also set `PALEPALE_API_KEY` to a `pk_` key. For a new account, run `palepale signup`; see [account setup](docs/bun-gateway.md) for owner credentials and recovery.
 

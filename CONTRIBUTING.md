@@ -22,6 +22,11 @@ On Windows, use PowerShell 7 with MSVC C++ Build Tools, CMake, NASM, LLVM/libcla
 
 The Windows binary is `C:\build\palepale\release\palepale.exe`.
 
+The download installers live in `data/install.sh` and `data/install.ps1`. Check
+them with `sh tests/install.sh` (Git Bash on Windows) and, on Windows,
+`pwsh -File tests/install.ps1`. These tests use local downloads and fake executables;
+they do not install Palepale or change your PATH. CI runs them on the host platforms.
+
 For changes to auth, API behavior, tools, or terminal interaction, run `make e2e` or the Windows wrapper with `-Task e2e`. These tests use local servers and real pseudo-terminals. `make smoke` uses a paid API and runs only with explicit approval and configured `PALEPALE_SMOKE_URL`, `PALEPALE_SMOKE_KEY`, and `PALEPALE_SMOKE_MODEL`.
 
 ## Layout
