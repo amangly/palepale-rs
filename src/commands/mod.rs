@@ -26,8 +26,8 @@ mod signup;
 mod status;
 mod uninstall;
 mod update;
-mod workflow;
 mod web;
+mod workflow;
 
 use futures_util::future::BoxFuture;
 use serde::Deserialize;
