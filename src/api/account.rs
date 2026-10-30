@@ -130,6 +130,17 @@ pub async fn create_key(api: &Api, label: &str) -> Result<String, ApiError> {
     Ok(issued.key)
 }
 
+pub async fn browser_handoff(api: &Api) -> Result<String, ApiError> {
+    #[derive(Deserialize)]
+    struct Handoff { code: String }
+    let response = api.call("browser_handoff", Call::default(), limits::get().http.request_timeout_ms.ms()).await?;
+    let handoff: Handoff = serde_json::from_slice(&response.body).map_err(|_| ErrorInfo::local("bad_response", "Browser handoff returned an invalid response"))?;
+    if !handoff.code.starts_with("bh_") || handoff.code.len() != 46 {
+        return Err(ErrorInfo::local("bad_response", "Browser handoff returned an invalid code").into());
+    }
+    Ok(handoff.code)
+}
+
 impl Me {
     pub fn available(&self) -> i64 {
         self.available_microdollars

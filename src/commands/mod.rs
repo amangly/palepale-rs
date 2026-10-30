@@ -27,6 +27,7 @@ mod status;
 mod uninstall;
 mod update;
 mod workflow;
+mod web;
 
 use futures_util::future::BoxFuture;
 use serde::Deserialize;
@@ -229,6 +230,7 @@ pub trait Command: Sync {
 pub static COMMANDS: &[&dyn Command] = &[
     &help::Help,
     &login::Login,
+    &web::Web,
     &logout::Logout,
     &signup::Signup,
     &status::Status,

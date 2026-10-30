@@ -1,0 +1,8 @@
+name = "web"
+summary = "Open the web account using the owner login saved by this CLI"
+usage = "web"
+requires_backend = true
+scope = ["cli"]
+
+[text]
+opened = "Opening your Palepale account in the browser."

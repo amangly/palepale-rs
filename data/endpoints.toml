@@ -59,6 +59,12 @@ method = "POST"
 path = "/v1/account/keys"
 auth = true
 
+[endpoints.browser_handoff]
+origin = "api"
+method = "POST"
+path = "/v1/account/browser-handoffs"
+auth = true
+
 [endpoints.pair_start]
 origin = "api"
 method = "POST"
