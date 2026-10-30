@@ -70,3 +70,6 @@ try {
     $env:PROCESSOR_ARCHITEW6432 = $originalWow
     foreach ($command in $global:palepaleTestcommands) { Remove-Item -LiteralPath "Function:$command" }
 }
+
+# The final failure fixture leaves LASTEXITCODE nonzero; CI reads it after this script.
+exit 0
