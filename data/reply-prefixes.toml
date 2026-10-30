@@ -1,2 +1,5 @@
-# Leading tags from the active server personas; only hidden with godmode selected.
-prefixes = ["[J]", "[L]", "[C]", "[D]", "[Six]", "[SIX]", "[six]"]
+# Any leading bracketed profile label; only hidden with godmode selected.
+pattern = '^\s*\[[^\[\]\r\n]+\]'
+partial_pattern = '^\s*(\[[^\[\]\r\n]*)?$'
+# Stop buffering malformed or unusually long labels so replies keep streaming.
+max_pending_bytes = 4096

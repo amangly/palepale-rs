@@ -1,5 +1,11 @@
 # Releases
 
+## v0.1.31 — 2026-10-31
+
+Godmode hides any leading bracketed profile label, including long names and Unicode,
+using a shared regex instead of a fixed name list. Filtering handles streamed tags
+and preserves Markdown links and bracketed text later in a reply.
+
 ## v0.1.30 — 2026-10-31
 
 The CLI adds `palepale web`, which creates a short-lived one-use browser handoff
