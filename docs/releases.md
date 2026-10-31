@@ -1,5 +1,16 @@
 # Releases
 
+## v0.1.32 — 2026-10-31
+
+The agent can finish a successful tool batch without a separate closing request.
+Completion still waits for configured verification and queued work; the summary
+is displayed and saved only after success.
+
+Reads accept per-file ranges, and searches accept multiple roots with one shared
+result limit. Plan review shows the full plan and sends user edits back to the
+model. Successful decompiler answers are cached privately. Repeated-call checks
+now detect interleaved stalls and reset when output changes.
+
 ## v0.1.31 — 2026-10-31
 
 Godmode hides any leading bracketed profile label, including long names and Unicode,
