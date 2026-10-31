@@ -1,22 +1,29 @@
 name = "trial"
-summary = "Show trial credit, request a trial, or redeem a code in the CLI"
-usage = "trial [request|redeem]"
+summary = "Set up and start your DeepSeek trial"
+usage = "trial [status|request|redeem]"
 requires_backend = true
 scope = ["cli"]
 
 [text]
 model = "deepseek-v4.1-flash-uncensored-zero-refusal"
-opened = "Opening your account for trial request or redemption. Complete verification in the browser."
-status = "Trial: {state}. Available promotional credit: {balance} microdollars. Model: {model}. Trial service available: {available}. Run palepale --trial to spend trial credit, palepale trial request to apply, or palepale trial redeem to enter your code in the CLI."
+opened = "Completing verification in the browser. Keep this terminal open."
+status = "Trial: {state}. Available credit: {balance}. Model: {model}. Service available: {available}."
 
 
 code_prompt = "Redemption code (hidden): "
 invalid_code = "Enter the complete pt_ redemption code from your private ticket."
-cancelled = "Trial redemption cancelled. No credit was granted."
+cancelled = "Trial setup stopped. Run palepale trial to continue."
 waiting = "Complete verification in the browser. This CLI will redeem your code automatically afterward."
-redeemed = "$2 trial credit redeemed. Run palepale --trial to use DeepSeek."
-expired = "Trial verification expired. Run palepale trial redeem again."
+redeemed = "Trial ready. Starting DeepSeek with trial credit. For later sessions, run palepale trial."
+expired = "Trial verification expired. Run palepale trial to continue."
+login = "Connect your account in the browser to continue."
+ticket = "Request received. Open a private Discord ticket and send this reference: {reference}\n{url}\nAfter approval, paste your code below. Keep this terminal open, or run palepale trial later."
+unavailable = "Trial credit or daily capacity is unavailable. Paid funds will not be used. Run palepale trial later."
+closed = "This trial is closed. Contact support in your Discord ticket."
+invalid_status = "Could not validate your trial. Run palepale trial again."
 
 [workflow]
 poll_ms = 2000
 timeout_secs = 600
+discord_url = "https://discord.gg/ymCd8tyeN7"
+verify_path = "/trial/verify"

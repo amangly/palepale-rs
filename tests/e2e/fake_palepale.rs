@@ -64,6 +64,8 @@ struct Inner {
     /// Key issuance failures before accepting a request.
     key_failures: usize,
     trial_redemption_polls: usize,
+    trial_states: VecDeque<String>,
+    trial_available: Option<bool>,
     handoff_failures: usize,
 }
 
@@ -89,6 +91,16 @@ impl Reply {
 }
 
 impl Fake {
+    pub fn trial_states(&self, states: impl IntoIterator<Item = &'static str>) {
+        self.inner
+            .lock()
+            .unwrap()
+            .trial_states
+            .extend(states.into_iter().map(str::to_owned));
+    }
+    pub fn trial_available(&self, available: bool) {
+        self.inner.lock().unwrap().trial_available = Some(available);
+    }
     pub fn fail_handoff(&self) {
         self.inner.lock().unwrap().handoff_failures += 1;
     }
@@ -334,11 +346,21 @@ async fn models(State(inner): State<Shared>) -> impl IntoResponse {
     ([(header::CONTENT_TYPE, "application/json")], body)
 }
 
-async fn trial_status(headers: HeaderMap) -> Response {
+async fn trial_status(State(inner): State<Shared>, headers: HeaderMap) -> Response {
     if !authorized(&headers) && !owner_authorized(&headers) {
         return error(401, "unauthorized", None);
     }
-    axum::Json(json!({"model":"deepseek-v4.1-flash-uncensored-zero-refusal","available":true,"application":{"state":"redeemed"},"wallet":{"balance":"2000000","available":"1999000","held":"1000"}})).into_response()
+    let mut inner = inner.lock().unwrap();
+    let state = inner
+        .trial_states
+        .pop_front()
+        .unwrap_or_else(|| "redeemed".to_owned());
+    let application = if state == "none" {
+        Value::Null
+    } else {
+        json!({"id":"11111111-1111-4111-8111-111111111111","state":state})
+    };
+    axum::Json(json!({"model":"deepseek-v4.1-flash-uncensored-zero-refusal","available":inner.trial_available.unwrap_or(true),"application":application,"wallet":{"balance":"2000000","available":"1999000","held":"1000"}})).into_response()
 }
 async fn trial_flow(headers: HeaderMap, body: String) -> Response {
     if !trial_signature(&headers, &body, "/v1/trial/flows") {

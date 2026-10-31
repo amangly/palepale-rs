@@ -77,12 +77,12 @@ Licensed under [Apache-2.0](LICENSE-APACHE). Copyright 2026 amangly. See [NOTICE
 
 ## Promotional trial
 
-`palepale trial` reads the server's trial status and promotional balance.
-Run `palepale trial request` to apply, then open a private Discord ticket.
-After approval, run `palepale trial redeem` and enter the code at its hidden
-prompt. Complete verification in the browser; the CLI then redeems the code.
-A missing or stale local owner credential falls back to the existing web session
-or browser sign-in. Never put redemption codes or owner credentials in shell arguments.
+Run `palepale trial`. It connects your account if needed, verifies the request
+in your browser, and opens Discord with your application reference shown in the terminal.
+After approval, enter the code at its hidden prompt. The CLI verifies, redeems,
+and starts DeepSeek with trial funding. Browser verification follows the CLI
+account even when a different account is signed in on the website.
+Never put redemption codes or owner credentials in shell arguments.
 
 The grant is bound to the originating inference credential and a signing key kept
 in protected local state. Copying the API key alone cannot spend trial credit.

@@ -1529,6 +1529,7 @@ impl<'a> Tui<'a> {
         }
         for effect in outcome.effects {
             match effect {
+                Effect::StartTrial => unreachable!("trial workflow is CLI-only"),
                 Effect::Quit => return Step::Quit,
                 Effect::CycleMode => self.cycle_mode(),
                 Effect::SetMode(id) => {

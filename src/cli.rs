@@ -176,12 +176,28 @@ async fn dispatch(cli: Cli) -> anyhow::Result<ExitCode> {
             app: &app,
             scope: Scope::Cli,
         };
-        let out = command.run(&cx, &words[1..]).await?.text;
+        let outcome = command.run(&cx, &words[1..]).await?;
+        let start_trial = outcome.effects.contains(&commands::Effect::StartTrial);
+        let out = outcome.text;
         if !out.is_empty() {
             term::out(&out);
             if !out.ends_with('\n') {
                 term::out("\n");
             }
+        }
+        if start_trial && term::stdin_is_terminal() && term::stdout_is_terminal() {
+            app.api.set_trial(true);
+            app.settings.model = commands::trial::model().to_owned();
+            return tui::run(
+                &app,
+                None,
+                &crate::session::Start {
+                    selection: crate::session::store::Selection::New,
+                    model_override: true,
+                    mode_override: false,
+                },
+            )
+            .await;
         }
         return Ok(ExitCode::SUCCESS);
     }

@@ -214,7 +214,7 @@ async fn trial_commands_start_a_cli_bound_browser_flow_without_printing_secrets(
         assert!(text.contains("verification in the browser"), "{text}");
         assert!(!text.contains("pt_"));
         if action == "redeem" {
-            assert!(text.contains("$2 trial credit redeemed"), "{text}");
+            assert!(text.contains("Trial ready"), "{text}");
         }
         assert!(!text.contains(crate::fake_palepale::OWNER_KEY));
         assert!(!text.contains("bh_"));
@@ -222,9 +222,9 @@ async fn trial_commands_start_a_cli_bound_browser_flow_without_printing_secrets(
     }
     assert_eq!(fake.hits("/v1/trial/flows"), 2);
     assert_eq!(fake.hits("/v1/trial/redeem"), 2);
-    assert_eq!(fake.hits("/v1/account/browser-handoffs"), 2);
-    let status = sandbox.run(&fake.url, &["trial"], None).await;
-    assert!(status.success().stdout().contains("1999000"));
+    assert_eq!(fake.hits("/v1/account/browser-handoffs"), 0);
+    let status = sandbox.run(&fake.url, &["trial", "status"], None).await;
+    assert!(status.success().stdout().contains("$1.999"));
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -250,6 +250,55 @@ async fn trial_flow_opens_verification_without_local_owner_access() {
             .stdout()
             .contains("verification in the browser")
     );
-    assert_eq!(fake.hits("/v1/account/browser-handoffs"), 1);
+    assert_eq!(fake.hits("/v1/account/browser-handoffs"), 0);
     assert!(!output.stdout().contains("bh_"));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn one_trial_command_requests_waits_redeems_and_validates_without_exposing_secrets() {
+    let fake = Fake::start().await;
+    let sandbox = Sandbox::default();
+    fake.trial_states(["none", "none", "pending"]);
+    let code = format!("pt_{}\n", "x".repeat(43));
+    let run = sandbox
+        .run_input(&fake.url, &["trial"], WITH_KEY, Some(&code))
+        .await;
+    let text = run.success().stdout();
+    assert!(text.contains("Request received"), "{text}");
+    assert!(text.contains("Trial ready"), "{text}");
+    assert!(!text.contains("pt_"));
+    assert!(!text.contains(&"n".repeat(43)));
+    assert!(!text.contains(crate::fake_palepale::CLIENT_KEY));
+    assert_eq!(fake.hits("/v1/trial/flows"), 2);
+    assert_eq!(fake.hits("/v1/trial/redeem"), 2);
+    assert!(fake.hits("/v1/account/trial") >= 4);
+    assert_eq!(fake.hits("/v1/chat/completions"), 0);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn one_trial_command_connects_an_account_and_resumes_existing_credit() {
+    let fake = Fake::start().await;
+    let sandbox = Sandbox::default();
+    let run = sandbox.run(&fake.url, &["trial"], None).await;
+    assert!(run.success().stdout().contains("Trial ready"));
+    assert!(sandbox.home().join("auth.json").exists());
+    assert_eq!(fake.hits("/v1/trial/flows"), 0);
+    assert_eq!(fake.hits("/v1/trial/redeem"), 0);
+    assert_eq!(fake.hits("/v1/chat/completions"), 0);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn one_trial_command_does_not_start_when_closed_or_capacity_is_paused() {
+    for state in ["rejected", "revoked", "redeemed"] {
+        let fake = Fake::start().await;
+        fake.trial_states([state]);
+        if state == "redeemed" {
+            fake.trial_available(false);
+        }
+        let sandbox = Sandbox::default();
+        let run = sandbox.run(&fake.url, &["trial"], WITH_KEY).await;
+        assert!(!run.0.status.success());
+        assert_eq!(fake.hits("/v1/trial/redeem"), 0);
+        assert_eq!(fake.hits("/v1/chat/completions"), 0);
+    }
 }

@@ -22,6 +22,36 @@ const POLL: Duration = Duration::from_millis(50);
 /// two gaps can still bunch three into a paste (tui/paste.rs).
 const KEY_GAP: Duration = Duration::from_millis(30);
 
+#[tokio::test(flavor = "multi_thread")]
+async fn one_trial_command_starts_a_terminal_session_with_trial_funding() {
+    let fake = Fake::start().await;
+    let mut catalog: serde_json::Value =
+        serde_json::from_str(include_str!("../fixtures/api/models.json")).unwrap();
+    catalog["data"][0]["id"] = serde_json::json!("deepseek-v4.1-flash-uncensored-zero-refusal");
+    fake.model_lists([catalog.clone(), catalog]);
+    fake.script([Reply::sse("hello.sse")]);
+    let sandbox = Sandbox::default();
+    let url = fake.url.clone();
+    tokio::task::spawn_blocking(move || {
+        let mut session = Session::start_as(&sandbox, &url, Some(ENV_KEY), &["trial"]);
+        session.wait_for("palepale v");
+        session.type_text("trial-session-marker");
+        session.send("\r");
+        session.wait_for("Hello there!");
+        session.send("\x04");
+        assert!(session.wait_exit());
+    })
+    .await
+    .unwrap();
+    let bodies = fake.chat_bodies();
+    assert_eq!(bodies.len(), 1);
+    assert_eq!(bodies[0]["funding"], "trial");
+    assert_eq!(
+        bodies[0]["model"],
+        "deepseek-v4.1-flash-uncensored-zero-refusal"
+    );
+}
+
 fn contains_number(text: &str, number: &str) -> bool {
     text.split(|c: char| !c.is_ascii_digit())
         .any(|part| part == number)

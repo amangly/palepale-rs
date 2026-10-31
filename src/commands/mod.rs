@@ -156,6 +156,8 @@ impl Ctx<'_> {
 /// What a command asks the session to do beyond showing its text.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Effect {
+    /// CLI-only: open a new session after validating promotional credit.
+    StartTrial,
     Quit,
     /// Switch to the next mode, as Shift+Tab does.
     CycleMode,

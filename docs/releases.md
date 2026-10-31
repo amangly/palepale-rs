@@ -1,5 +1,16 @@
 # Releases
 
+## v0.1.36 — 2026-10-31
+
+`palepale trial` connects the account when needed, waits for browser verification,
+shows the Discord application reference, accepts the approved code privately, and
+opens a DeepSeek session after checking the promotional balance. Run the same
+command later to resume. `palepale trial status` is read-only.
+
+Browser verification follows the signed CLI account even when another account is
+signed in on the website. Codes and credit grants stay in the CLI. Manual Discord
+approval remains required, and unavailable trial capacity never selects paid funds.
+
 ## v0.1.35 — 2026-10-31
 
 Redeem codes are entered in the CLI at a hidden prompt. Browser verification
