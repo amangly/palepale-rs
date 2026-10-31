@@ -299,7 +299,14 @@ pub fn append_line(path: &Path, line: &str) -> io::Result<()> {
 /// An OS-owned advisory lock is released even when the process crashes. Keep the sidecar;
 /// unlinking it would allow another process to lock a different inode for the same session.
 pub struct FileLock {
-    _file: std::fs::File,
+    file: std::fs::File,
+}
+
+impl Drop for FileLock {
+    fn drop(&mut self) {
+        // Closing alone leaves the lock alive in duplicated or inherited handles.
+        let _ = self.file.unlock();
+    }
 }
 
 pub fn lock(path: &Path) -> io::Result<FileLock> {
@@ -313,7 +320,7 @@ pub fn lock(path: &Path) -> io::Result<FileLock> {
     }
     let file = options.open(path)?;
     file.try_lock().map_err(io::Error::other)?;
-    Ok(FileLock { _file: file })
+    Ok(FileLock { file })
 }
 
 /// Discard only the incomplete final JSONL record before a resumed writer appends.
@@ -465,6 +472,21 @@ fn open_new(path: &Path, access: Access) -> io::Result<std::fs::File> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn releasing_a_lock_does_not_wait_for_a_duplicated_file_handle() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("device.lock");
+        let held = lock(&path).unwrap();
+        let inherited = held.file.try_clone().unwrap();
+        assert!(lock(&path).is_err());
+        drop(held);
+        let next = lock(&path).unwrap();
+        drop(inherited);
+        assert!(lock(&path).is_err());
+        drop(next);
+        assert!(lock(&path).is_ok());
+    }
 
     #[cfg(unix)]
     #[test]

@@ -7,6 +7,10 @@ sending a request. The error identifies the DeepSeek restriction. Resuming a
 conversation in trial mode keeps the eligible model. Paid mode keeps its model
 choices, and trial requests never fall back to paid funds.
 
+File locks now release explicitly when their guard ends, so duplicated process
+handles cannot delay the next device-store access. Active writers remain locked,
+and corrupted device keys are still preserved for recovery.
+
 ## v0.1.36 — 2026-10-31
 
 `palepale trial` connects the account when needed, waits for browser verification,
