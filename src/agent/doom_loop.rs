@@ -2,11 +2,8 @@
 
 use crate::agent::message::{Message, ToolCall};
 
-/// How many times this turn the model has made `reply[i]`, counting this one — interleaved repeats
-/// included, not just a consecutive run. The window is the current user turn: a call the user asks
-/// for again in a new message starts over at 1. Gated on the output not changing: if the earlier
-/// identical calls returned *different* results, the tool is making progress (a poll, or a re-read
-/// after an edit), so it is not a futile loop and this returns 1.
+/// Count identical calls in the current user turn, including interleaved calls. A changed
+/// result resets the streak; later unchanged results can still trigger the guard.
 pub fn repeats(history: &[Message], reply: &[ToolCall], i: usize) -> usize {
     let current = &reply[i];
     let turn = history
@@ -34,14 +31,18 @@ pub fn repeats(history: &[Message], reply: &[ToolCall], i: usize) -> usize {
             _ => None,
         })
         .collect();
-    let seen: Vec<&str> = before
-        .iter()
-        .filter_map(|c| results.get(c.id.as_str()).copied())
-        .collect();
-    if seen.windows(2).any(|w| w[0] != w[1]) {
-        return 1;
+    let mut count = 1;
+    let mut previous = None;
+    for call in before {
+        if let Some(output) = results.get(call.id.as_str()).copied() {
+            if previous.is_some_and(|last| last != output) {
+                count = 1;
+            }
+            previous = Some(output);
+        }
+        count += 1;
     }
-    1 + before.len()
+    count
 }
 
 /// Same tool and same arguments, however the JSON was spaced.
@@ -126,7 +127,22 @@ mod tests {
             result("c2", "AFTER"),
         ];
         let reply = [call("c3", "read", r#"{"path":"a"}"#)];
-        assert_eq!(repeats(&history, &reply, 0), 1);
+        assert_eq!(repeats(&history, &reply, 0), 2);
+    }
+
+    #[test]
+    fn an_earlier_change_does_not_hide_a_later_stall() {
+        let history = [
+            Message::user_text("fix it"),
+            made(vec![call("c1", "read", r#"{"path":"a"}"#)]),
+            result("c1", "old"),
+            made(vec![call("c2", "read", r#"{"path":"a"}"#)]),
+            result("c2", "new"),
+            made(vec![call("c3", "read", r#"{"path":"a"}"#)]),
+            result("c3", "new"),
+        ];
+        let reply = [call("c4", "read", r#"{"path":"a"}"#)];
+        assert_eq!(repeats(&history, &reply, 0), 3);
     }
 
     #[test]

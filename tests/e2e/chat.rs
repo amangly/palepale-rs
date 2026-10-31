@@ -4,6 +4,48 @@ use crate::fake_palepale::{Fake, Reply};
 use crate::{Sandbox, WITH_KEY};
 
 #[tokio::test(flavor = "multi_thread")]
+async fn finishing_prints_and_saves_a_summary_without_another_request() {
+    for json in [false, true] {
+        let fake = Fake::start().await;
+        fake.script([Reply::sse("finish.sse"), Reply::sse("hello.sse")]);
+        let sandbox = Sandbox::default();
+        let format = if json { "--json" } else { "--print" };
+        let run = sandbox
+            .run(
+                &fake.url,
+                &["--mode", "auto", format, "Complete the task"],
+                WITH_KEY,
+            )
+            .await;
+        let output = run.success().stdout();
+        assert!(output.contains("Completed and verified."), "{output}");
+        assert_eq!(fake.hits("/v1/chat/completions"), 1);
+        let sessions = sandbox.sessions();
+        assert_eq!(sessions.len(), 1);
+        let saved = std::fs::read_to_string(&sessions[0]).unwrap();
+        let messages: Vec<serde_json::Value> = saved
+            .lines()
+            .map(|line| serde_json::from_str::<serde_json::Value>(line).unwrap())
+            .filter_map(|entry| entry.get("message").cloned())
+            .collect();
+        assert!(
+            messages
+                .iter()
+                .any(|message| message.to_string().contains("Completed and verified."))
+        );
+        if json {
+            let events: Vec<serde_json::Value> = output
+                .lines()
+                .map(|line| serde_json::from_str(line).unwrap())
+                .collect();
+            assert!(events.iter().any(
+                |event| event["type"] == "delta" && event["text"] == "Completed and verified."
+            ));
+        }
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn a_child_uses_restricted_tools_and_returns_to_the_parent() {
     let fake = Fake::start().await;
     fake.script([

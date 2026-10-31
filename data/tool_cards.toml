@@ -77,6 +77,10 @@ title = []
 body = "head"
 max_lines = 1
 
+[finish]
+title = ["summary"]
+body = "none"
+
 # The forum tools fold to one line: the forum, then its section, topic or search term.
 [forum_sections]
 title = ["forum"]

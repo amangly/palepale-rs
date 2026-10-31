@@ -4,6 +4,8 @@ mod bash;
 mod decompile;
 mod edit;
 mod edit_match;
+mod finish;
+pub use finish::NAME as FINISH;
 pub mod files;
 mod forum;
 mod fs;
@@ -229,6 +231,7 @@ impl Registry {
             Arc::new(task::Task),
             Arc::new(question::Question),
             Arc::new(plan_exit::PlanExit),
+            Arc::new(finish::Finish),
         ];
         Self {
             tools,

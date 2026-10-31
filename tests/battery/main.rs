@@ -231,7 +231,8 @@ async fn an_mcp_task_runs_its_simulated_servers_and_keeps_their_records() {
 #[tokio::test(flavor = "multi_thread")]
 async fn a_run_past_its_turn_limit_is_stopped() {
     let fake = Fake::start().await;
-    auto_fix(&fake);
+    // No later write is scripted: a delayed stop cannot race with a successful fix.
+    fake.script([Reply::sse("scenarios/auto_fix/1.sse")]);
     let out = tempfile::tempdir().unwrap();
     let battery = against(&fake, out.path());
     let task = Task {

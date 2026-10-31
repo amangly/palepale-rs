@@ -22,6 +22,18 @@ const POLL: Duration = Duration::from_millis(50);
 /// two gaps can still bunch three into a paste (tui/paste.rs).
 const KEY_GAP: Duration = Duration::from_millis(30);
 
+fn contains_number(text: &str, number: &str) -> bool {
+    text.split(|c: char| !c.is_ascii_digit())
+        .any(|part| part == number)
+}
+
+#[test]
+fn credential_checks_match_whole_numbers_without_matching_timestamps() {
+    assert!(!contains_number("17:24:33.7901278Z", "9012"));
+    assert!(contains_number("key=9012", "9012"));
+    assert!(contains_number("[1234567890123456]", "1234567890123456"));
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn saved_session_picker_restores_history_and_its_writer_lock_at_64_columns() {
     let fake = Fake::start().await;
@@ -721,7 +733,7 @@ struct Ended<T> {
     sandbox: Sandbox,
 }
 
-/// Starts a session (logged out when `key` is `None`), waits for its welcome, runs `body`, then
+/// Starts a session (logged out when `key` is `None`), waits for its input bar, runs `body`, then
 /// quits with Ctrl+D and asserts a clean exit.
 async fn in_session<T: Send + 'static>(
     fake: &Fake,
@@ -732,7 +744,9 @@ async fn in_session<T: Send + 'static>(
     let url = fake.url.clone();
     tokio::task::spawn_blocking(move || {
         let mut s = Session::start_as(&sandbox, &url, key, &[]);
-        s.wait_for("palepale v");
+        s.poll(WAIT, "input bar never appeared", |s| {
+            s.bottom_row().contains('─').then_some(())
+        });
         let out = body(&mut s);
         let screen = s.contents();
         s.send("\x04");
@@ -960,12 +974,15 @@ async fn a_command_typed_during_a_run_never_reaches_the_model() {
         .collect();
     let bodies = serde_json::to_string(&fake.chat_bodies()).unwrap();
     assert_eq!(fake.hits("/v1/chat/completions"), 2);
-    for secret in ["9012", "3456"] {
+    for secret in ["9012", "3456", crate::fake_palepale::ACCOUNT_NUMBER] {
         assert!(
-            !bodies.contains(secret),
+            !contains_number(&bodies, secret),
             "{secret} reached the model: {bodies}"
         );
-        assert!(!sessions.contains(secret), "{secret} was saved: {sessions}");
+        assert!(
+            !contains_number(&sessions, secret),
+            "{secret} was saved: {sessions}"
+        );
     }
 }
 

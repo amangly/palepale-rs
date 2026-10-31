@@ -107,6 +107,7 @@ pub async fn run(
     let mut told_written = false;
     let mut changed = false;
     let mut verified = 0;
+    let mut completion = None;
 
     let outcome = 'run: loop {
         loop {
@@ -205,6 +206,7 @@ pub async fn run(
                 messages: &messages,
                 tools: &tools,
             };
+            completion = None;
             let reply = chat::stream(&cx.app.api, &turn, &cancel, &mut |event| {
                 (cx.emit)(match event {
                     Event::Delta(delta) => AgentEvent::from(delta),
@@ -222,6 +224,10 @@ pub async fn run(
                 .contains(&e.kind.as_str())
             });
             let calls: Vec<ToolCall> = reply.tool_calls().cloned().collect();
+            let has_text = reply
+                .parts
+                .iter()
+                .any(|part| matches!(part, Part::Text { text } if !text.trim().is_empty()));
             let written = calls.is_empty() && reply.parts.iter().any(|part| matches!(part, Part::Text { text } if crate::agent::written::wrote_calls(text)));
             (cx.emit)(AgentEvent::MessageEnd { message: reply });
             if overflow && !overflow_retried && !summary_failed {
@@ -240,6 +246,7 @@ pub async fn run(
                 _ => {}
             }
 
+            let mut finishing = false;
             if !calls.is_empty() {
                 let round = RunCtx {
                     app: cx.app,
@@ -266,6 +273,19 @@ pub async fn run(
                     batch::run(&round, history, &calls, shared, &cancel).await
                 };
                 let Batch { results, stop } = batch;
+                finishing = calls.iter().any(|call| call.name == crate::tools::FINISH)
+                    && results.len() == calls.len()
+                    && results
+                        .iter()
+                        .all(|result| !result.is_error && result.refused.is_none());
+                if finishing && !has_text {
+                    completion = results
+                        .iter()
+                        .rev()
+                        .find(|result| result.name == crate::tools::FINISH)
+                        .map(|result| result.content.trim().to_owned())
+                        .filter(|text| !text.is_empty());
+                }
                 for result in results {
                     changed |= crate::agent::verify::changed(&result);
                     record(cx, transcript, Message::Tool(result));
@@ -289,7 +309,7 @@ pub async fn run(
                 }
                 continue;
             }
-            if calls.is_empty() {
+            if finishing || calls.is_empty() {
                 if written && !told_written && !tools.is_empty() {
                     told_written = true;
                     record(
@@ -374,6 +394,23 @@ pub async fn run(
     };
     if let Some(shadow) = &shadow {
         finish_checkpoint(cx, transcript, shadow).await;
+    }
+    if outcome == Outcome::Done
+        && let Some(text) = completion
+    {
+        // Publish the tool's summary only after queued work and verification have succeeded.
+        let message = crate::agent::message::Assistant {
+            parts: vec![Part::Text { text: text.clone() }],
+            model: cx.model.id.clone(),
+            effort: cx.effort.clone(),
+            usage: None,
+            finish: Finish::Done,
+            error: None,
+            request_id: None,
+        };
+        record(cx, transcript, Message::Assistant(message.clone()));
+        (cx.emit)(AgentEvent::from(crate::api::assemble::Delta::Text(&text)));
+        (cx.emit)(AgentEvent::MessageEnd { message });
     }
     (cx.emit)(AgentEvent::RunEnd { outcome });
     outcome
@@ -917,6 +954,161 @@ mod tests {
         let requests = h.requests();
         assert_eq!(requests.len(), 2);
         assert_eq!(last_message(&requests[1])["content"], "and then?");
+    }
+
+    #[tokio::test]
+    async fn finish_closes_a_successful_batch_and_saves_its_summary() {
+        let h = Harness::new(vec![
+            reply(
+                "",
+                &[
+                    ("write", "write", json!({"path":"ok.txt","content":"ok"})),
+                    ("finish", "finish", json!({"summary":"Wrote ok.txt"})),
+                ],
+                "tool_calls",
+            ),
+            text("must not run"),
+        ])
+        .await;
+        let (outcome, transcript, _) = h.run(&shared("auto"), |_, _| {}).await;
+        assert_eq!(outcome, Outcome::Done);
+        assert_eq!(h.requests().len(), 1);
+        assert!(
+            matches!(transcript.messages.last(), Some(Message::Assistant(a)) if a.parts.iter().any(|part| matches!(part, Part::Text { text } if text == "Wrote ok.txt")))
+        );
+    }
+
+    #[tokio::test]
+    async fn failed_batches_and_invalid_finish_calls_keep_running() {
+        for calls in [
+            vec![
+                ("read", "read", json!({"path":"missing.txt"})),
+                ("finish", "finish", json!({"summary":"too early"})),
+            ],
+            vec![("finish", "finish", json!({"summary":42}))],
+        ] {
+            let h = Harness::new(vec![reply("", &calls, "tool_calls"), text("recovered")]).await;
+            let (outcome, _, _) = h.run(&shared("auto"), |_, _| {}).await;
+            assert_eq!(outcome, Outcome::Done);
+            assert_eq!(h.requests().len(), 2);
+        }
+    }
+
+    #[tokio::test]
+    async fn cancellation_prevents_a_finish_summary() {
+        let h = Harness::new(vec![reply(
+            "",
+            &[("finish", "finish", json!({"summary":"must not display"}))],
+            "tool_calls",
+        )])
+        .await;
+        let (outcome, transcript, _) = h
+            .run(&shared("auto"), |event, shared| {
+                if matches!(event, AgentEvent::ToolEnd { result } if result.name == "finish") {
+                    shared.interrupt();
+                }
+            })
+            .await;
+        assert_eq!(outcome, Outcome::Aborted);
+        assert_eq!(h.requests().len(), 1);
+        assert!(!transcript.messages.iter().any(|message| matches!(message, Message::Assistant(a) if a.parts.iter().any(|part| matches!(part, Part::Text { text } if text == "must not display")))));
+    }
+
+    #[tokio::test]
+    async fn finish_cannot_replace_plan_review() {
+        let h = Harness::new(vec![
+            reply("", &[("finish", "finish", json!({}))], "tool_calls"),
+            text("planning"),
+        ])
+        .await;
+        let (_, transcript, _) = h.run(&shared("plan"), |_, _| {}).await;
+        assert_eq!(h.requests().len(), 2);
+        assert!(transcript.messages.iter().any(|message| matches!(message, Message::Tool(result) if result.name == "finish" && result.is_error)));
+    }
+
+    #[tokio::test]
+    async fn queued_work_and_steering_take_priority_over_finish() {
+        for steering in [false, true] {
+            let h = Harness::new(vec![
+                reply(
+                    "",
+                    &[("finish", "finish", json!({"summary":"first summary"}))],
+                    "tool_calls",
+                ),
+                text("handled new work"),
+            ])
+            .await;
+            let (outcome, transcript, _) = h
+                .run(&shared("auto"), |event, shared| {
+                    if matches!(event, AgentEvent::ToolEnd { result } if result.name == "finish") {
+                        let parts = vec![Part::Text {
+                            text: "more work".into(),
+                        }];
+                        if steering {
+                            shared.steer(parts);
+                        } else {
+                            shared.follow_up(parts);
+                        }
+                    }
+                })
+                .await;
+            assert_eq!(outcome, Outcome::Done);
+            assert_eq!(h.requests().len(), 2);
+            assert!(!transcript.messages.iter().any(|message| matches!(message, Message::Assistant(a) if a.parts.iter().any(|part| matches!(part, Part::Text { text } if text == "first summary")))));
+        }
+    }
+
+    #[tokio::test]
+    async fn a_subagent_can_finish_with_a_summary() {
+        let h = Harness::new(vec![
+            reply("", &[("task", "task", json!({"description":"inspect","prompt":"check the file","subagent_type":"general"}))], "tool_calls"),
+            reply("", &[("finish", "finish", json!({"summary":"Found the parser"}))], "tool_calls"),
+            text("parent received the result"),
+        ]).await;
+        h.run(&shared("auto"), |event, shared| {
+            if matches!(event, AgentEvent::ToolStart { name, .. } if name == "task") {
+                // This in-memory harness needs a sandboxed parent path for child sessions.
+                *shared.session.lock().unwrap() = h.app.paths.home.join("parent.jsonl");
+            }
+        })
+        .await;
+        assert_eq!(h.requests().len(), 3);
+        assert!(h.requests()[2].to_string().contains("Found the parser"));
+    }
+
+    #[tokio::test]
+    async fn a_finish_still_runs_configured_verification() {
+        let mut h = Harness::new(vec![
+            reply(
+                "",
+                &[
+                    (
+                        "write",
+                        "write",
+                        json!({"path":"work.txt","content":"work"}),
+                    ),
+                    ("finish", "finish", json!({"summary":"premature summary"})),
+                ],
+                "tool_calls",
+            ),
+            reply(
+                "",
+                &[("fix", "write", json!({"path":"ok.flag","content":"ok"}))],
+                "tool_calls",
+            ),
+            text("fixed and verified"),
+        ])
+        .await;
+        h.app.settings.verify = Some("test -f ok.flag".into());
+        let (outcome, transcript, _) = h.run(&shared("auto"), |_, _| {}).await;
+        assert_eq!(outcome, Outcome::Done);
+        assert_eq!(h.requests().len(), 3);
+        assert!(
+            h.requests()[1]
+                .to_string()
+                .contains("failed after your changes")
+        );
+        assert!(!transcript.messages.iter().any(|message| matches!(message, Message::Assistant(a) if a.parts.iter().any(|part| matches!(part, Part::Text { text } if text == "premature summary")))));
     }
 
     #[tokio::test]
