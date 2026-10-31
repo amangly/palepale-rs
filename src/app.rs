@@ -29,7 +29,7 @@ impl App {
             auth::load(&paths).ok().flatten().map(|k| k.secret)
         };
         let app = Self {
-            api: Api::new(http, key),
+            api: Api::new(http, key).with_trial_home(paths.home.clone()),
             fetch: Fetch::new(limits::get().tools.webfetch_timeout_secs.secs())?,
             paths,
             settings,

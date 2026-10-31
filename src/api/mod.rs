@@ -30,6 +30,7 @@ pub struct Api {
     key: Arc<RwLock<Option<String>>>,
     key_revision: Arc<AtomicU64>,
     trial: bool,
+    trial_home: Option<std::path::PathBuf>,
     /// Replaces every origin; lets unit tests talk to a local fake.
     #[cfg(test)]
     base: Option<String>,
@@ -51,6 +52,7 @@ impl Api {
             key: Arc::new(RwLock::new(key)),
             key_revision: Arc::new(AtomicU64::new(0)),
             trial: false,
+            trial_home: None,
             #[cfg(test)]
             base: None,
         }
@@ -58,6 +60,10 @@ impl Api {
 
     pub fn set_trial(&mut self, trial: bool) {
         self.trial = trial;
+    }
+    pub fn with_trial_home(mut self, home: std::path::PathBuf) -> Self {
+        self.trial_home = Some(home);
+        self
     }
     pub fn uses_trial(&self) -> bool {
         self.trial
@@ -108,6 +114,7 @@ impl Api {
             key: Arc::new(RwLock::new(Some(key.to_owned()))),
             key_revision: Arc::new(AtomicU64::new(0)),
             trial: false,
+            trial_home: None,
             base: Some(base.to_owned()),
         }
     }
@@ -180,6 +187,13 @@ impl Api {
             bearer,
             headers: call.headers,
             json: call.body,
+            trial_home: if endpoint.trial_proof
+                || call.body.is_some_and(|b| b["funding"] == "trial")
+            {
+                self.trial_home.as_deref()
+            } else {
+                None
+            },
             timeout,
         })
     }

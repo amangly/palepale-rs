@@ -20,6 +20,7 @@ pub struct Request<'a> {
     pub bearer: Option<String>,
     pub headers: &'a [(&'a str, &'a str)],
     pub json: Option<&'a serde_json::Value>,
+    pub trial_home: Option<&'a std::path::Path>,
     /// Whole-request bound for `send`; for `open` it bounds only the wait for headers.
     pub timeout: Duration,
 }
@@ -92,7 +93,7 @@ impl Http {
 
     pub async fn send(&self, req: Request<'_>) -> Result<Response, HttpError> {
         let resp = self
-            .builder(&req)
+            .builder(&req)?
             .timeout(req.timeout)
             .send()
             .await
@@ -104,7 +105,7 @@ impl Http {
 
     /// Sends and returns as soon as headers arrive; the caller bounds each read of the body.
     pub async fn open(&self, req: Request<'_>) -> Result<Streaming, HttpError> {
-        let resp = tokio::time::timeout(req.timeout, self.builder(&req).send())
+        let resp = tokio::time::timeout(req.timeout, self.builder(&req)?.send())
             .await
             .map_err(|_| HttpError::Timeout)?
             .map_err(classify)?;
@@ -117,7 +118,7 @@ impl Http {
         })
     }
 
-    fn builder(&self, req: &Request<'_>) -> reqwest::RequestBuilder {
+    fn builder(&self, req: &Request<'_>) -> Result<reqwest::RequestBuilder, HttpError> {
         let mut builder = match req.method {
             Method::Get => self.client.get(&req.url),
             Method::Post => self.client.post(&req.url),
@@ -129,10 +130,38 @@ impl Http {
         for (name, value) in req.headers {
             builder = builder.header(*name, *value);
         }
-        if let Some(body) = req.json {
+        if let Some(home) = req.trial_home {
+            let body = serde_json::to_vec(req.json.unwrap_or(&serde_json::Value::Null))
+                .map_err(|_| HttpError::Other("Invalid request body".into()))?;
+            let url = url::Url::parse(&req.url)
+                .map_err(|_| HttpError::Other("Invalid API URL".into()))?;
+            let method = match req.method {
+                Method::Get => "GET",
+                Method::Post => "POST",
+                Method::Delete => "DELETE",
+            };
+            let idempotency = req
+                .headers
+                .iter()
+                .find(|(name, _)| name.eq_ignore_ascii_case("idempotency-key"))
+                .map_or("", |(_, value)| *value);
+            let proof = super::trial::proof(
+                home,
+                &url,
+                req.bearer.as_deref().unwrap_or(""),
+                method,
+                idempotency,
+                &body,
+            )
+            .map_err(|e| HttpError::Other(e.to_string()))?;
+            builder = builder
+                .header(super::trial::header(), proof)
+                .header("content-type", "application/json")
+                .body(body);
+        } else if let Some(body) = req.json {
             builder = builder.json(body);
         }
-        builder
+        Ok(builder)
     }
 }
 
@@ -198,6 +227,7 @@ mod tests {
                 bearer: None,
                 headers: &[],
                 json: None,
+                trial_home: None,
                 timeout: Duration::from_secs(2),
             })
             .await
@@ -240,6 +270,7 @@ mod tests {
                 bearer: None,
                 headers: &[],
                 json: None,
+                trial_home: None,
                 timeout: Duration::from_secs(2),
             })
             .await;

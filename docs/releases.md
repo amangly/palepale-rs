@@ -1,5 +1,18 @@
 # Releases
 
+## v0.1.34 — 2026-10-31
+
+Redeem codes are entered in the CLI at a hidden prompt. Browser verification
+records approval for that flow; only the signed CLI request grants credit.
+Trial flows and spending use fresh Ed25519 signatures, bound to the originating
+credential, endpoint and exact body. The protected installation key is pinned
+when the application is verified. A copied API key alone cannot spend trial funds.
+
+The server rejects replay, altered requests and replacement keys before dispatch.
+Paid API clients keep their existing behavior. This is proof of key possession,
+not hardware or executable attestation.
+
+
 ## v0.1.33 — 2026-10-31
 
 Adds CLI-started trial requests and redemption with browser verification. Promotional

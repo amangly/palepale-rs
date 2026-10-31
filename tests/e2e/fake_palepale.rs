@@ -63,6 +63,7 @@ struct Inner {
     me_errors: VecDeque<u16>,
     /// Key issuance failures before accepting a request.
     key_failures: usize,
+    trial_redemption_polls: usize,
 }
 
 type Shared = Arc<Mutex<Inner>>;
@@ -105,6 +106,7 @@ impl Fake {
             .route("/v1/account/summary", get(me))
             .route("/v1/account/trial", get(trial_status))
             .route("/v1/trial/flows", post(trial_flow))
+            .route("/v1/trial/redeem", post(trial_redeem))
             .route("/v1/account/browser-handoffs", post(browser_handoff))
             .route("/v1/account/keys", get(keys).post(create_key))
             .route("/v1/account/keys/{reference}", delete(revoke_key))
@@ -335,6 +337,9 @@ async fn trial_status(headers: HeaderMap) -> Response {
     axum::Json(json!({"model":"deepseek-v4.1-flash-uncensored-zero-refusal","available":true,"application":{"state":"redeemed"},"wallet":{"balance":"2000000","available":"1999000","held":"1000"}})).into_response()
 }
 async fn trial_flow(headers: HeaderMap, body: String) -> Response {
+    if !trial_signature(&headers, &body, "/v1/trial/flows") {
+        return error(403, "trial_device_required", None);
+    }
     if !authorized(&headers) {
         return error(401, "unauthorized", None);
     }
@@ -352,6 +357,11 @@ async fn browser_handoff(headers: HeaderMap) -> Response {
     axum::Json(json!({"code":format!("bh_{}","h".repeat(43))})).into_response()
 }
 async fn chat(State(inner): State<Shared>, headers: HeaderMap, body: String) -> Response {
+    if serde_json::from_str::<Value>(&body).unwrap_or(Value::Null)["funding"] == "trial"
+        && !trial_signature(&headers, &body, "/v1/chat/completions")
+    {
+        return error(403, "trial_device_required", None);
+    }
     if !authorized(&headers) {
         return error(401, "invalid_api_key", None);
     }
@@ -530,4 +540,78 @@ async fn signup() -> Response {
         ),
     )
         .into_response()
+}
+
+fn trial_signature(headers: &HeaderMap, body: &str, path: &str) -> bool {
+    use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD as BASE64};
+    use sha2::{Digest, Sha256};
+    let Some(proof) = headers
+        .get("x-palepale-trial-proof")
+        .and_then(|h| h.to_str().ok())
+    else {
+        return false;
+    };
+    let parts: Vec<_> = proof.split('.').collect();
+    if parts.len() != 5 || parts[0] != "v1" {
+        return false;
+    }
+    let public = BASE64
+        .decode(parts[3])
+        .ok()
+        .and_then(|b| <[u8; 32]>::try_from(b).ok());
+    let signature = BASE64
+        .decode(parts[4])
+        .ok()
+        .and_then(|b| ed25519_dalek::Signature::from_slice(&b).ok());
+    let (Some(public), Some(signature)) = (public, signature) else {
+        return false;
+    };
+    let Ok(key) = ed25519_dalek::VerifyingKey::from_bytes(&public) else {
+        return false;
+    };
+    let token = headers
+        .get("authorization")
+        .and_then(|h| h.to_str().ok())
+        .and_then(|s| s.strip_prefix("Bearer "))
+        .unwrap_or("");
+    let digest = |bytes: &[u8]| {
+        Sha256::digest(bytes)
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect::<String>()
+    };
+    let idempotency = headers
+        .get("idempotency-key")
+        .and_then(|h| h.to_str().ok())
+        .unwrap_or("");
+    let message = [
+        "palepale-trial-v1",
+        "POST",
+        path,
+        parts[1],
+        parts[2],
+        parts[3],
+        &digest(token.as_bytes()),
+        idempotency,
+        &digest(body.as_bytes()),
+    ]
+    .join("\n");
+    key.verify_strict(message.as_bytes(), &signature).is_ok()
+}
+async fn trial_redeem(State(inner): State<Shared>, headers: HeaderMap, body: String) -> Response {
+    if !authorized(&headers) || !trial_signature(&headers, &body, "/v1/trial/redeem") {
+        return error(403, "trial_device_required", None);
+    }
+    let value: Value = serde_json::from_str(&body).unwrap();
+    if value["code"] != format!("pt_{}", "x".repeat(43)) {
+        return error(400, "trial_invalid", None);
+    }
+    let mut inner = inner.lock().unwrap();
+    inner.trial_redemption_polls += 1;
+    axum::Json(if inner.trial_redemption_polls == 1 {
+        json!({"pending":true})
+    } else {
+        json!({"ok":true,"amount":"2000000"})
+    })
+    .into_response()
 }

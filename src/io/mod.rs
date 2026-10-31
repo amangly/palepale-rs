@@ -18,4 +18,5 @@ pub mod shell;
 pub mod skill_cache;
 pub mod snapshot;
 pub mod term;
+pub mod trial;
 pub mod user_path;

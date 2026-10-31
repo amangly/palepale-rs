@@ -1,0 +1,5 @@
+directory = "trial-devices"
+header = "x-palepale-trial-proof"
+protocol = "palepale-trial-v1"
+unavailable = "Trial device authorization is unavailable. Restore this device's protected state or contact support."
+max_store_bytes = 4096

@@ -103,3 +103,12 @@ origin = "api"
 method = "POST"
 path = "/v1/trial/flows"
 auth = true
+
+trial_proof = true
+
+[endpoints.trial_redeem]
+origin = "api"
+method = "POST"
+path = "/v1/trial/redeem"
+auth = true
+trial_proof = true

@@ -1,5 +1,5 @@
 name = "trial"
-summary = "Show trial credit or open its verified request and redemption page"
+summary = "Show trial credit, request a trial, or redeem a code in the CLI"
 usage = "trial [request|redeem]"
 requires_backend = true
 scope = ["cli"]
@@ -7,5 +7,16 @@ scope = ["cli"]
 [text]
 model = "deepseek-v4.1-flash-uncensored-zero-refusal"
 opened = "Opening your account for trial request or redemption. Complete verification in the browser."
-status = "Trial: {state}. Available promotional credit: {balance} microdollars. Model: {model}. Usage available: {available}. Run palepale --trial to spend trial credit, or palepale trial redeem to redeem in your browser."
+status = "Trial: {state}. Available promotional credit: {balance} microdollars. Model: {model}. Trial service available: {available}. Run palepale --trial to spend trial credit, or palepale trial redeem to redeem in your browser."
 
+
+code_prompt = "Redemption code (hidden): "
+invalid_code = "Enter the complete pt_ redemption code from your private ticket."
+cancelled = "Trial redemption cancelled. No credit was granted."
+waiting = "Complete verification in the browser. This CLI will redeem your code automatically afterward."
+redeemed = "$2 trial credit redeemed. Run palepale --trial to use DeepSeek."
+expired = "Trial verification expired. Run palepale trial redeem again."
+
+[workflow]
+poll_ms = 2000
+timeout_secs = 600

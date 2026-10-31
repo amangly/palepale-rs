@@ -197,14 +197,31 @@ async fn trial_commands_start_a_cli_bound_browser_flow_without_printing_secrets(
     let sandbox = Sandbox::default();
     sandbox.run(&fake.url, &["signup"], None).await.success();
     for action in ["request", "redeem"] {
-        let output = sandbox.run(&fake.url, &["trial", action], None).await;
+        let code = format!("pt_{}\n", "x".repeat(43));
+        let output = sandbox
+            .run_input(
+                &fake.url,
+                &["trial", action],
+                None,
+                if action == "redeem" {
+                    Some(&code)
+                } else {
+                    None
+                },
+            )
+            .await;
         let text = output.success().stdout();
         assert!(text.contains("verification in the browser"), "{text}");
+        assert!(!text.contains("pt_"));
+        if action == "redeem" {
+            assert!(text.contains("$2 trial credit redeemed"), "{text}");
+        }
         assert!(!text.contains(crate::fake_palepale::OWNER_KEY));
         assert!(!text.contains("bh_"));
         assert!(!text.contains(&"n".repeat(43)));
     }
     assert_eq!(fake.hits("/v1/trial/flows"), 2);
+    assert_eq!(fake.hits("/v1/trial/redeem"), 2);
     assert_eq!(fake.hits("/v1/account/browser-handoffs"), 2);
     let status = sandbox.run(&fake.url, &["trial"], None).await;
     assert!(status.success().stdout().contains("1999000"));

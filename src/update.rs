@@ -306,6 +306,7 @@ async fn download_binary(
                 bearer: None,
                 headers: &[],
                 json: None,
+                trial_home: None,
                 timeout: bounds.check_timeout_secs.secs(),
             })
             .await?;
@@ -353,6 +354,7 @@ async fn get(
                 bearer: None,
                 headers: &[("Accept", "application/vnd.github+json")],
                 json: None,
+                trial_home: None,
                 timeout,
             })
             .await?;

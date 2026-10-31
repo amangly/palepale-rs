@@ -61,19 +61,41 @@ impl Sandbox {
     /// Runs palepale pointed at `api_url`, with `key` as its env key; with none it has only
     /// what the home stores.
     pub async fn run(&self, api_url: &str, args: &[&str], key: Option<&str>) -> Run {
+        self.run_input(api_url, args, key, None).await
+    }
+
+    pub async fn run_input(
+        &self,
+        api_url: &str,
+        args: &[&str],
+        key: Option<&str>,
+        input: Option<&str>,
+    ) -> Run {
         let mut command = tokio::process::Command::new(binary());
         command
             .args(args)
             .current_dir(self.project.path())
             // An inherited stdin pipe that never closes would look like piped input forever.
-            .stdin(std::process::Stdio::null());
+            .stdin(if input.is_some() {
+                std::process::Stdio::piped()
+            } else {
+                std::process::Stdio::null()
+            })
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped());
         for name in CLEARED {
             command.env_remove(name);
         }
         command
             .envs(launch_env(self.home.path(), api_url, key))
             .kill_on_drop(true);
-        let output = tokio::time::timeout(RUN_LIMIT, command.output())
+        let mut child = command.spawn().expect("palepale binary starts");
+        if let Some(input) = input {
+            use tokio::io::AsyncWriteExt;
+            let mut stdin = child.stdin.take().unwrap();
+            stdin.write_all(input.as_bytes()).await.unwrap();
+        }
+        let output = tokio::time::timeout(RUN_LIMIT, child.wait_with_output())
             .await
             .unwrap_or_else(|_| panic!("palepale {args:?} still running after {RUN_LIMIT:?}"));
         Run(output.expect("palepale binary runs"))

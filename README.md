@@ -77,13 +77,19 @@ Licensed under [Apache-2.0](LICENSE-APACHE). Copyright 2026 amangly. See [NOTICE
 
 ## Promotional trial
 
-`palepale trial` reads the server's current trial status and promotional balance.
-`palepale trial request` and `palepale trial redeem` open the account signed in
-with the owner access saved by this CLI. Only the CLI can start a trial claim or redemption. The grant is bound to that CLI credential. Complete verification in
-that browser; never put a redemption code or owner credential in shell arguments.
+`palepale trial` reads the server's trial status and promotional balance.
+Run `palepale trial request` to apply, then open a private Discord ticket.
+After approval, run `palepale trial redeem` and enter the code at its hidden
+prompt. Complete verification in the browser; the CLI then redeems the code.
+Never put redemption codes or owner credentials in shell arguments.
+
+The grant is bound to the originating inference credential and a signing key kept
+in protected local state. Copying the API key alone cannot spend trial credit.
+Deleting the signing state requires support review; a new key cannot replace the
+registered one automatically. Software signing does not attest the CLI binary or
+prevent a client with access to the full local state from acting as that device.
 
 After redemption, `palepale --trial` selects the eligible DeepSeek model and
-sends explicit trial funding. Paid balance is never an automatic fallback.
-The server enforces model eligibility, remaining credit and shared daily
-availability for every request. `palepale trial` refreshes the same balance shown
-on the website. Trial support requires the corresponding server release.
+sends signed requests with explicit trial funding. Paid balance is never an
+automatic fallback. The server checks model eligibility, device authorization,
+remaining credit and shared daily capacity for every request.
