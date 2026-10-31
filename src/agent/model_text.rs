@@ -36,6 +36,7 @@ pub struct ModelText {
     pub plan_changes: String,
     pub plan_unavailable: String,
     pub plan_only: String,
+    pub plan_edited: String,
     pub mode_left: String,
     pub mode_restored: String,
     pub written_calls: String,

@@ -64,18 +64,24 @@ impl Tool for PlanExit {
     fn run<'a>(&'a self, _args: Value, cx: &'a ToolCx<'a>) -> BoxFuture<'a, Output> {
         Box::pin(async move {
             let text = model_text::get();
-            let plan = io::fs::read_string(std::path::Path::new(cx.plan_file))
-                .ok()
-                .flatten()
-                .filter(|p| !p.trim().is_empty());
+            let file =
+                super::target::resolve(&cx.app.paths, cx.plan_file).map(|target| target.path);
+            let read = || {
+                file.as_ref()
+                    .ok()
+                    .and_then(|file| io::fs::read_string(file).ok().flatten())
+                    .filter(|plan| !plan.trim().is_empty())
+            };
+            let plan = read();
             let Some(plan) = plan else {
                 return Output::error(fill(&text.plan_missing, &[("plan_file", cx.plan_file)]));
             };
             let prompt = Prompt::PlanExit {
-                plan,
+                plan: plan.clone(),
+                file: file.as_ref().unwrap().to_string_lossy().into_owned(),
                 choices: CHOICES.iter().map(|c| c.label.clone()).collect(),
             };
-            match cx.ask(prompt).await {
+            let output = match cx.ask(prompt).await {
                 Some(Reply::Choice(i)) => match CHOICES.get(i).and_then(|c| c.mode.as_deref()) {
                     Some(id) => {
                         let Some(next) = mode::get(id) else {
@@ -95,6 +101,13 @@ impl Tool for PlanExit {
                 Some(Reply::Unavailable) => Output::ok(text.plan_unavailable.clone()),
                 Some(_) => Output::ok(text.plan_keep.clone()),
                 None => Output::error(text.cancelled.clone()),
+            };
+            match read().filter(|now| *now != plan) {
+                Some(now) if !output.is_error => Output::ok(fill(
+                    &text.plan_edited,
+                    &[("plan", &now), ("said", &output.content)],
+                )),
+                _ => output,
             }
         })
     }

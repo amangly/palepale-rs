@@ -24,6 +24,7 @@ plan_keep = "The user wants to keep planning. Ask what to change, or refine the 
 plan_changes = "The user wants changes to the plan: {feedback}"
 plan_unavailable = "Nobody can approve the plan in this run. Stop and summarise the plan."
 plan_only = "plan_exit only works in PLAN mode."
+plan_edited = "The user edited the plan while reviewing it. Use this updated plan:\n{plan}\n\n{said}"
 mode_left = "The user switched to {mode} mode; the previous mode's instructions no longer apply."
 mode_restored = "This session was resumed in {mode} mode. Earlier mode instructions no longer apply. Use the current tool permissions and project instructions."
 written_calls = "Your last reply wrote tool calls into its text instead of making them, so none ran. Make them as tool calls."

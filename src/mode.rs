@@ -36,6 +36,8 @@ pub struct Mode {
     /// A prompt in data/prompts/ injected when the mode takes effect.
     #[serde(default)]
     pub reminder: Option<String>,
+    #[serde(default)]
+    pub repeat_reminder: bool,
     pub verdicts: Verdicts,
     /// Rules applied after all others; `{plan_file}` is filled in per session.
     #[serde(default, deserialize_with = "locks")]

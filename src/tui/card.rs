@@ -39,7 +39,7 @@ pub fn from_prompt(id: u64, prompt: &Prompt, width: usize) -> Box<dyn Card> {
             preview.as_deref(),
             width,
         )),
-        Prompt::PlanExit { plan, choices } => Box::new(Choice::plan(id, plan, choices, width)),
+        Prompt::PlanExit { file, choices, .. } => Box::new(Choice::plan(id, file, choices, width)),
         Prompt::Question { questions } => Box::new(Questions::new(id, questions.clone())),
     }
 }

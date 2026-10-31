@@ -1671,6 +1671,9 @@ impl<'a> Tui<'a> {
                 }
             }
             AgentEvent::Prompt { id, prompt, .. } => {
+                if let crate::agent::prompt::Prompt::PlanExit { plan, .. } = prompt {
+                    self.feed.markdown(plan);
+                }
                 self.cards
                     .push_back(card::from_prompt(*id, prompt, self.draw_width()));
             }
@@ -1847,6 +1850,36 @@ fn text_of(parts: &[Part]) -> String {
 mod account_tests {
     use super::*;
     use crate::api::error::ErrorInfo;
+
+    #[test]
+    fn a_long_plan_is_kept_whole_in_the_scrollable_feed() {
+        let home = tempfile::tempdir().unwrap();
+        let app = App::for_tests(home.path());
+        let shared = Shared::new(mode::get("plan").unwrap());
+        let catalog = Catalog {
+            models: Vec::new(),
+            source: models::Source::Unavailable,
+            fetched_at: None,
+            note: None,
+        };
+        let mut tui = Tui::new(&app, catalog, None, &shared, None, String::new());
+        let plan = (1..=80).map(|n| format!("Step {n}\n")).collect::<String>();
+        tui.agent(AgentEvent::Prompt {
+            id: 1,
+            call_id: "plan".into(),
+            prompt: crate::agent::prompt::Prompt::PlanExit {
+                plan: plan.clone(),
+                file: "plan.md".into(),
+                choices: vec!["Keep planning".into()],
+            },
+        });
+        assert!(
+            (0..100)
+                .filter_map(|i| tui.feed.copy_text(i))
+                .any(|text| text == plan.trim_end())
+        );
+        assert_eq!(tui.cards.len(), 1);
+    }
 
     #[test]
     fn saved_custom_prompt_applies_from_the_card_and_off_restores_default() {

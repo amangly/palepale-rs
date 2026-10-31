@@ -165,6 +165,7 @@ pub struct CardText {
     pub input_hint: String,
     pub other: String,
     pub plan_title: String,
+    pub plan_body: String,
     pub plan_other: String,
     pub questions_title: String,
     pub question_tab: String,

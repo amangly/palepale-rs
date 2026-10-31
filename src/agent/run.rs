@@ -1038,6 +1038,55 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_plan_edited_during_review_reaches_the_model() {
+        let h = Harness::new(vec![
+            reply("", &[("c1", "plan_exit", json!({}))], "tool_calls"),
+            text("implementing"),
+        ])
+        .await;
+        let plan = h.plan_file();
+        crate::io::fs::write_atomic(
+            std::path::Path::new(&plan),
+            b"old plan",
+            crate::io::fs::Access::Shared,
+        )
+        .unwrap();
+        h.run(&shared("plan"), |event, shared| {
+            if let AgentEvent::Prompt {
+                id,
+                prompt:
+                    crate::agent::prompt::Prompt::PlanExit {
+                        file, plan: shown, ..
+                    },
+                ..
+            } = event
+            {
+                assert_eq!(shown, "old plan");
+                assert_eq!(
+                    crate::io::fs::canonical(std::path::Path::new(file)),
+                    crate::io::fs::canonical(std::path::Path::new(&plan))
+                );
+                crate::io::fs::write_atomic(
+                    std::path::Path::new(file),
+                    b"edited plan with user changes",
+                    crate::io::fs::Access::Shared,
+                )
+                .unwrap();
+                shared.answer(*id, Reply::Choice(0));
+            }
+        })
+        .await;
+        let requests = h.requests();
+        let result = last_message(&requests[1]);
+        assert!(
+            result["content"]
+                .as_str()
+                .unwrap()
+                .contains("edited plan with user changes")
+        );
+    }
+
+    #[tokio::test]
     async fn switching_to_auto_approves_a_waiting_prompt() {
         let h = Harness::new(vec![
             reply(

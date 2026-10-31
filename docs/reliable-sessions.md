@@ -76,6 +76,13 @@ profile. Changing either leaves the other choice intact. Profile synchronization
 is deferred. If a saved local prompt disappears or becomes unreadable, sending
 stops so another prompt can be chosen explicitly.
 
+## Plan review
+
+In PLAN mode, `plan_exit` shows the full plan in the scrollable conversation and
+names its file on the approval card. You can edit that file while the card is
+open; the next model request receives the edited plan with your approval or
+feedback. Later user messages repeat the planning instructions.
+
 ## Model compatibility
 
 The model list retains optional `input_modalities` and `capability_source`

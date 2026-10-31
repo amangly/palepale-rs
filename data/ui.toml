@@ -152,6 +152,7 @@ hint = "↑↓ move · enter choose · 1-9 pick · esc no"
 input_hint = "enter send · esc back"
 other = "Other…"
 plan_title = "Plan ready"
+plan_body = "The full plan is in the conversation above (PageUp to scroll). File: {file}. You can edit this file before approving."
 plan_other = "Tell palepale what to change…"
 # The model's questions: one tab each, then a review before the answers go back.
 questions_title = "Your input"

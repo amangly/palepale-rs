@@ -4,6 +4,7 @@ color = "mode_plan"
 order = 1
 summary = "Investigates, runs checks and writes a plan; edits nothing else"
 reminder = "plan_mode"
+repeat_reminder = true
 
 # Nothing PLAN lets through edits the project, so a repeated call is for the model to notice, not
 # a question for the user.

@@ -7,7 +7,6 @@ use crate::io::term::{KeyCode, KeyEvent};
 use crate::limits;
 use crate::permission::gate;
 use crate::text::diff;
-use crate::text::markdown;
 use crate::text::styled::{Line, Style};
 use crate::tui::boxed::{boxed, capped};
 use crate::tui::card::{Card, Step};
@@ -121,11 +120,14 @@ impl Choice {
     }
 
     /// PLAN mode's finished plan, and what to do with it.
-    pub fn plan(id: u64, plan: &str, choices: &[String], width: usize) -> Self {
+    pub fn plan(id: u64, file: &str, choices: &[String], width: usize) -> Self {
         let text = &ui::get().card;
         let inner = width.saturating_sub(4).max(1);
-        let max = limits::get().tui.prompt_body_lines.value;
-        let body = capped(markdown::render(plan, inner), max);
+        let body = Line::plain(crate::text::template::fill(
+            &text.plan_body,
+            &[("file", file)],
+        ))
+        .wrap(inner, &Line::default());
         let mut options: Vec<Opt> = choices
             .iter()
             .enumerate()

@@ -166,7 +166,7 @@ impl Shared {
             });
         }
         if reminded.is_some_and(|m| m.id == mode.id) {
-            return None;
+            return (self.depth == 0 && mode.repeat_reminder).then_some(Reminder::Entered(mode));
         }
         let left = reminded.replace(mode);
         if mode.reminder.is_some() {
@@ -232,6 +232,16 @@ impl Shared {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn plan_reminders_repeat_but_other_modes_do_not() {
+        let state = Shared::new(crate::mode::get("plan").unwrap());
+        assert!(matches!(state.take_reminder(), Some(Reminder::Entered(_))));
+        assert!(matches!(state.take_reminder(), Some(Reminder::Entered(_))));
+        state.set_mode(crate::mode::get("auto").unwrap());
+        assert!(matches!(state.take_reminder(), Some(Reminder::Left { .. })));
+        assert!(state.take_reminder().is_none());
+    }
 
     #[tokio::test]
     async fn child_prompts_share_ids_and_parent_interrupt_cancels_children() {
