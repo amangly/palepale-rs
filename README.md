@@ -81,7 +81,8 @@ Licensed under [Apache-2.0](LICENSE-APACHE). Copyright 2026 amangly. See [NOTICE
 Run `palepale trial request` to apply, then open a private Discord ticket.
 After approval, run `palepale trial redeem` and enter the code at its hidden
 prompt. Complete verification in the browser; the CLI then redeems the code.
-Never put redemption codes or owner credentials in shell arguments.
+A missing or stale local owner credential falls back to the existing web session
+or browser sign-in. Never put redemption codes or owner credentials in shell arguments.
 
 The grant is bound to the originating inference credential and a signing key kept
 in protected local state. Copying the API key alone cannot spend trial credit.

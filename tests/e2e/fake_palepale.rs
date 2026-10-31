@@ -64,6 +64,7 @@ struct Inner {
     /// Key issuance failures before accepting a request.
     key_failures: usize,
     trial_redemption_polls: usize,
+    handoff_failures: usize,
 }
 
 type Shared = Arc<Mutex<Inner>>;
@@ -88,6 +89,9 @@ impl Reply {
 }
 
 impl Fake {
+    pub fn fail_handoff(&self) {
+        self.inner.lock().unwrap().handoff_failures += 1;
+    }
     pub fn profile_queries(&self) -> Vec<String> {
         self.inner.lock().unwrap().profile_queries.clone()
     }
@@ -350,7 +354,12 @@ async fn trial_flow(headers: HeaderMap, body: String) -> Response {
     ));
     axum::Json(json!({"flow":"n".repeat(43),"expires_in":600})).into_response()
 }
-async fn browser_handoff(headers: HeaderMap) -> Response {
+async fn browser_handoff(State(inner): State<Shared>, headers: HeaderMap) -> Response {
+    let mut state = inner.lock().unwrap();
+    if state.handoff_failures > 0 {
+        state.handoff_failures -= 1;
+        return error(401, "unauthorized", None);
+    }
     if !owner_authorized(&headers) {
         return error(401, "unauthorized", None);
     }

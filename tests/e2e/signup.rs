@@ -226,3 +226,30 @@ async fn trial_commands_start_a_cli_bound_browser_flow_without_printing_secrets(
     let status = sandbox.run(&fake.url, &["trial"], None).await;
     assert!(status.success().stdout().contains("1999000"));
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn trial_flow_opens_verification_without_local_owner_access() {
+    let fake = Fake::start().await;
+    let sandbox = Sandbox::default();
+    let output = sandbox
+        .run(&fake.url, &["trial", "request"], WITH_KEY)
+        .await;
+    assert!(
+        output
+            .success()
+            .stdout()
+            .contains("verification in the browser")
+    );
+    assert_eq!(fake.hits("/v1/account/browser-handoffs"), 0);
+    sandbox.run(&fake.url, &["signup"], None).await.success();
+    fake.fail_handoff();
+    let output = sandbox.run(&fake.url, &["trial", "request"], None).await;
+    assert!(
+        output
+            .success()
+            .stdout()
+            .contains("verification in the browser")
+    );
+    assert_eq!(fake.hits("/v1/account/browser-handoffs"), 1);
+    assert!(!output.stdout().contains("bh_"));
+}

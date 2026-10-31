@@ -65,9 +65,16 @@ async fn start(cx: &Ctx<'_>, action: &str) -> anyhow::Result<String> {
                 .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-'),
         "Invalid trial flow"
     );
-    let code = account::browser_handoff(&auth::owner_api(cx.app)?).await?;
+    let handoff = match auth::owner_api(cx.app) {
+        Ok(owner) => account::browser_handoff(&owner).await.ok(),
+        Err(_) => None,
+    };
+    let prefix = handoff
+        .map(|code| format!("handoff={code}&"))
+        .unwrap_or_default();
     let url = format!(
-        "https://palepale.tech/login#handoff={code}&trial={}&action={action}",
+        "{}/login#{prefix}trial={}&action={action}",
+        crate::api::endpoints::origin("chat"),
         flow.flow
     );
     if settings::env("PALEPALE_NO_BROWSER").is_none() {

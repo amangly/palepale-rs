@@ -251,3 +251,8 @@ retry = false
 title = "Start trial verification from your CLI"
 hint = "Run palepale trial request or palepale trial redeem, then complete the browser verification."
 retry = false
+
+[trial_device_required]
+title = "Trial device authorization required"
+hint = "Update Palepale CLI and use the original registered device. Restore protected local state or contact support if it was lost. Paid funds are never used automatically."
+retry = false

@@ -1,6 +1,6 @@
 # Releases
 
-## v0.1.34 — 2026-10-31
+## v0.1.35 — 2026-10-31
 
 Redeem codes are entered in the CLI at a hidden prompt. Browser verification
 records approval for that flow; only the signed CLI request grants credit.
@@ -9,7 +9,7 @@ credential, endpoint and exact body. The protected installation key is pinned
 when the application is verified. A copied API key alone cannot spend trial funds.
 
 The server rejects replay, altered requests and replacement keys before dispatch.
-Paid API clients keep their existing behavior. This is proof of key possession,
+A missing or stale local owner credential falls back to browser sign-in while preserving the CLI trial flow. Paid API clients keep their existing behavior. This is proof of key possession,
 not hardware or executable attestation.
 
 
