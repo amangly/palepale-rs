@@ -168,6 +168,7 @@ pub struct ToolLimits {
     pub max_line_chars: Limit<usize>,
     pub max_results: Limit<usize>,
     pub grep_context_max: Limit<usize>,
+    pub grep_batch_max: Limit<usize>,
     pub grep_line_chars: Limit<usize>,
     pub read_batch_max: Limit<usize>,
     pub read_batch_bytes: Limit<usize>,

@@ -413,3 +413,7 @@ reason = "Do not hold an opening prompt for a stalled Git read."
 [tools.decompile_timeout_secs]
 value = 90
 reason = "Bound the optional local decompiler."
+
+[tools.grep_batch_max]
+value = 32
+reason = "bound the number of search roots checked by one tool call"

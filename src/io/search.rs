@@ -94,7 +94,7 @@ pub fn tree(root: &Path, depth: usize) -> Vec<TreeEntry> {
 }
 
 pub struct Grep<'a> {
-    pub root: &'a Path,
+    pub roots: &'a [&'a Path],
     pub pattern: &'a str,
     pub glob: Option<&'a str>,
     pub ignore_case: bool,
@@ -122,17 +122,34 @@ pub fn grep(query: &Grep<'_>) -> Result<(Vec<FileHits>, bool), String> {
         .build();
     let mut files: Vec<FileHits> = Vec::new();
     let mut lines = 0;
-    for entry in WalkBuilder::new(query.root).build().filter_map(Result::ok) {
+    let Some((first, rest)) = query.roots.split_first() else {
+        return Ok((files, false));
+    };
+    let mut walk = WalkBuilder::new(first);
+    for root in rest {
+        walk.add(root);
+    }
+    let mut seen = std::collections::HashSet::new();
+    for entry in walk.build().filter_map(Result::ok) {
         if !entry.file_type().is_some_and(|t| t.is_file()) {
             continue;
         }
         let path = entry.path();
         if let Some(filter) = &filter {
-            let relative = relative_slashes(query.root, path);
+            let root = query
+                .roots
+                .iter()
+                .find(|root| path.starts_with(root))
+                .copied()
+                .unwrap_or(first);
+            let relative = relative_slashes(root, path);
             let name = entry.file_name().to_string_lossy();
             if !filter.is_match(&relative) && !filter.is_match(name.as_ref()) {
                 continue;
             }
+        }
+        if !seen.insert(crate::io::fs::canonical(path)) {
+            continue;
         }
         let mut sink = Collect {
             report: query.report,
@@ -293,7 +310,7 @@ mod tests {
     fn grep_finds_lines_respects_filters_and_caps() {
         let dir = tree();
         let query = Grep {
-            root: dir.path(),
+            roots: &[dir.path()],
             pattern: r"\brun\b",
             glob: Some("*.rs"),
             ignore_case: false,
@@ -322,10 +339,32 @@ mod tests {
     }
 
     #[test]
+    fn grep_combines_roots_without_duplicate_files_and_shares_its_cap() {
+        let dir = tree();
+        let source = dir.path().join("src");
+        let file = source.join("main.rs");
+        let roots = [source.as_path(), file.as_path()];
+        let query = Grep {
+            roots: &roots,
+            pattern: "run",
+            glob: None,
+            ignore_case: false,
+            report: Report::Files,
+            max: 10,
+        };
+        let (hits, _) = grep(&query).unwrap();
+        assert_eq!(hits.len(), 2);
+        let (hits, capped) = grep(&Grep { max: 1, ..query }).unwrap();
+        assert_eq!(hits.len(), 1);
+        assert!(capped);
+    }
+
+    #[test]
     fn grep_reports_context_files_or_counts() {
         let dir = tree();
+        let roots = [dir.path()];
         let query = |report| Grep {
-            root: dir.path(),
+            roots: &roots,
             pattern: "run",
             glob: Some("main.rs"),
             ignore_case: false,

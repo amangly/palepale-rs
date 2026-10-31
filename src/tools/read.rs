@@ -23,7 +23,7 @@ static SPEC: LazyLock<Spec> = LazyLock::new(|| {
 
 #[derive(Deserialize)]
 struct Args {
-    path: Many<String>,
+    path: Many<ReadTarget>,
     #[serde(default)]
     offset: Option<usize>,
     #[serde(default)]
@@ -32,17 +32,45 @@ struct Args {
     depth: Option<usize>,
 }
 
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum ReadTarget {
+    Path(String),
+    Range {
+        path: String,
+        offset: Option<usize>,
+        limit: Option<usize>,
+        depth: Option<usize>,
+    },
+}
+
 impl Args {
-    fn paths(self) -> (Vec<String>, Page) {
+    fn paths(self) -> Vec<(String, Page)> {
         let page = Page {
             offset: self.offset,
             limit: self.limit,
             depth: self.depth,
         };
-        (
-            self.path.capped(limits::get().tools.read_batch_max.value),
-            page,
-        )
+        self.path
+            .capped(limits::get().tools.read_batch_max.value)
+            .into_iter()
+            .map(|target| match target {
+                ReadTarget::Path(path) => (path, page),
+                ReadTarget::Range {
+                    path,
+                    offset,
+                    limit,
+                    depth,
+                } => (
+                    path,
+                    Page {
+                        offset: offset.or(page.offset),
+                        limit: limit.or(page.limit),
+                        depth: depth.or(page.depth),
+                    },
+                ),
+            })
+            .collect()
     }
 }
 
@@ -62,9 +90,9 @@ impl Tool for Read {
     }
 
     fn check(&self, args: &Value, cx: &ToolCx<'_>) -> Result<Check, Refusal> {
-        let (paths, _) = parse::<Args>(args)?.paths();
+        let paths = parse::<Args>(args)?.paths();
         let mut asks = Vec::new();
-        for path in &paths {
+        for (path, _) in &paths {
             let target = target::resolve(&cx.app.paths, path).map_err(Refusal::Refused)?;
             asks.extend(target::asks(permissions::READ.name, &target));
         }
@@ -73,20 +101,20 @@ impl Tool for Read {
 
     fn run<'a>(&'a self, args: Value, cx: &'a ToolCx<'a>) -> BoxFuture<'a, Output> {
         Box::pin(async move {
-            let (paths, page) = match parse_or_fail::<Args>(&args) {
+            let paths = match parse_or_fail::<Args>(&args) {
                 Ok(args) => args.paths(),
                 Err(out) => return out,
             };
-            if let [path] = paths.as_slice() {
-                return one(cx, path, page);
+            if let [(path, page)] = paths.as_slice() {
+                return one(cx, path, *page);
             }
             let budget = limits::get().tools.read_batch_bytes.value;
             let (mut used, mut read) = (0, 0);
             let mut parts = Vec::new();
-            for path in &paths {
+            for (path, page) in &paths {
                 // A soft cap: the file that crosses it stays whole, and the rest are only named.
                 let out = if used < budget {
-                    one(cx, path, page)
+                    one(cx, path, *page)
                 } else {
                     Output::error(format!(
                         "Not read: this batch already holds {budget} bytes. Read it on its own."
@@ -243,6 +271,22 @@ mod tests {
             out.content
         );
         assert!(out.content.contains("Use offset=4 to continue"));
+    }
+
+    #[tokio::test]
+    async fn each_file_can_override_the_default_range() {
+        let project = Project::new();
+        project.write("a.txt", "a1\na2\na3\n");
+        project.write("b.txt", "b1\nb2\nb3\n");
+        let args =
+            json!({"path": ["a.txt", {"path": "b.txt", "offset": 3}], "offset": 2, "limit": 1});
+        let checked = Read.check(&args, &project.cx()).unwrap();
+        assert_eq!(checked.asks.len(), 2);
+        let out = read(&project, args).await;
+        assert!(!out.is_error);
+        assert!(out.content.contains("a2"), "{}", out.content);
+        assert!(out.content.contains("b3"), "{}", out.content);
+        assert!(!out.content.contains("b2"), "{}", out.content);
     }
 
     #[tokio::test]

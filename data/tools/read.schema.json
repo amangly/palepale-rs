@@ -2,15 +2,86 @@
   "type": "object",
   "properties": {
     "path": {
-      "description": "File or directory to read, or a list of files to read at once",
+      "description": "File or directory, a range object, or a list of strings and range objects; per-file options override top-level defaults",
       "oneOf": [
-        { "type": "string" },
-        { "type": "array", "items": { "type": "string" } }
+        {
+          "type": "string"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "string"
+            },
+            "offset": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "limit": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "depth": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "path"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "path": {
+                    "type": "string"
+                  },
+                  "offset": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "limit": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "depth": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                },
+                "required": [
+                  "path"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          }
+        }
       ]
     },
-    "offset": { "type": "integer", "description": "First line to show, 1-based" },
-    "limit": { "type": "integer", "description": "Number of lines to show" },
-    "depth": { "type": "integer", "description": "For a directory: how many levels to list (default 1)" }
+    "offset": {
+      "type": "integer",
+      "description": "First line to show, 1-based"
+    },
+    "limit": {
+      "type": "integer",
+      "description": "Number of lines to show"
+    },
+    "depth": {
+      "type": "integer",
+      "description": "For a directory: how many levels to list (default 1)"
+    }
   },
-  "required": ["path"]
+  "required": [
+    "path"
+  ]
 }

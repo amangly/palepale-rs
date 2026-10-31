@@ -205,6 +205,7 @@ impl Registry {
                 limits.grep_context_max.value.to_string(),
             ),
             ("read_batch_max", limits.read_batch_max.value.to_string()),
+            ("grep_batch_max", limits.grep_batch_max.value.to_string()),
             ("list_depth_max", limits.list_depth_max.value.to_string()),
             ("fs_batch_max", limits.fs_batch_max.value.to_string()),
         ];

@@ -5,6 +5,7 @@ use futures_util::future::BoxFuture;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
+use super::many::Many;
 use super::permissions;
 use super::{Check, Output, Refusal, Spec, Tool, ToolCx, parse, parse_or_fail, target};
 use std::path::Path;
@@ -26,7 +27,7 @@ static SPEC: LazyLock<Spec> = LazyLock::new(|| {
 struct Args {
     pattern: String,
     #[serde(default)]
-    path: Option<String>,
+    path: Option<Many<String>>,
     #[serde(default)]
     glob: Option<String>,
     #[serde(default)]
@@ -35,6 +36,20 @@ struct Args {
     context: usize,
     #[serde(default)]
     output: Shape,
+}
+
+impl Args {
+    fn paths(&self) -> Vec<&str> {
+        match &self.path {
+            None => vec!["."],
+            Some(Many::One(path)) => vec![path.as_str()],
+            Some(Many::Set(paths)) => paths
+                .iter()
+                .take(limits::get().tools.grep_batch_max.value)
+                .map(String::as_str)
+                .collect(),
+        }
+    }
 }
 
 /// What the search answers with.
@@ -56,9 +71,12 @@ impl Tool for Grep {
 
     fn check(&self, args: &Value, cx: &ToolCx<'_>) -> Result<Check, Refusal> {
         let args: Args = parse(args)?;
-        let root = target::resolve(&cx.app.paths, args.path.as_deref().unwrap_or("."))
-            .map_err(Refusal::Refused)?;
-        Ok(Check::new(target::asks(permissions::SEARCH.name, &root)))
+        let mut asks = Vec::new();
+        for path in args.paths() {
+            let root = target::resolve(&cx.app.paths, path).map_err(Refusal::Refused)?;
+            asks.extend(target::asks(permissions::SEARCH.name, &root));
+        }
+        Ok(Check::new(asks))
     }
 
     fn run<'a>(&'a self, args: Value, cx: &'a ToolCx<'a>) -> BoxFuture<'a, Output> {
@@ -67,18 +85,21 @@ impl Tool for Grep {
                 Ok(args) => args,
                 Err(out) => return out,
             };
-            let root = match target::resolve(&cx.app.paths, args.path.as_deref().unwrap_or(".")) {
-                Ok(root) => root,
-                Err(why) => return Output::error(why),
-            };
-            let base = io::fs::canonical(&cx.app.paths.project);
-            match root.kind() {
-                Ok(Kind::Missing) => {
-                    return Output::error(format!("{} does not exist.", root.shown));
+            let mut roots = Vec::new();
+            for path in args.paths() {
+                let root = match target::resolve(&cx.app.paths, path) {
+                    Ok(root) => root,
+                    Err(error) => return Output::error(error),
+                };
+                match root.kind() {
+                    Ok(Kind::Missing) => {
+                        return Output::error(format!("{} does not exist.", root.shown));
+                    }
+                    Err(error) => return Output::error(error),
+                    Ok(_) => roots.push(root.path),
                 }
-                Ok(_) => {}
-                Err(why) => return Output::error(why),
             }
+            let base = io::fs::canonical(&cx.app.paths.project);
             let limits = &limits::get().tools;
             let max = limits.max_results.value;
             let report = match args.output {
@@ -88,10 +109,9 @@ impl Tool for Grep {
                 Shape::Files => Report::Files,
                 Shape::Count => Report::Counts,
             };
-            let dir = root.path.clone();
             let searched = tokio::task::spawn_blocking(move || {
                 io::search::grep(&io::search::Grep {
-                    root: &dir,
+                    roots: &roots.iter().map(|p| p.as_path()).collect::<Vec<_>>(),
                     pattern: &args.pattern,
                     glob: args.glob.as_deref(),
                     ignore_case: args.ignore_case,
@@ -183,6 +203,32 @@ mod tests {
             )
             .await;
         assert_eq!(out.content, "src/a.rs:2: fn two() {}");
+    }
+
+    #[tokio::test]
+    async fn multiple_roots_are_searched_and_each_requires_permission() {
+        let project = Project::new();
+        project.write("a.txt", "hit\n");
+        project.write("b.txt", "hit\n");
+        let args = json!({"path": ["a.txt", "b.txt"], "pattern": "hit", "output": "files"});
+        assert_eq!(Grep.check(&args, &project.cx()).unwrap().asks.len(), 2);
+        let out = Grep.run(args, &project.cx()).await;
+        assert!(!out.is_error);
+        let mut files: Vec<_> = out.content.lines().collect();
+        files.sort();
+        assert_eq!(files, ["a.txt", "b.txt"]);
+        let external = Grep
+            .check(
+                &json!({"path": ["a.txt", "../outside"], "pattern": "hit"}),
+                &project.cx(),
+            )
+            .unwrap();
+        assert!(
+            external
+                .asks
+                .iter()
+                .any(|ask| ask.permission == permissions::EXTERNAL_DIRECTORY.name)
+        );
     }
 
     #[tokio::test]
