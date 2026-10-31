@@ -25,6 +25,10 @@ struct Cli {
     #[arg(long, global = true)]
     model: Option<String>,
 
+    /// Spend model-restricted promotional credit; paid credit is never a fallback.
+    #[arg(long, global = true)]
+    trial: bool,
+
     #[arg(long, global = true)]
     mode: Option<String>,
 
@@ -113,10 +117,13 @@ async fn dispatch(cli: Cli) -> anyhow::Result<ExitCode> {
         mode_override: cli.mode.is_some(),
     };
     let flags = Overrides {
-        model: cli.model,
+        model: cli
+            .model
+            .or_else(|| cli.trial.then(|| commands::trial::model().to_owned())),
         mode: cli.mode,
     };
     let mut app = App::load(&flags)?;
+    app.api.set_trial(cli.trial);
     let words = match cli.command {
         Some(Sub::Words(words)) => words,
         None => Vec::new(),

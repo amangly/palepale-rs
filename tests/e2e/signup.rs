@@ -190,3 +190,22 @@ async fn owner_export_is_explicit_private_and_never_overwrites_a_file() {
         );
     }
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn trial_commands_start_a_cli_bound_browser_flow_without_printing_secrets() {
+    let fake = Fake::start().await;
+    let sandbox = Sandbox::default();
+    sandbox.run(&fake.url, &["signup"], None).await.success();
+    for action in ["request", "redeem"] {
+        let output = sandbox.run(&fake.url, &["trial", action], None).await;
+        let text = output.success().stdout();
+        assert!(text.contains("verification in the browser"), "{text}");
+        assert!(!text.contains(crate::fake_palepale::OWNER_KEY));
+        assert!(!text.contains("bh_"));
+        assert!(!text.contains(&"n".repeat(43)));
+    }
+    assert_eq!(fake.hits("/v1/trial/flows"), 2);
+    assert_eq!(fake.hits("/v1/account/browser-handoffs"), 2);
+    let status = sandbox.run(&fake.url, &["trial"], None).await;
+    assert!(status.success().stdout().contains("1999000"));
+}

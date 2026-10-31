@@ -24,6 +24,7 @@ mod quit;
 mod sessions;
 mod signup;
 mod status;
+pub mod trial;
 mod uninstall;
 mod update;
 mod web;
@@ -231,6 +232,7 @@ pub static COMMANDS: &[&dyn Command] = &[
     &help::Help,
     &login::Login,
     &web::Web,
+    &trial::Trial,
     &logout::Logout,
     &signup::Signup,
     &status::Status,

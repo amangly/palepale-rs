@@ -171,8 +171,41 @@ pub async fn me(api: &Api) -> Result<Me, ApiError> {
             limits::get().http.request_timeout_ms.ms(),
         )
         .await?;
-    serde_json::from_slice(&resp.body)
-        .map_err(|e| ErrorInfo::local("bad_response", e.to_string()).into())
+    let mut me: Me = serde_json::from_slice(&resp.body)
+        .map_err(|e| ErrorInfo::local("bad_response", e.to_string()))?;
+    if api.uses_trial() {
+        let response = api
+            .call(
+                "trial",
+                Call::default(),
+                limits::get().http.request_timeout_ms.ms(),
+            )
+            .await?;
+        #[derive(Deserialize)]
+        struct Wallet {
+            balance: String,
+            available: String,
+            held: String,
+        }
+        #[derive(Deserialize)]
+        struct Trial {
+            available: bool,
+            wallet: Wallet,
+        }
+        let trial: Trial = serde_json::from_slice(&response.body)
+            .map_err(|e| ErrorInfo::local("bad_response", e.to_string()))?;
+        let amount = |s: &str| {
+            s.parse::<i64>()
+                .ok()
+                .filter(|v| *v >= 0)
+                .ok_or_else(|| ErrorInfo::local("bad_response", "Invalid trial balance"))
+        };
+        me.balance_microdollars = amount(&trial.wallet.balance)?;
+        me.available_microdollars = Some(amount(&trial.wallet.available)?);
+        me.reserved_microdollars = Some(amount(&trial.wallet.held)?);
+        me.can_spend = trial.available && me.available() > 0;
+    }
+    Ok(me)
 }
 
 #[cfg(test)]

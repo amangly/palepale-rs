@@ -35,7 +35,10 @@ pub async fn stream(
     if let Err(error) = crate::api::preflight::check(turn) {
         return message(turn, Vec::new(), Finish::Error, None, Some(error), None);
     }
-    let body = serde_json::to_value(request(turn)).expect("chat requests serialize");
+    let mut body = serde_json::to_value(request(turn)).expect("chat requests serialize");
+    if api.uses_trial() {
+        body["funding"] = serde_json::json!("trial");
+    }
     // Missing output does not prove that the provider rejected the paid request.
     attempt_once(api, turn, &body, cancel, on).await
 }

@@ -1,0 +1,11 @@
+name = "trial"
+summary = "Show trial credit or open its verified request and redemption page"
+usage = "trial [request|redeem]"
+requires_backend = true
+scope = ["cli"]
+
+[text]
+model = "deepseek-v4.1-flash-uncensored-zero-refusal"
+opened = "Opening your account for trial request or redemption. Complete verification in the browser."
+status = "Trial: {state}. Available promotional credit: {balance} microdollars. Model: {model}. Usage available: {available}. Run palepale --trial to spend trial credit, or palepale trial redeem to redeem in your browser."
+

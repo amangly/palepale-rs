@@ -226,3 +226,28 @@ title = "Reply interrupted"
 hint = "The text above is kept, but completion is unconfirmed. Tool calls from this reply were not run. Check account usage before retrying."
 retry = false
 warning = true
+
+[trial_paused]
+title = "Trial usage is paused"
+hint = "Check palepale trial for status. Shared daily capacity resets at 00:00 UTC. Paid funds are never used automatically."
+retry = false
+
+[trial_exhausted]
+title = "Trial credit cannot fund this request"
+hint = "Use palepale trial to check promotional credit. Start without --trial only if you choose to use paid funds."
+retry = false
+
+[trial_review]
+title = "Trial review required"
+hint = "Open your account and contact support with the trial application reference."
+retry = false
+
+[trial_invalid]
+title = "Trial code is invalid or expired"
+hint = "Open palepale trial redeem and use the code supplied in your private ticket."
+retry = false
+
+[trial_cli_required]
+title = "Start trial verification from your CLI"
+hint = "Run palepale trial request or palepale trial redeem, then complete the browser verification."
+retry = false

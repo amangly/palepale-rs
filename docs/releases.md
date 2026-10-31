@@ -1,5 +1,13 @@
 # Releases
 
+## v0.1.33 — 2026-10-31
+
+Adds CLI-started trial requests and redemption with browser verification. Promotional
+credit is restricted to DeepSeek and the originating CLI credential. Use
+`palepale trial` for current credit and `palepale --trial` for explicit trial
+funding. Exhaustion never retries against paid balance.
+
+
 ## v0.1.32 — 2026-10-31
 
 The agent can finish a successful tool batch without a separate closing request.

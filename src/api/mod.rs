@@ -29,6 +29,7 @@ pub struct Api {
     /// Shared by every clone, so logging in or out mid-session reaches all of them at once.
     key: Arc<RwLock<Option<String>>>,
     key_revision: Arc<AtomicU64>,
+    trial: bool,
     /// Replaces every origin; lets unit tests talk to a local fake.
     #[cfg(test)]
     base: Option<String>,
@@ -49,9 +50,17 @@ impl Api {
             http,
             key: Arc::new(RwLock::new(key)),
             key_revision: Arc::new(AtomicU64::new(0)),
+            trial: false,
             #[cfg(test)]
             base: None,
         }
+    }
+
+    pub fn set_trial(&mut self, trial: bool) {
+        self.trial = trial;
+    }
+    pub fn uses_trial(&self) -> bool {
+        self.trial
     }
 
     pub fn is_configured(&self) -> bool {
@@ -74,6 +83,7 @@ impl Api {
         Self {
             key: Arc::new(RwLock::new(Some(key))),
             key_revision: Arc::new(AtomicU64::new(0)),
+            trial: self.trial,
             ..self.clone()
         }
     }
@@ -97,6 +107,7 @@ impl Api {
             http,
             key: Arc::new(RwLock::new(Some(key.to_owned()))),
             key_revision: Arc::new(AtomicU64::new(0)),
+            trial: false,
             base: Some(base.to_owned()),
         }
     }

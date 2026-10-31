@@ -533,3 +533,30 @@ async fn headless_with_nothing_to_send_says_so() {
     assert!(run.stderr().contains("nothing to send"), "{}", run.stderr());
     assert_eq!(fake.hits("/v1/chat/completions"), 0);
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn trial_funding_is_explicit_and_never_retried_as_paid() {
+    let fake = Fake::start().await;
+    let mut catalog: Value =
+        serde_json::from_str(include_str!("../fixtures/api/models.json")).unwrap();
+    catalog["data"][0]["id"] = serde_json::json!("deepseek-v4.1-flash-uncensored-zero-refusal");
+    fake.model_lists([catalog.clone(), catalog]);
+    fake.script([Reply::Error {
+        status: 402,
+        kind: "trial_exhausted",
+        retry_after: None,
+    }]);
+    let sandbox = Sandbox::default();
+    let run = sandbox
+        .run(&fake.url, &["--trial", "--print", "hi"], WITH_KEY)
+        .await;
+    assert_eq!(run.code(), Some(1));
+    assert!(run.stderr().contains("Trial credit"), "{}", run.stderr());
+    let bodies = fake.chat_bodies();
+    assert_eq!(bodies.len(), 1);
+    assert_eq!(bodies[0]["funding"], "trial");
+    assert_eq!(
+        bodies[0]["model"],
+        "deepseek-v4.1-flash-uncensored-zero-refusal"
+    );
+}

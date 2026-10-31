@@ -103,6 +103,9 @@ impl Fake {
             .route("/v1/agent-profiles", get(agent_profiles))
             .route("/v1/chat/completions", post(chat))
             .route("/v1/account/summary", get(me))
+            .route("/v1/account/trial", get(trial_status))
+            .route("/v1/trial/flows", post(trial_flow))
+            .route("/v1/account/browser-handoffs", post(browser_handoff))
             .route("/v1/account/keys", get(keys).post(create_key))
             .route("/v1/account/keys/{reference}", delete(revoke_key))
             .route("/v1/account/usage/summary", get(overview))
@@ -325,6 +328,29 @@ async fn models(State(inner): State<Shared>) -> impl IntoResponse {
     ([(header::CONTENT_TYPE, "application/json")], body)
 }
 
+async fn trial_status(headers: HeaderMap) -> Response {
+    if !authorized(&headers) && !owner_authorized(&headers) {
+        return error(401, "unauthorized", None);
+    }
+    axum::Json(json!({"model":"deepseek-v4.1-flash-uncensored-zero-refusal","available":true,"application":{"state":"redeemed"},"wallet":{"balance":"2000000","available":"1999000","held":"1000"}})).into_response()
+}
+async fn trial_flow(headers: HeaderMap, body: String) -> Response {
+    if !authorized(&headers) {
+        return error(401, "unauthorized", None);
+    }
+    let value: Value = serde_json::from_str(&body).unwrap();
+    assert!(matches!(
+        value["action"].as_str(),
+        Some("trial_request" | "trial_redeem")
+    ));
+    axum::Json(json!({"flow":"n".repeat(43),"expires_in":600})).into_response()
+}
+async fn browser_handoff(headers: HeaderMap) -> Response {
+    if !owner_authorized(&headers) {
+        return error(401, "unauthorized", None);
+    }
+    axum::Json(json!({"code":format!("bh_{}","h".repeat(43))})).into_response()
+}
 async fn chat(State(inner): State<Shared>, headers: HeaderMap, body: String) -> Response {
     if !authorized(&headers) {
         return error(401, "invalid_api_key", None);

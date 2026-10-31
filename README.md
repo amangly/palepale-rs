@@ -74,3 +74,16 @@ Palepale checks for updates at interactive startup and verifies downloads before
 ## License
 
 Licensed under [Apache-2.0](LICENSE-APACHE). Copyright 2026 amangly. See [NOTICE](NOTICE).
+
+## Promotional trial
+
+`palepale trial` reads the server's current trial status and promotional balance.
+`palepale trial request` and `palepale trial redeem` open the account signed in
+with the owner access saved by this CLI. Only the CLI can start a trial claim or redemption. The grant is bound to that CLI credential. Complete verification in
+that browser; never put a redemption code or owner credential in shell arguments.
+
+After redemption, `palepale --trial` selects the eligible DeepSeek model and
+sends explicit trial funding. Paid balance is never an automatic fallback.
+The server enforces model eligibility, remaining credit and shared daily
+availability for every request. `palepale trial` refreshes the same balance shown
+on the website. Trial support requires the corresponding server release.
