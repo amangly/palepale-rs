@@ -105,6 +105,10 @@ pub async fn run(
     } else {
         None
     };
+    if let Some(model) = &model {
+        crate::api::preflight::check_trial(&model.id, app.api.uses_trial())
+            .map_err(|error| anyhow::anyhow!(error.message))?;
+    }
     let mode = start.mode(app, &transcript.state)?;
     let registry = Registry::builtin(app);
     let session_file = transcript.file().display().to_string();
@@ -1243,6 +1247,11 @@ impl<'a> Tui<'a> {
         let Some(model) = self.catalog.get(id).cloned() else {
             return;
         };
+        if let Err(error) = crate::api::preflight::check_trial(&model.id, self.app.api.uses_trial())
+        {
+            self.feed.notice(&error.message, "error");
+            return;
+        }
         if let Err(error) = model.preflight(&self.required_inputs, 0) {
             self.feed.notice(&error.to_string(), "error");
             return;
@@ -1851,6 +1860,39 @@ fn text_of(parts: &[Part]) -> String {
 mod account_tests {
     use super::*;
     use crate::api::error::ErrorInfo;
+
+    #[test]
+    fn trial_mode_does_not_switch_or_save_an_ineligible_model() {
+        let home = tempfile::tempdir().unwrap();
+        let mut app = App::for_tests(home.path());
+        app.api.set_trial(true);
+        let shared = Shared::new(mode::get(&app.settings.mode).unwrap());
+        let mut catalog = Catalog {
+            models: models::fixture(),
+            source: models::Source::Live,
+            fetched_at: None,
+            note: None,
+        };
+        catalog.models[0].id = commands::trial::model().to_owned();
+        let selected = catalog.models[0].clone();
+        let mut tui = Tui::new(
+            &app,
+            catalog,
+            Some(selected.clone()),
+            &shared,
+            None,
+            String::new(),
+        );
+        tui.switch_model("fake-coder", true);
+        assert_eq!(tui.model.as_ref().unwrap().id, selected.id);
+        assert!(tui.effort_picker.is_none());
+        assert!(crate::prefs::load(&app.paths).model.is_none());
+        assert!(
+            (0..100)
+                .filter_map(|i| tui.feed.copy_text(i))
+                .any(|text| text.contains("Trial") && text.contains("DeepSeek"))
+        );
+    }
 
     #[test]
     fn a_long_plan_is_kept_whole_in_the_scrollable_feed() {

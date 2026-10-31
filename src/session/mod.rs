@@ -14,7 +14,7 @@ pub struct Start {
 
 impl Start {
     pub fn model<'a>(&self, app: &'a crate::app::App, saved: &'a store::SavedState) -> &'a str {
-        if self.model_override || saved.model.is_empty() {
+        if self.model_override || app.api.uses_trial() || saved.model.is_empty() {
             &app.settings.model
         } else {
             &saved.model
@@ -38,5 +38,25 @@ impl Start {
         } else {
             &saved.system_prompt
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn trial_resume_uses_the_trial_model_instead_of_the_saved_paid_model() {
+        let home = tempfile::tempdir().unwrap();
+        let mut app = crate::app::App::for_tests(home.path());
+        app.settings.model = crate::commands::trial::model().to_owned();
+        let saved = store::SavedState {
+            model: "paid-model".into(),
+            ..Default::default()
+        };
+        let start = Start::default();
+        assert_eq!(start.model(&app, &saved), "paid-model");
+        app.api.set_trial(true);
+        assert_eq!(start.model(&app, &saved), crate::commands::trial::model());
     }
 }

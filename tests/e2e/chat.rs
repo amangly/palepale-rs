@@ -560,3 +560,76 @@ async fn trial_funding_is_explicit_and_never_retried_as_paid() {
         "deepseek-v4.1-flash-uncensored-zero-refusal"
     );
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn trial_rejects_an_explicit_paid_model_before_dispatch_without_affecting_paid_mode() {
+    let fake = Fake::start().await;
+    let mut catalog: Value =
+        serde_json::from_str(include_str!("../fixtures/api/models.json")).unwrap();
+    catalog["data"][0]["id"] = serde_json::json!("deepseek-v4.1-flash-uncensored-zero-refusal");
+    fake.model_lists([catalog.clone(), catalog]);
+    fake.script([Reply::sse("hello.sse")]);
+    let sandbox = Sandbox::default();
+    let run = sandbox
+        .run(
+            &fake.url,
+            &["--trial", "--model", "fake-coder", "--print", "hi"],
+            WITH_KEY,
+        )
+        .await;
+    assert_eq!(run.code(), Some(1));
+    assert!(
+        run.stderr().contains("only for DeepSeek"),
+        "{}",
+        run.stderr()
+    );
+    assert!(!run.stderr().contains("paused"), "{}", run.stderr());
+    assert_eq!(fake.hits("/v1/chat/completions"), 0);
+    sandbox
+        .run(
+            &fake.url,
+            &["--model", "fake-coder", "--print", "hi"],
+            WITH_KEY,
+        )
+        .await
+        .success();
+    let bodies = fake.chat_bodies();
+    assert_eq!(bodies.len(), 1);
+    assert_eq!(bodies[0]["model"], "fake-coder");
+    assert!(bodies[0].get("funding").is_none());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn continuing_a_paid_session_in_trial_mode_uses_the_eligible_model() {
+    let fake = Fake::start().await;
+    let mut catalog: Value =
+        serde_json::from_str(include_str!("../fixtures/api/models.json")).unwrap();
+    catalog["data"][0]["id"] = serde_json::json!("deepseek-v4.1-flash-uncensored-zero-refusal");
+    fake.model_lists([catalog.clone(), catalog]);
+    fake.script([Reply::sse("hello.sse"), Reply::sse("hello.sse")]);
+    let sandbox = Sandbox::default();
+    sandbox
+        .run(
+            &fake.url,
+            &["--model", "fake-coder", "--print", "first"],
+            WITH_KEY,
+        )
+        .await
+        .success();
+    sandbox
+        .run(
+            &fake.url,
+            &["--trial", "--continue", "--print", "continue"],
+            WITH_KEY,
+        )
+        .await
+        .success();
+    let bodies = fake.chat_bodies();
+    assert_eq!(bodies.len(), 2);
+    assert_eq!(bodies[0]["model"], "fake-coder");
+    assert_eq!(
+        bodies[1]["model"],
+        "deepseek-v4.1-flash-uncensored-zero-refusal"
+    );
+    assert_eq!(bodies[1]["funding"], "trial");
+}

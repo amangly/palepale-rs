@@ -157,6 +157,9 @@ impl Api {
         call: &Call<'a>,
         timeout: Duration,
     ) -> Result<Request<'a>, ApiError> {
+        if let Some(body) = call.body.filter(|body| body["funding"] == "trial") {
+            preflight::check_trial(body["model"].as_str().unwrap_or_default(), true)?;
+        }
         let endpoint = endpoints::get(id);
         #[cfg(test)]
         let configured = self.base.is_some() || !endpoints::origin(&endpoint.origin).is_empty();
@@ -196,5 +199,39 @@ impl Api {
             },
             timeout,
         })
+    }
+}
+
+#[cfg(test)]
+mod trial_tests {
+    use super::*;
+
+    #[test]
+    fn trial_model_is_checked_before_creating_a_network_request() {
+        let http = Http::new(Duration::from_secs(1)).unwrap();
+        let api = Api::redirected(http, "fixture-key", "http://127.0.0.1:1");
+        let body = serde_json::json!({"model":"paid-model","funding":"trial"});
+        let call = Call {
+            body: Some(&body),
+            ..Default::default()
+        };
+        let error = api
+            .request("chat", &call, Duration::from_secs(1))
+            .err()
+            .unwrap();
+        assert_eq!(error.info.kind, "trial_model");
+        assert_eq!(error.info.status, None);
+        let body = serde_json::json!({"model":"paid-model"});
+        assert!(
+            api.request(
+                "chat",
+                &Call {
+                    body: Some(&body),
+                    ..Default::default()
+                },
+                Duration::from_secs(1)
+            )
+            .is_ok()
+        );
     }
 }

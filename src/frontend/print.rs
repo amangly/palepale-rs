@@ -44,6 +44,8 @@ pub async fn run(
     let mut transcript = Transcript::open(&app.paths, &start.selection)?;
     // An explicit model must match the configured backend catalog.
     let model = catalog.selected(start.model(app, &transcript.state))?;
+    crate::api::preflight::check_trial(&model.id, app.api.uses_trial())
+        .map_err(|error| anyhow!(error.message))?;
     let mode = start.mode(app, &transcript.state)?;
     let selected_prompt = start.prompt(app, &transcript.state).to_owned();
     let system = system_prompt::headless(system_prompt::selected(app, model, &selected_prompt)?);

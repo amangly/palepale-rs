@@ -6,5 +6,7 @@ limits = "Model `{model}` has invalid context or output limits. Refresh the cata
 context = "This request is estimated at {tokens} input tokens plus {output} output tokens, beyond model `{model}`'s {context} token window. Start a new session or choose a larger model."
 effort = "Model `{model}` has inconsistent reasoning metadata. Refresh the catalog."
 inputs_unknown = "inputs unknown"
+trial_model = "deepseek-v4.1-flash-uncensored-zero-refusal"
+trial_only = "Trial credit is only for DeepSeek V4.1 Flash 1017 Uncensored. Model `{model}` is not eligible."
 bytes_per_token = 3
 message_overhead_tokens = 16

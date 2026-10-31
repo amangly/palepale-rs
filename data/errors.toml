@@ -232,6 +232,11 @@ title = "Trial usage is paused"
 hint = "Check palepale trial for status. Shared daily capacity resets at 00:00 UTC. Paid funds are never used automatically."
 retry = false
 
+[trial_model]
+title = "Model is not eligible for trial"
+hint = "Choose the DeepSeek trial model. Restart without --trial only if you choose paid funding."
+retry = false
+
 [trial_exhausted]
 title = "Trial credit cannot fund this request"
 hint = "Use palepale trial to check promotional credit. Start without --trial only if you choose to use paid funds."

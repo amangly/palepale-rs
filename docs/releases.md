@@ -1,5 +1,12 @@
 # Releases
 
+## v0.1.37 — 2026-10-31
+
+Trial sessions reject ineligible models before switching, saving a default or
+sending a request. The error identifies the DeepSeek restriction. Resuming a
+conversation in trial mode keeps the eligible model. Paid mode keeps its model
+choices, and trial requests never fall back to paid funds.
+
 ## v0.1.36 — 2026-10-31
 
 `palepale trial` connects the account when needed, waits for browser verification,

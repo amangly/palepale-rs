@@ -94,3 +94,6 @@ After redemption, `palepale --trial` selects the eligible DeepSeek model and
 sends signed requests with explicit trial funding. Paid balance is never an
 automatic fallback. The server checks model eligibility, device authorization,
 remaining credit and shared daily capacity for every request.
+
+Trial mode keeps the eligible DeepSeek model selected. Other model selections are
+rejected before a request is sent. Start without `--trial` to choose paid funding.

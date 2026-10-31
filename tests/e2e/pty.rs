@@ -57,6 +57,60 @@ fn contains_number(text: &str, number: &str) -> bool {
         .any(|part| part == number)
 }
 
+#[tokio::test(flavor = "multi_thread")]
+async fn trial_model_switch_keeps_deepseek_and_never_saves_or_dispatches_the_paid_choice() {
+    let fake = Fake::start().await;
+    let mut catalog: serde_json::Value =
+        serde_json::from_str(include_str!("../fixtures/api/models.json")).unwrap();
+    catalog["data"][0]["id"] = serde_json::json!("deepseek-v4.1-flash-uncensored-zero-refusal");
+    fake.model_lists([catalog.clone(), catalog]);
+    fake.script([Reply::sse("hello.sse")]);
+    let sandbox = Sandbox::default();
+    let url = fake.url.clone();
+    tokio::task::spawn_blocking(move || {
+        let mut session = Session::start_as(&sandbox, &url, Some(ENV_KEY), &["--trial"]);
+        session.wait_for("AUTO");
+        session.type_text("/models");
+        session.send("\r");
+        session.wait_for("┌ Models");
+        session.send("\x1b[B");
+        session.send("\r");
+        session.wait_for("only for DeepSeek");
+        assert!(
+            !session.contents().contains("Saved as your default"),
+            "{}",
+            session.contents()
+        );
+        assert!(
+            session.bottom_row().contains("deepseek-v4.1"),
+            "{}",
+            session.contents()
+        );
+        session.type_text("trial-model-marker");
+        session.send("\r");
+        session.wait_for("Hello there!");
+        session.send("\x04");
+        assert!(session.wait_exit());
+        let prefs = sandbox.home().join("prefs.json");
+        if prefs.exists() {
+            assert!(
+                !std::fs::read_to_string(prefs)
+                    .unwrap()
+                    .contains("fake-coder")
+            );
+        }
+    })
+    .await
+    .unwrap();
+    let bodies = fake.chat_bodies();
+    assert_eq!(bodies.len(), 1);
+    assert_eq!(
+        bodies[0]["model"],
+        "deepseek-v4.1-flash-uncensored-zero-refusal"
+    );
+    assert_eq!(bodies[0]["funding"], "trial");
+}
+
 #[test]
 fn credential_checks_match_whole_numbers_without_matching_timestamps() {
     assert!(!contains_number("17:24:33.7901278Z", "9012"));

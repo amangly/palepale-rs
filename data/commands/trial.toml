@@ -5,7 +5,6 @@ requires_backend = true
 scope = ["cli"]
 
 [text]
-model = "deepseek-v4.1-flash-uncensored-zero-refusal"
 opened = "Completing verification in the browser. Keep this terminal open."
 status = "Trial: {state}. Available credit: {balance}. Model: {model}. Service available: {available}."
 

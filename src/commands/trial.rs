@@ -12,7 +12,6 @@ const SOURCE: &str = include_str!("../../data/commands/trial.toml");
 static SPEC: LazyLock<Spec> = LazyLock::new(|| Spec::parse(SOURCE));
 #[derive(Deserialize)]
 struct Text {
-    model: String,
     opened: String,
     status: String,
     code_prompt: String,
@@ -41,7 +40,7 @@ struct Config {
 }
 static CONFIG: LazyLock<Config> = LazyLock::new(|| toml::from_str(SOURCE).expect("trial settings"));
 pub fn model() -> &'static str {
-    &CONFIG.text.model
+    &crate::api::preflight::config().trial_model
 }
 
 async fn start(cx: &Ctx<'_>, action: &str) -> anyhow::Result<String> {
@@ -161,10 +160,7 @@ async fn read_status(api: &Api) -> anyhow::Result<Status> {
         )
         .await?;
     let status: Status = serde_json::from_slice(&response.body)?;
-    anyhow::ensure!(
-        status.model == CONFIG.text.model,
-        CONFIG.text.invalid_status.clone()
-    );
+    anyhow::ensure!(status.model == model(), CONFIG.text.invalid_status.clone());
     Ok(status)
 }
 async fn status(api: &Api) -> anyhow::Result<String> {
