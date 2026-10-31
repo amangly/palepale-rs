@@ -32,13 +32,7 @@ pub fn text() -> &'static Text {
     &TEXT
 }
 
-pub fn hash(bytes: &[u8]) -> String {
-    use sha2::{Digest, Sha256};
-    Sha256::digest(bytes)
-        .iter()
-        .map(|byte| format!("{byte:02x}"))
-        .collect()
-}
+pub use crate::text::digest::sha256_hex as hash;
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]

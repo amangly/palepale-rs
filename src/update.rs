@@ -7,6 +7,7 @@ use anyhow::{Context, anyhow, bail};
 use futures_util::StreamExt;
 use jiff::{SignedDuration, Timestamp};
 use serde::{Deserialize, Serialize};
+#[cfg(test)]
 use sha2::{Digest, Sha256};
 
 use crate::api::endpoints;
@@ -389,10 +390,7 @@ fn matches(bytes: &[u8], sums: &str, name: &str) -> bool {
         let (hex, file) = line.split_once(char::is_whitespace)?;
         (file.trim_start().trim_start_matches('*') == name).then(|| hex.to_lowercase())
     });
-    let got: String = Sha256::digest(bytes)
-        .iter()
-        .map(|b| format!("{b:02x}"))
-        .collect();
+    let got = crate::text::digest::sha256_hex(bytes);
     want.is_some_and(|want| want == got)
 }
 

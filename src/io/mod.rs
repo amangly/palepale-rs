@@ -3,6 +3,7 @@
 
 pub mod clipboard;
 pub mod clock;
+pub mod decompile_cache;
 pub mod exec;
 pub mod fetch;
 pub mod fs;

@@ -41,6 +41,10 @@ impl Paths {
         self.home.join("cache").join("models.json")
     }
 
+    pub fn decompile_cache(&self) -> PathBuf {
+        self.home.join("cache").join("decompile")
+    }
+
     /// Full tool output too long to show, kept for the model to read.
     pub fn tmp_dir(&self) -> PathBuf {
         self.home.join("tmp")
@@ -79,11 +83,7 @@ impl Paths {
     }
 
     pub fn snapshots_dir(&self, work: &Path) -> PathBuf {
-        use sha2::{Digest, Sha256};
-        let key: String = Sha256::digest(work.to_string_lossy().as_bytes())
-            .iter()
-            .map(|byte| format!("{byte:02x}"))
-            .collect();
+        let key = crate::text::digest::sha256_hex(work.to_string_lossy().as_bytes());
         self.home.join("snapshots").join(key)
     }
 }

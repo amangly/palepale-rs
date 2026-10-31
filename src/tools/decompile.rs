@@ -65,9 +65,22 @@ impl Tool for Decompile {
                 Ok(target) => target,
                 Err(error) => return Output::error(error),
             };
+            let argv = args.argv(target.path.to_string_lossy().into_owned());
+            let cached = io::decompile_cache::file(&cx.app.paths, &program, &target.path, &argv);
+            if let Some(answer) = cached.as_deref().and_then(io::decompile_cache::get) {
+                return render(
+                    io::exec::Captured {
+                        code: Some(0),
+                        stdout: answer.into_bytes(),
+                        stderr: vec![],
+                    },
+                    &target.shown,
+                    args.function.is_some(),
+                );
+            }
             let captured = io::exec::exec(&io::exec::Program {
                 program: &program,
-                args: &args.argv(target.path.to_string_lossy().into_owned()),
+                args: &argv,
                 cwd: &cx.app.paths.project,
                 env: &[],
                 unset: super::shell::unset(),
@@ -75,7 +88,17 @@ impl Tool for Decompile {
             })
             .await;
             match captured {
-                Ok(captured) => render(captured, &target.shown, args.function.is_some()),
+                Ok(captured) => {
+                    if captured.ok()
+                        && let Some(file) = &cached
+                        && io::decompile_cache::file(&cx.app.paths, &program, &target.path, &argv)
+                            .as_ref()
+                            == Some(file)
+                    {
+                        io::decompile_cache::put(file, &String::from_utf8_lossy(&captured.stdout));
+                    }
+                    render(captured, &target.shown, args.function.is_some())
+                }
                 Err(error) => Output::error(fill(
                     &TEXT.failed,
                     &[("binary", &target.shown), ("error", &error.to_string())],
