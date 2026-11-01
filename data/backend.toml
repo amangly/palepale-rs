@@ -1,0 +1,5 @@
+disconnected = "backend not configured"
+connected = "backend configured"
+unavailable = "Backend not configured. Unset PALEPALE_OFFLINE or set PALEPALE_API_URL to connect."
+accounts_deferred = "Account access requires a configured backend."
+releases_unconfigured = "Palepale updates are disabled until an owned release endpoint is configured."

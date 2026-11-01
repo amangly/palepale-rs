@@ -1,0 +1,2 @@
+blocked_modes = ["plan"]
+blocked = "Use plan_exit to hand over the plan for review before finishing."

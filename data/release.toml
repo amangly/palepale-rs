@@ -1,0 +1,26 @@
+# Which file of a release each platform runs, by Rust's names for the OS and CPU
+# (std::env::consts). The release workflow names its assets `palepale-<target>`; a test holds
+# these to the targets .github/workflows/ci.yml builds.
+repository = "amangly/palepale-rs"
+sums = "SHA256SUMS"
+
+# Add a release public key before enabling signed publication; see docs/releases.md.
+[signing]
+file = "SHA256SUMS.minisig"
+keys = []
+comment = "palepale release {tag}"
+
+[[asset]]
+os = "linux"
+arch = "x86_64"
+file = "palepale-x86_64-unknown-linux-musl"
+
+[[asset]]
+os = "macos"
+arch = "aarch64"
+file = "palepale-aarch64-apple-darwin"
+
+[[asset]]
+os = "windows"
+arch = "x86_64"
+file = "palepale-x86_64-pc-windows-msvc.exe"

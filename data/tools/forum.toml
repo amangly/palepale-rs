@@ -1,0 +1,6 @@
+# What the forum tools say back; {placeholders} are filled in.
+no_forums = "No forums have been added yet. The user can add one with /forums."
+unknown = "No forum matches {forum}. Call forum_sections with no arguments to see the forums you can browse."
+no_subject = "A new topic needs a subject."
+posted = "Posted to {forum}.{extra}"
+cut = "[Cut at {kept} of {total} lines.]"

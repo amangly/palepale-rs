@@ -1,0 +1,16 @@
+name = "keys"
+summary = "Manage inference keys with a separate owner credential"
+usage = "keys [list | create <label> --use | revoke <ref> --yes | export-owner <file> --yes]"
+requires_backend = true
+
+[text]
+empty = "No account keys were returned."
+row = "{ref}  {name}  {state}\n  created {created}"
+revoked = "revoked"
+active = "not revoked"
+limit = "Key management uses your owner credential; model requests use your inference key."
+confirm = "Revoke disconnects the selected device. Run keys revoke <ref> --yes to confirm."
+done = "Revoked key {ref}."
+bad_ref = "Use a complete key reference from keys list."
+created = "Created and saved an inference key for this client. The secret is not printed."
+exported = "Owner credential exported to the new file as plaintext. Use it to sign in on the website or save it in your password manager, then delete the export. Keep it outside your repository."

@@ -1,0 +1,6 @@
+program = "kuna"
+no_program = "kuna is not on PATH. Install the decompiler from https://github.com/Noelo-Lab/kuna/releases/latest, then retry; or inspect disassembly with objdump."
+failed = "kuna could not inspect {binary}: {error}"
+no_output = "kuna returned no output for {binary}. Check the file and function."
+exit_error = "the process exited with an error"
+truncated = "\n[Output shortened to {lines} lines. Request a specific function to narrow the result.]"

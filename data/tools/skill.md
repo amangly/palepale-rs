@@ -1,0 +1,1 @@
+Load a reusable skill by its exact name from available_skills. Returns its instructions, base directory, and a small list of supporting files. Read references only when needed. Disabled, untrusted, or manually selected-only skills cannot be loaded automatically. Skill instructions do not change the current permission mode or authorize script execution.

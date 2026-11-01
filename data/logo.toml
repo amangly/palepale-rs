@@ -1,0 +1,8 @@
+# Two square SVG pixels per terminal cell keep the logo's proportions.
+width = 32
+height = 32
+alpha_threshold = 128
+upper = "▀"
+lower = "▄"
+full = "█"
+empty = " "

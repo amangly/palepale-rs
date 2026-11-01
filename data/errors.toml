@@ -1,0 +1,268 @@
+# How the client treats each error. Keys are palepale's `error.type`, plus our own kinds for
+# failures that never reached palepale. `retry` says whether an error is worth trying again
+# on retryable reads; paid chat is always dispatched once, regardless of status.
+
+[invalid_request]
+title = "The gateway cannot accept this request"
+hint = "Refresh the model catalog and check its supported limits and capabilities."
+retry = false
+
+[unauthorized]
+title = "This credential cannot authorize the request"
+hint = "Use a Palepale inference key for chat. Account management requires an owner credential."
+retry = false
+
+[forbidden]
+title = "This credential cannot perform that operation"
+retry = false
+
+[conflict]
+title = "This operation conflicts with an existing request"
+hint = "Check account usage before submitting another paid request."
+retry = false
+
+[insufficient_credit]
+title = "Out of available credit"
+hint = "Check the wallet and held credit in your Palepale account."
+retry = false
+
+[unavailable]
+after_output = true
+title = "The gateway could not complete this request"
+hint = "Check account usage before trying again; a provider may already have accepted it."
+retry = false
+
+[pending_usage]
+after_output = true
+title = "Usage needs reconciliation"
+hint = "Credit remains held. Keep the request ID for support and do not retry automatically."
+retry = false
+
+[capacity_limited]
+title = "The gateway is at capacity"
+hint = "Wait for the Retry-After delay before trying again."
+retry = true
+retry_after_required = true
+
+[quota_exceeded]
+title = "A usage limit has been reached"
+hint = "Check account limits and current model availability before trying again."
+retry = false
+
+[unknown]
+title = "Request failed"
+
+[incompatible_request]
+title = "This model cannot accept the request"
+retry = false
+
+[context_budget]
+title = "This conversation exceeds the model context window"
+retry = false
+
+# Any status: a body that is not palepale's envelope (a proxy's page, say).
+[http_error]
+title = "palepale answered with an error"
+
+[network]
+after_output = true
+title = "Could not reach palepale"
+hint = "Check your connection and PALEPALE_API_URL."
+retry = true
+
+[timeout]
+after_output = true
+title = "palepale took too long to answer"
+retry = true
+
+[response_body]
+after_output = true
+title = "The response was interrupted during transfer"
+hint = "Completion is unconfirmed. Check account usage before submitting again."
+retry = false
+
+[idle_timeout]
+after_output = true
+title = "The response stalled"
+retry = true
+
+[stream_ended]
+after_output = true
+title = "The response ended early"
+retry = true
+
+[bad_stream]
+after_output = true
+title = "palepale sent something unreadable"
+
+[not_logged_in]
+title = "Not logged in"
+hint = "Set PALEPALE_API_KEY for your configured backend. Server authentication will be added later."
+
+[bad_request]
+title = "palepale rejected the request"
+
+[invalid_api_key]
+title = "Your key was not accepted"
+hint = "Check PALEPALE_API_KEY for your configured backend."
+
+[account_disabled]
+title = "This account is frozen"
+hint = "Contact the operator of your configured backend."
+
+[insufficient_balance]
+title = "Out of funds"
+hint = "Contact your configured backend about account access."
+
+[plan_allowance_spent]
+title = "Your plan's allowance is used up for now"
+hint = "Check the allowance with your configured backend."
+
+[model_not_found]
+title = "That model is not being served"
+hint = "Pick a live one from `palepale models`."
+
+[body_too_large]
+title = "The request is over palepale's 16 MiB limit"
+hint = "Start a new session; this one has grown too long to send."
+
+[rate_limited]
+title = "Too many requests at once"
+retry = true
+
+[tool_error]
+title = "A palepale tool failed upstream"
+retry = false
+
+[no_model]
+title = "No models are live right now"
+retry = true
+
+[no_provider]
+title = "That model's upstream is not configured"
+hint = "Pick another model from `palepale models`."
+retry = false
+
+[no_price]
+title = "That model has no price quote yet"
+retry = true
+
+[price_fault]
+title = "That model is off sale while its price settles"
+hint = "Pick another model from `palepale models`."
+retry = false
+
+[upstream_unavailable]
+after_output = true
+title = "The model's upstream is unavailable"
+hint = "palepale's side, not yours; try again or pick another model."
+retry = true
+
+[model_unavailable]
+title = "This model is temporarily unavailable"
+hint = "Use /models to pick another model."
+retry = false
+
+[model_busy]
+title = "This model needs a moment"
+hint = "Keep this conversation. If automatic retries finish, try again or use /models to switch."
+retry = true
+retry_after_required = true
+
+[profile_unavailable]
+title = "This coding profile is unavailable"
+hint = "Use /godmode off, or choose another profile with /godmode."
+retry = false
+
+# An accepted streaming failure has no retryable status; never assume refusal.
+[upstream_error]
+after_output = true
+title = "The model response failed"
+
+[output_limit_exceeded]
+after_output = true
+title = "The model exceeded the request's output limit"
+hint = "The request was stopped; billing is pending review."
+retry = false
+
+[content_filter]
+title = "The model's content filter stopped the reply"
+hint = "Rephrase, or try another model."
+
+[bad_response]
+title = "palepale sent a reply this version cannot read"
+hint = "Update palepale; the API may have moved on."
+
+[pair_expired]
+title = "The pairing code expired or was already used"
+hint = "Log in again for a fresh code."
+
+[slow_down]
+title = "Wait before checking this pairing again"
+retry = true
+
+[pow_required]
+title = "The proof of work expired before it was used"
+
+[pow_too_hard]
+title = "palepale asked for more work than this machine will do"
+hint = "Many signups came from this address; try again later."
+
+[tool_unavailable]
+title = "That palepale tool is off right now"
+retry = true
+
+[unsupported_tool_call]
+title = "This model route has no tool support"
+retry = false
+
+[backend_unconfigured]
+title = "Backend not configured"
+hint = "Connect your Palepale server with PALEPALE_API_URL when it is ready."
+retry = false
+
+[reply_interrupted]
+title = "Reply interrupted"
+hint = "The text above is kept, but completion is unconfirmed. Tool calls from this reply were not run. Check account usage before retrying."
+retry = false
+warning = true
+
+[trial_paused]
+title = "Trial usage is paused"
+hint = "Check palepale trial for status. Shared daily capacity resets at 00:00 UTC. Paid funds are never used automatically."
+retry = false
+
+[trial_model]
+title = "Model is not eligible for trial"
+hint = "Choose the DeepSeek trial model. Restart without --trial only if you choose paid funding."
+retry = false
+
+[trial_exhausted]
+title = "Trial credit cannot fund this request"
+hint = "Use palepale trial to check promotional credit. Start without --trial only if you choose to use paid funds."
+retry = false
+
+[trial_review]
+title = "Trial review required"
+hint = "Open your account and contact support with the trial application reference."
+retry = false
+
+[trial_invalid]
+title = "Trial code is invalid or expired"
+hint = "Open palepale trial redeem and use the code supplied in your private ticket."
+retry = false
+
+[trial_cli_required]
+title = "Start trial verification from your CLI"
+hint = "Run palepale trial request or palepale trial redeem, then complete the browser verification."
+retry = false
+
+[trial_device_required]
+title = "Trial device authorization required"
+hint = "Update Palepale CLI and use the original registered device. Restore protected local state or contact support if it was lost. Paid funds are never used automatically."
+retry = false
+
+[budget_exceeded]
+title = "Spending cap reached"
+hint = "Pending requests count toward your cap. Reduce the output budget, increase the cap explicitly, or start a new run if its budget expired."
+retry = false

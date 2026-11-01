@@ -1,0 +1,99 @@
+name: release
+# Publish verified source versions only.
+
+# Every push to prod verifies the source and publishes a release in this repository.
+on:
+  push:
+    branches: [prod]
+
+# Releases go out one at a time, in push order.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  # The tag is worked out once: the release builds carry it (`palepale --version`, the updater)
+  # and the release is published under it.
+  tag:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check release repository
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          repo=$(sed -n 's/^repository = "\([^"]*\)"$/\1/p' data/release.toml)
+          test "$repo" = "$GITHUB_REPOSITORY"
+      - id: tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n 1)
+          tag="v$version"
+          tags=$(gh api "repos/$GITHUB_REPOSITORY/git/matching-refs/tags/$tag" --jq '.[].ref')
+          if printf '%s\n' "$tags" | grep -Fxq "refs/tags/$tag"; then
+            echo "Release tag $tag already exists. Bump the package version before publishing."
+            exit 1
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+  check:
+    needs: tag
+    uses: ./.github/workflows/ci.yml
+    with:
+      publish: true
+      release: ${{ needs.tag.outputs.tag }}
+
+  publish:
+    needs: [tag, check]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - run: cd dist && sha256sum palepale-* > SHA256SUMS
+      - name: Sign checksum manifest when a release key is configured
+        env:
+          PALEPALE_SIGNING_KEY: ${{ secrets.PALEPALE_SIGNING_KEY }}
+          TAG: ${{ needs.tag.outputs.tag }}
+        run: |
+          python3 - <<'PY'
+          import os, pathlib, tomllib
+          signing = tomllib.loads(pathlib.Path('data/release.toml').read_text())['signing']
+          keys = signing['keys']
+          secret = os.environ.get('PALEPALE_SIGNING_KEY', '')
+          if bool(keys) != bool(secret):
+              raise SystemExit('Configure both signing.keys and PALEPALE_SIGNING_KEY before publishing.')
+          if keys:
+              path = pathlib.Path(os.environ['RUNNER_TEMP']) / 'release.key'
+              path.touch(mode=0o600)
+              path.write_text(secret)
+              pathlib.Path(os.environ['RUNNER_TEMP'], 'release.pub').write_text(keys[0])
+          PY
+          key="$RUNNER_TEMP/release.key"
+          if test -f "$key"; then
+            trap 'rm -f "$key" "$RUNNER_TEMP/release.pub"' EXIT
+            sudo apt-get update -qq
+            sudo apt-get install -y minisign
+            minisign -S -s "$key" -m dist/SHA256SUMS -t "palepale release $TAG"
+            minisign -V -P "$(cat "$RUNNER_TEMP/release.pub")" -m dist/SHA256SUMS
+          fi
+      - run: cp LICENSE-APACHE NOTICE dist/
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.tag.outputs.tag }}
+        run: |
+          repo=$(sed -n 's/^repository = "\([^"]*\)"$/\1/p' data/release.toml)
+          # Draft assets remain invisible until every platform and checksum has uploaded.
+          gh release create "$TAG" dist/* --repo "$repo" --target "$GITHUB_SHA" --draft --title "$TAG" \
+            --notes 'Palepale CLI for Windows, macOS and Linux. Run palepale to check for updates automatically. Use /status for session details and account usage. Verify downloads with SHA256SUMS.'
+          gh release edit "$TAG" --repo "$repo" --draft=false --latest

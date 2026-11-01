@@ -1,0 +1,8 @@
+name = "opencode"
+summary = "Connect OpenCode to your Palepale account"
+usage = "opencode"
+requires_backend = true
+scope = ["cli"]
+
+[text]
+ready = "OpenCode connected. Run opencode and select a Palepale model."

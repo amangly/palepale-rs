@@ -1,0 +1,1 @@
+Inspect a compiled executable or object file with the kuna decompiler. Give `binary` alone to list functions, then supply a function name or `0x` address to request C pseudocode. The executable must already be on PATH. If it is unavailable, use a local disassembler through bash.

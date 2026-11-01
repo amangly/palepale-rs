@@ -1,0 +1,6 @@
+data: {"choices":[{"index":0,"delta":{"content":"Preparing the file.","tool_calls":[{"index":0,"id":"unconfirmed","type":"function","function":{"name":"write","arguments":"{\"path\":\"unconfirmed.txt\",\"content\":\"x\"}"}}]}}]}
+
+data: {"error":{"type":"pending_usage","message":"Final usage could not be confirmed."}}
+
+data: [DONE]
+

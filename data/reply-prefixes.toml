@@ -1,0 +1,5 @@
+# Any leading bracketed profile label; only hidden with godmode selected.
+pattern = '^\s*\[[^\[\]\r\n]+\]'
+partial_pattern = '^\s*(\[[^\[\]\r\n]*)?$'
+# Stop buffering malformed or unusually long labels so replies keep streaming.
+max_pending_bytes = 4096

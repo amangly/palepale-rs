@@ -1,0 +1,7 @@
+env = "PALEPALE_OWNER_CREDENTIAL"
+file = "owner.json"
+lock = "owner.lock"
+busy = "Another signup is using this account folder. Wait for it to finish before trying again."
+required = "Account management requires an owner credential. Set PALEPALE_OWNER_CREDENTIAL privately, or use the owner credential saved by palepale signup. Your inference key cannot manage accounts."
+invalid = "Expected a po_ owner credential. Inference keys and browser sessions cannot be used for owner management."
+inference_only = "Use a pk_ inference key for login. Owner credentials and browser sessions cannot authorize chat."

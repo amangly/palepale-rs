@@ -1,0 +1,1 @@
+{"type":"object","properties":{"server":{"type":"string","minLength":1},"action":{"type":"string","enum":["list","get"]},"name":{"type":"string"},"arguments":{"type":"object","additionalProperties":{"type":"string"}}},"required":["server","action"],"additionalProperties":false}

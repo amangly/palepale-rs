@@ -1,0 +1,321 @@
+//! palepale's HTTP surface: endpoint catalog, typed errors, and one call path for every request.
+
+pub mod account;
+pub mod agent_profiles;
+pub mod assemble;
+pub mod chat;
+mod decimal;
+pub mod endpoints;
+pub mod error;
+pub mod models;
+pub mod pair;
+pub mod preflight;
+mod reply_prefix;
+pub mod retry;
+pub mod signup;
+pub mod sse;
+pub mod wire;
+
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, RwLock};
+use std::time::Duration;
+
+use crate::io::http::{Http, Request, Response, Streaming};
+use error::ApiError;
+
+struct RunBudgetState {
+    amount: String,
+    issued: Option<(String, u64)>,
+}
+
+#[derive(Clone)]
+pub struct Api {
+    http: Http,
+    /// Shared by every clone, so logging in or out mid-session reaches all of them at once.
+    key: Arc<RwLock<Option<String>>>,
+    key_revision: Arc<AtomicU64>,
+    trial: bool,
+    trial_home: Option<std::path::PathBuf>,
+    run_budget: Option<Arc<tokio::sync::Mutex<RunBudgetState>>>,
+    /// Replaces every origin; lets unit tests talk to a local fake.
+    #[cfg(test)]
+    base: Option<String>,
+}
+
+/// One call: the endpoint id from data/endpoints.toml and what fills it in.
+#[derive(Default)]
+pub struct Call<'a> {
+    /// Values for the endpoint path's `{placeholders}`.
+    pub args: &'a [(&'a str, &'a str)],
+    pub headers: &'a [(&'a str, &'a str)],
+    pub body: Option<&'a serde_json::Value>,
+}
+
+impl Api {
+    pub fn new(http: Http, key: Option<String>) -> Self {
+        Self {
+            http,
+            key: Arc::new(RwLock::new(key)),
+            key_revision: Arc::new(AtomicU64::new(0)),
+            trial: false,
+            trial_home: None,
+            run_budget: None,
+            #[cfg(test)]
+            base: None,
+        }
+    }
+
+    pub fn set_trial(&mut self, trial: bool) {
+        self.trial = trial;
+    }
+
+    pub fn set_budget(&mut self, amount: String) {
+        self.run_budget = Some(Arc::new(tokio::sync::Mutex::new(RunBudgetState {
+            amount,
+            issued: None,
+        })));
+    }
+
+    pub async fn budget_id(&self) -> Result<Option<String>, ApiError> {
+        let Some(state) = &self.run_budget else {
+            return Ok(None);
+        };
+        let mut state = state.lock().await;
+        let revision = self.key_revision();
+        if let Some((id, original)) = &state.issued {
+            if *original != revision {
+                return Err(error::ErrorInfo::local(
+                    "budget_exceeded",
+                    "Login changed. Start a new run to create its spending budget.",
+                )
+                .into());
+            }
+            return Ok(Some(id.clone()));
+        }
+        let body = serde_json::json!({"amount":state.amount});
+        let response = self
+            .call(
+                "run_budget",
+                Call {
+                    body: Some(&body),
+                    ..Call::default()
+                },
+                Duration::from_secs(15),
+            )
+            .await?;
+        let value: serde_json::Value = serde_json::from_slice(&response.body)
+            .map_err(|_| error::ErrorInfo::local("bad_response", "Invalid run budget response"))?;
+        let id = value["id"]
+            .as_str()
+            .filter(|s| {
+                s.len() == 36
+                    && s.bytes().enumerate().all(|(i, b)| {
+                        if [8, 13, 18, 23].contains(&i) {
+                            b == b'-'
+                        } else {
+                            b.is_ascii_hexdigit()
+                        }
+                    })
+            })
+            .ok_or_else(|| {
+                error::ErrorInfo::local("bad_response", "Invalid run budget response")
+            })?;
+        if revision != self.key_revision() {
+            return Err(error::ErrorInfo::local(
+                "budget_exceeded",
+                "Login changed. Start a new run.",
+            )
+            .into());
+        }
+        state.issued = Some((id.to_owned(), revision));
+        Ok(Some(id.to_owned()))
+    }
+    pub fn with_trial_home(mut self, home: std::path::PathBuf) -> Self {
+        self.trial_home = Some(home);
+        self
+    }
+    pub fn uses_trial(&self) -> bool {
+        self.trial
+    }
+
+    pub fn is_configured(&self) -> bool {
+        #[cfg(test)]
+        if self.base.is_some() {
+            return true;
+        }
+        !endpoints::origin("api").is_empty()
+    }
+
+    /// Replaces the key for this client and every clone of it.
+    pub fn set_key(&self, key: Option<String>) {
+        let mut current = self.key.write().unwrap_or_else(|e| e.into_inner());
+        *current = key;
+        self.key_revision.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// A separate client acting as another key, e.g. to check a key before saving it.
+    pub fn with_key(&self, key: String) -> Self {
+        Self {
+            key: Arc::new(RwLock::new(Some(key))),
+            key_revision: Arc::new(AtomicU64::new(0)),
+            trial: self.trial,
+            run_budget: None,
+            ..self.clone()
+        }
+    }
+
+    fn key(&self) -> Option<String> {
+        self.key.read().unwrap_or_else(|e| e.into_inner()).clone()
+    }
+
+    pub fn has_key(&self) -> bool {
+        self.key().is_some()
+    }
+
+    /// Rejects account checks completed after login or logout replaced their credential.
+    pub fn key_revision(&self) -> u64 {
+        self.key_revision.load(Ordering::Relaxed)
+    }
+
+    #[cfg(test)]
+    pub fn redirected(http: Http, key: &str, base: &str) -> Self {
+        Self {
+            http,
+            key: Arc::new(RwLock::new(Some(key.to_owned()))),
+            key_revision: Arc::new(AtomicU64::new(0)),
+            trial: false,
+            trial_home: None,
+            run_budget: None,
+            base: Some(base.to_owned()),
+        }
+    }
+
+    pub async fn call(
+        &self,
+        id: &str,
+        call: Call<'_>,
+        timeout: Duration,
+    ) -> Result<Response, ApiError> {
+        let resp = self.http.send(self.request(id, &call, timeout)?).await?;
+        if resp.head.status >= 400 {
+            return Err(ApiError::from_response(&resp));
+        }
+        Ok(resp)
+    }
+
+    /// Like `call`, but hands back the body as it streams. An error's body is read first, as far
+    /// as it comes within the error bounds in data/limits.toml.
+    pub async fn open(
+        &self,
+        id: &str,
+        call: Call<'_>,
+        timeout: Duration,
+    ) -> Result<Streaming, ApiError> {
+        let resp = self.http.open(self.request(id, &call, timeout)?).await?;
+        if resp.head.status >= 400 {
+            let limits = &crate::limits::get().http;
+            let resp = resp
+                .collect(limits.error_body_bytes.value, limits.error_body_ms.ms())
+                .await;
+            return Err(ApiError::from_response(&resp));
+        }
+        Ok(resp)
+    }
+
+    fn request<'a>(
+        &'a self,
+        id: &str,
+        call: &Call<'a>,
+        timeout: Duration,
+    ) -> Result<Request<'a>, ApiError> {
+        if let Some(body) = call.body.filter(|body| body["funding"] == "trial") {
+            preflight::check_trial(body["model"].as_str().unwrap_or_default(), true)?;
+        }
+        let endpoint = endpoints::get(id);
+        #[cfg(test)]
+        let configured = self.base.is_some() || !endpoints::origin(&endpoint.origin).is_empty();
+        #[cfg(not(test))]
+        let configured = !endpoints::origin(&endpoint.origin).is_empty();
+        if !configured {
+            return Err(error::ErrorInfo::local(
+                "backend_unconfigured",
+                &crate::backend::text().unavailable,
+            )
+            .into());
+        }
+        let bearer = match (endpoint.auth, self.key()) {
+            (false, _) => None,
+            (true, Some(key)) => Some(key),
+            (true, None) => return Err(ApiError::not_logged_in()),
+        };
+        #[cfg(test)]
+        let url = match &self.base {
+            Some(base) => format!("{base}{}", endpoints::path(endpoint, call.args)),
+            None => endpoints::url(endpoint, call.args),
+        };
+        #[cfg(not(test))]
+        let url = endpoints::url(endpoint, call.args);
+        Ok(Request {
+            method: endpoint.method,
+            url,
+            bearer,
+            headers: call.headers,
+            json: call.body,
+            trial_home: if endpoint.trial_proof
+                || call.body.is_some_and(|b| b["funding"] == "trial")
+            {
+                self.trial_home.as_deref()
+            } else {
+                None
+            },
+            timeout,
+        })
+    }
+}
+
+#[cfg(test)]
+mod trial_tests {
+    use super::*;
+
+    #[test]
+    fn a_separate_credential_does_not_reuse_another_keys_run_budget() {
+        let http = Http::new(Duration::from_secs(1)).unwrap();
+        let mut api = Api::redirected(http, "fixture-key", "http://127.0.0.1:1");
+        api.set_budget("2.00".to_owned());
+        assert!(api.clone().run_budget.is_some());
+        assert!(
+            api.with_key("other-fixture-key".into())
+                .run_budget
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn trial_model_is_checked_before_creating_a_network_request() {
+        let http = Http::new(Duration::from_secs(1)).unwrap();
+        let api = Api::redirected(http, "fixture-key", "http://127.0.0.1:1");
+        let body = serde_json::json!({"model":"paid-model","funding":"trial"});
+        let call = Call {
+            body: Some(&body),
+            ..Default::default()
+        };
+        let error = api
+            .request("chat", &call, Duration::from_secs(1))
+            .err()
+            .unwrap();
+        assert_eq!(error.info.kind, "trial_model");
+        assert_eq!(error.info.status, None);
+        let body = serde_json::json!({"model":"paid-model"});
+        assert!(
+            api.request(
+                "chat",
+                &Call {
+                    body: Some(&body),
+                    ..Default::default()
+                },
+                Duration::from_secs(1)
+            )
+            .is_ok()
+        );
+    }
+}

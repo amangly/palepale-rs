@@ -1,0 +1,6 @@
+data: {"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"search_1","type":"function","function":{"name":"websearch","arguments":"{\"query\":\"Bun installation documentation\"}"}}]}}]}
+
+data: {"choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}],"usage":{"prompt_tokens":20,"completion_tokens":10,"total_tokens":30}}
+
+data: [DONE]
+

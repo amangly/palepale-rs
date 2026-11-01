@@ -1,0 +1,278 @@
+//! `/models` inside a session: the catalog as an aligned list in a card in place of the editor.
+//! ↑↓ move, → or Enter picks the model for the rest of the session, Esc or ← closes.
+
+use crate::api::models::{Catalog, Model};
+use crate::commands::models;
+use crate::limits;
+use crate::text::styled::{Line, Style};
+use crate::text::table::{self, Align};
+use crate::tui::boxed::boxed;
+use crate::tui::keymap::Action;
+use crate::tui::ui;
+
+/// Cells between columns.
+pub const GAP: usize = 2;
+/// The selection marker before each row: `› ` or two spaces.
+pub const MARKER: usize = 2;
+
+pub struct Picker {
+    models: Vec<Model>,
+    current: String,
+    filter: Filter,
+    ids: Vec<String>,
+    /// Header first, then one row per model, as the table's cells.
+    rows: Vec<Vec<Line>>,
+    selected: usize,
+    note: String,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Filter {
+    All,
+    Uncensored,
+    Cheapest,
+}
+
+pub enum Step {
+    Stay,
+    /// Use the model with this id.
+    Pick(String),
+    Close,
+}
+
+impl Picker {
+    pub fn new(catalog: &Catalog, current: &str) -> Self {
+        let mut picker = Self {
+            models: catalog
+                .models
+                .iter()
+                .filter(|m| m.available)
+                .cloned()
+                .collect(),
+            current: catalog.get(current).map_or(current, |m| &m.id).to_owned(),
+            filter: Filter::All,
+            ids: Vec::new(),
+            rows: Vec::new(),
+            selected: 0,
+            note: models::source_note(catalog),
+        };
+        picker.rebuild();
+        picker
+    }
+
+    fn rebuild(&mut self) {
+        let badge = &ui::get().picker.uncensored_badge;
+        let mut visible: Vec<_> = self
+            .models
+            .iter()
+            .filter(|m| {
+                self.filter != Filter::Uncensored
+                    || m.presentation
+                        .as_ref()
+                        .is_some_and(|p| p.badges.iter().any(|b| b.eq_ignore_ascii_case(badge)))
+            })
+            .collect();
+        if self.filter == Filter::Cheapest {
+            visible.sort_by(|a, b| {
+                let cost = |m: &Model| m.pricing.input_per_1m_usd + m.pricing.output_per_1m_usd;
+                cost(a).total_cmp(&cost(b)).then_with(|| a.id.cmp(&b.id))
+            });
+        }
+        self.ids = visible.iter().map(|m| m.id.clone()).collect();
+        self.selected = if self.filter == Filter::Cheapest {
+            0
+        } else {
+            self.ids
+                .iter()
+                .position(|id| id == &self.current)
+                .unwrap_or(0)
+        };
+        let mark = models::current_mark();
+        let mut header = vec![Line::default()];
+        header.extend(
+            models::titles()
+                .into_iter()
+                .map(|t| Line::styled(t, Style::fg("muted").bold())),
+        );
+        let mut rows = vec![header];
+        for m in visible {
+            let mut row = vec![if m.id == self.current {
+                Line::styled(mark, Style::fg("accent"))
+            } else {
+                Line::default()
+            }];
+            row.extend(models::cells(m).into_iter().map(Line::plain));
+            rows.push(row);
+        }
+        self.rows = rows;
+    }
+
+    pub fn key(&mut self, action: Option<Action>) -> Step {
+        let last = self.ids.len().saturating_sub(1);
+        match action {
+            Some(Action::Tab) => {
+                self.filter = match self.filter {
+                    Filter::All => Filter::Uncensored,
+                    Filter::Uncensored => Filter::Cheapest,
+                    Filter::Cheapest => Filter::All,
+                };
+                self.rebuild();
+            }
+            Some(Action::Up) => self.selected = self.selected.saturating_sub(1),
+            Some(Action::Down) => self.selected = (self.selected + 1).min(last),
+            Some(Action::Right | Action::Submit) => {
+                return self
+                    .ids
+                    .get(self.selected)
+                    .map_or(Step::Stay, |id| Step::Pick(id.clone()));
+            }
+            Some(Action::Left | Action::Escape) => return Step::Close,
+            _ => {}
+        }
+        Step::Stay
+    }
+
+    pub fn render(&self, width: usize) -> Vec<Line> {
+        let words = &ui::get().picker;
+        let mut aligns = vec![Align::Left];
+        aligns.extend(models::aligns());
+        // Column 0 here is the current-model mark, ahead of the catalog's columns.
+        let drop: Vec<usize> = models::drop_order().into_iter().map(|i| i + 1).collect();
+        // The box's borders take four cells.
+        let inner = width.saturating_sub(4 + MARKER);
+        let mut lines = table::plain(&self.rows, &aligns, &drop, inner, GAP).into_iter();
+        let mut body = Vec::new();
+        let mut tabs = Line::default();
+        for (index, label) in words.filters.iter().enumerate() {
+            if index == self.filter as usize {
+                tabs.push(format!("[{label}]  "), Style::fg("accent").bold());
+            } else {
+                tabs.push(format!("{label}  "), Style::fg("muted"));
+            }
+        }
+        body.push(tabs.truncate(width.saturating_sub(4)));
+        body.push(Line::default());
+        if let Some(header) = lines.next() {
+            let mut line = Line::plain(" ".repeat(MARKER));
+            line.extend(header);
+            body.push(line);
+        }
+        body.extend(marked(lines, self.selected));
+        if self.ids.is_empty() {
+            body.push(Line::plain(&words.empty).truncate(width.saturating_sub(4)));
+        }
+        body.push(Line::default());
+        if self.filter == Filter::Cheapest {
+            body.push(Line::styled(&words.cheapest_note, Style::fg("muted")));
+        }
+        body.push(Line::styled(&self.note, Style::fg("muted")));
+        let title = Line::styled(&words.title, Style::default().bold());
+        // As wide as the list needs, not the whole terminal.
+        let needed = body.iter().map(Line::width).max().unwrap_or(0) + 4;
+        let mut out = boxed(title, &body, needed.min(width));
+        out.push(Line::styled(format!(" {}", words.hint), Style::fg("muted")).truncate(width));
+        out
+    }
+}
+
+/// `rows` behind the selection marker, scrolled to keep the selected one in view.
+pub fn marked(rows: impl IntoIterator<Item = Line>, selected: usize) -> Vec<Line> {
+    let visible = limits::get().tui.palette_rows.value.max(1);
+    let start = (selected + 1).saturating_sub(visible);
+    rows.into_iter()
+        .enumerate()
+        .skip(start)
+        .take(visible)
+        .map(|(i, row)| {
+            if i == selected {
+                let chosen = Style::fg("accent").bold();
+                let mut line = Line::styled("› ", chosen.clone());
+                line.push(row.text(), chosen);
+                line
+            } else {
+                let mut line = Line::plain(" ".repeat(MARKER));
+                line.extend(row);
+                line
+            }
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::api::models::{self as api, Source};
+
+    fn catalog() -> Catalog {
+        Catalog {
+            models: api::fixture(),
+            source: Source::Live,
+            fetched_at: None,
+            note: None,
+        }
+    }
+
+    #[test]
+    fn tabs_filter_uncensored_and_sort_cheapest_without_selecting_hidden_models() {
+        let mut catalog = catalog();
+        catalog.models[0].presentation = Some(api::Presentation {
+            name: "Uncensored fixture".into(),
+            badges: vec!["Uncensored".into()],
+        });
+        let expensive = catalog.models[0].id.clone();
+        let cheap = catalog.models[1].id.clone();
+        let mut picker = Picker::new(&catalog, &expensive);
+        picker.key(Some(Action::Tab));
+        assert_eq!(picker.ids, vec![expensive.clone()]);
+        picker.key(Some(Action::Tab));
+        assert_eq!(picker.ids, vec![cheap.clone(), expensive.clone()]);
+        assert!(matches!(picker.key(Some(Action::Submit)), Step::Pick(id) if id == cheap));
+        picker.key(Some(Action::Tab));
+        assert_eq!(picker.ids, vec![expensive, cheap]);
+        catalog.models[0].available = false;
+        let mut empty = Picker::new(&catalog, "");
+        empty.key(Some(Action::Tab));
+        assert!(empty.ids.is_empty());
+        assert!(matches!(empty.key(Some(Action::Submit)), Step::Stay));
+        empty.key(Some(Action::Tab));
+        assert_eq!(empty.ids.len(), 1);
+    }
+
+    #[test]
+    fn opens_on_the_current_model_and_picks_with_enter_or_right() {
+        let catalog = catalog();
+        let second = catalog.models[1].id.clone();
+        let mut picker = Picker::new(&catalog, &second);
+        assert!(matches!(picker.key(Some(Action::Submit)), Step::Pick(id) if id == second));
+        picker.key(Some(Action::Up));
+        let first = catalog.models[0].id.clone();
+        assert!(matches!(picker.key(Some(Action::Right)), Step::Pick(id) if id == first));
+        assert!(matches!(picker.key(Some(Action::Escape)), Step::Close));
+    }
+
+    #[test]
+    fn hidden_models_do_not_shift_the_current_selection() {
+        let mut catalog = catalog();
+        catalog.models[0].available = false;
+        let current = catalog.models[1].id.clone();
+        let mut picker = Picker::new(&catalog, &current);
+        assert_eq!(picker.ids, vec![current.clone()]);
+        assert!(matches!(picker.key(Some(Action::Submit)), Step::Pick(id) if id == current));
+    }
+
+    #[test]
+    fn rows_line_up_inside_the_box_at_any_width() {
+        let catalog = catalog();
+        let picker = Picker::new(&catalog, "demo-2");
+        for width in [50, 80, 140] {
+            let lines = picker.render(width);
+            assert!(lines.iter().all(|l| l.width() <= width), "width {width}");
+            let text: Vec<String> = lines.iter().map(Line::text).collect();
+            assert!(text.iter().any(|line| line.contains("model")), "{text:?}");
+            assert!(
+                text.iter().any(|l| l.starts_with("│ › ●  demo-2")),
+                "{text:?}"
+            );
+        }
+    }
+}

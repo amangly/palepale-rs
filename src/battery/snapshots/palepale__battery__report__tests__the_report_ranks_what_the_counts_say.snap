@@ -1,0 +1,191 @@
+---
+source: src/battery/report.rs
+expression: text
+---
+# Battery battery
+
+m · 4 runs of 4 tasks · 2/4 done · 1 ended on an error · $0.0052 · 9420 tokens · palepale 0123456
+
+Runs that never started: broken #1 (r is not set up)
+
+## Tasks
+
+| task | mode | done | turns | calls | cost | time | ended early |
+|---|---|---|---|---|---|---|---|
+| fix-it | auto | 1/1 | 4.0 | 5.0 | 0.0035 | 12s |  |
+| flaky | auto | 0/1 | 1.0 | 0.0 | 0.0000 | 30s | http_error 502×1 |
+| mcp-it | auto | 1/1 | 7.0 | 7.0 | 0.0007 | 9s |  |
+| plan-it | plan | 0/1 | 2.0 | 2.0 | 0.0010 | 4s | turns×1 |
+
+## Ended on an error
+
+| what | count | example |
+|---|---|---|
+| http_error 502: error code: 502 | 1 | `flaky #1` |
+
+## Tools
+
+| tool | calls | per run | failed | refused |
+|---|---|---|---|---|
+| bash | 4 | 1.0 | 1 | 1 |
+| mcp__re__decompile_function | 4 | 1.0 | 2 | 0 |
+| mcp__re__set_comment | 2 | 0.5 | 0 | 0 |
+| edit | 1 | 0.2 | 0 | 0 |
+| grep | 1 | 0.2 | 0 | 0 |
+| mcp__re__idb_open | 1 | 0.2 | 0 | 0 |
+| nope | 1 | 0.2 | 0 | 1 |
+
+## Refused before running
+
+| what | count | example |
+|---|---|---|
+| denied · bash | 1 | `{"command": "python3 -m unittest -q"}` |
+| unknown_tool · nope | 1 | `{}` |
+
+## The same call again
+
+| tool | after it failed | after it worked |
+|---|---|---|
+| bash | 1 | 0 |
+| mcp__re__decompile_function | 1 | 0 |
+
+## MCP servers
+
+| tool | calls | worked | bad arguments | not found | not ready | busy | no such tool |
+|---|---|---|---|---|---|---|---|
+| mcp__re__decompile_function | 4 | 2 | 1 | 0 | 1 | 0 | 0 |
+| mcp__re__set_comment | 2 | 2 | 0 | 0 | 0 | 0 | 0 |
+| mcp__re__idb_open | 1 | 1 | 0 | 0 | 0 | 0 | 0 |
+
+### Arguments a server refused
+
+| what | count | example |
+|---|---|---|
+| mcp__re__decompile_function: arguments.address: expected string, got integer N | 1 | `{"address":4198400}` |
+
+### Calls one reply at a time
+
+| tool | replies that could have joined the one before | calls made together |
+|---|---|---|
+| mcp__re__decompile_function | 1 | 0 |
+| mcp__re__set_comment | 0 | 2 |
+
+## Shell (4 bash calls, 0 with substitutions or heredocs)
+
+### Commands
+
+| what | count | example |
+|---|---|---|
+| cargo | 2 | `cargo test 2>&1` |
+| python3 | 1 | `python3 -m unittest -q` |
+| sed | 1 | `sed -n '1,40p' src/lib.rs` |
+
+### Commands with their subcommand
+
+| what | count | example |
+|---|---|---|
+| cargo test | 2 | `cargo test 2>&1` |
+| python3 | 1 | `python3 -m unittest -q` |
+| sed | 1 | `sed -n '1,40p' src/lib.rs` |
+
+### Flags
+
+| what | count | example |
+|---|---|---|
+| python3 -m | 1 | `python3 -m unittest -q` |
+| python3 -q | 1 | `python3 -m unittest -q` |
+| sed -n | 1 | `sed -n '1,40p' src/lib.rs` |
+
+### Pipe filters
+
+| what | count | example |
+|---|---|---|
+| tail | 2 | `tail -5` |
+
+### Commands that stand in for a tool
+
+| command | instead | count | example |
+|---|---|---|---|
+| `sed -n` | read with offset and limit | 1 | `sed -n '1,40p' src/lib.rs` |
+
+## Empirical grounding (ran or scripted a check vs did not)
+
+| what | count | example |
+|---|---|---|
+| answered without running or scripting | 2 | `flaky` |
+| grounded by running or scripting | 2 | `fix-it` |
+
+## Replies in a row (calls made together are one step)
+
+### Pairs
+
+| what | count | example |
+|---|---|---|
+| mcp__re__decompile_function → mcp__re__decompile_function | 2 | `mcp-it` |
+| bash + grep → bash | 1 | `fix-it` |
+| bash → bash + edit | 1 | `fix-it` |
+| mcp__re__decompile_function → mcp__re__idb_open | 1 | `mcp-it` |
+| mcp__re__decompile_function → mcp__re__set_comment | 1 | `mcp-it` |
+| mcp__re__idb_open → mcp__re__decompile_function | 1 | `mcp-it` |
+
+### Triples
+
+| what | count | example |
+|---|---|---|
+| bash + grep → bash → bash + edit | 1 | `fix-it` |
+| mcp__re__decompile_function → mcp__re__decompile_function → mcp__re__idb_open | 1 | `mcp-it` |
+| mcp__re__decompile_function → mcp__re__decompile_function → mcp__re__set_comment | 1 | `mcp-it` |
+| mcp__re__decompile_function → mcp__re__idb_open → mcp__re__decompile_function | 1 | `mcp-it` |
+| mcp__re__idb_open → mcp__re__decompile_function → mcp__re__decompile_function | 1 | `mcp-it` |
+
+## Asked again under MANUAL
+
+### Would ask
+
+| what | count | example |
+|---|---|---|
+| mcp | 7 | `mcp__re__decompile_function` |
+| bash `cargo test` | 2 | `cargo test 2>&1` |
+| bash `python3` | 1 | `python3 -m unittest -q` |
+| bash `sed` | 1 | `sed -n '1,40p' src/lib.rs` |
+| edit | 1 | `src/lib.rs` |
+
+### Would refuse
+
+—
+
+## Refused in PLAN runs
+
+| what | count | example |
+|---|---|---|
+| bash `python3` | 1 | `python3 -m unittest -q` |
+
+## Candidates
+
+1. 2 × MANUAL would ask before bash `cargo test`: a candidate for its default allowlist
+2. 1 × MANUAL would ask before bash `python3`: a candidate for its default allowlist
+3. 1 × MANUAL would ask before bash `sed`: a candidate for its default allowlist
+4. 1 × PLAN refused bash `python3`: a candidate for that mode's allowlist
+5. 1 × `mcp__re__decompile_function: arguments.address: expected string, got integer N`: palepale could check arguments against the tool's schema before sending and say what is wrong
+6. 1 × `sed -n` in bash, where read with offset and limit would do
+7. 1 × bash + grep → bash → bash + edit in a row: a candidate for one call
+8. 1 × bash called again unchanged after it failed
+9. 1 × flaky missed with nothing run or scripted to check the answer: a candidate for grounding it (run it, script it, brute-force it)
+10. 1 × mcp__re__decompile_function before its server was ready: the model skipped the step the server's instructions name
+11. 1 × mcp__re__decompile_function called again unchanged after it failed
+12. 1 × mcp__re__decompile_function called once per reply in a row: tell the model independent calls can go in one reply
+13. 1 × mcp__re__decompile_function → mcp__re__decompile_function → mcp__re__idb_open in a row: a candidate for one call
+14. 1 × mcp__re__decompile_function → mcp__re__decompile_function → mcp__re__set_comment in a row: a candidate for one call
+15. 1 × unknown_tool · nope: the tool's description or schema may mislead
+
+## Against battery
+
+| per run | this | that | change |
+|---|---|---|---|
+| done | 0.5 | 0.5 | +0.0 |
+| turns | 3.5 | 3.5 | +0.0 |
+| calls | 3.5 | 3.5 | +0.0 |
+| bash calls | 1.0 | 1.0 | +0.0 |
+| stand-ins | 0.2 | 0.2 | +0.0 |
+| grounded | 0.5 | 0.5 | +0.0 |
+| cost (µ$) | 1300.0 | 1300.0 | +0.0 |

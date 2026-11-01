@@ -1,0 +1,11 @@
+name = "prompt"
+summary = "Choose a local system prompt and save it as your default"
+usage = "prompt [id]"
+title = "Local system prompts"
+hint = "Choose with /prompt <id>. Custom Markdown files live in ~/.palepale/prompts or trusted .palepale/prompts. /godmode is independent."
+selected = "System prompt: {id}. Saved as your default."
+missing = "No local system prompt `{id}`. Use /prompt to list available IDs."
+default_label = "Built-in coding prompt (chat prompt for text-only models)"
+chat_label = "Built-in chat prompt"
+max_bytes = 32768
+max_files = 100

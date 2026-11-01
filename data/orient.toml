@@ -1,0 +1,6 @@
+files = "Files here: {entries}{more}\n"
+more = "  … (+{count} more)"
+branch = "Git branch: {branch}\n"
+dirty = "Uncommitted changes:\n  {status}{more}\n"
+clean = "Working tree clean.\n"
+commits = "Recent commits:\n  {log}\n"

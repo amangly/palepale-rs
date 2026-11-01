@@ -1,0 +1,2 @@
+# Current context snapshots replace earlier copies and survive summarization.
+catalog_prefixes = ["<available_skills>", "<mcp_servers>", "<active_instructions>", "<workspace>"]

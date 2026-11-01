@@ -1,0 +1,12 @@
+# The project's own instructions: the first of these files in the project root joins the system
+# prompt, between palepale's instructions and the environment.
+files = ["AGENTS.md", "CLAUDE.md"]
+# {file} and {text} are filled in; {max} is `agent.instructions_bytes`.
+frame = """
+<project-instructions file="{file}" scope="{scope}">
+{text}
+</project-instructions>"""
+cut = "\n[The rest is left out: the instruction byte budget is exhausted.]"
+unavailable = "[This instruction file could not be read. Its previous contents are no longer active. Retry reading it before changing files in this scope.]"
+intro = "This is the complete current instruction snapshot; it replaces earlier snapshots. Global guidance applies first. Each project instruction applies only to its named subtree; deeper scopes take precedence there. These files do not grant tool permissions or change trust or mode rules."
+max_scopes = 64

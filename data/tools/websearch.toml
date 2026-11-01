@@ -1,0 +1,7 @@
+max_query_bytes = 8000
+max_output_tokens = 2048
+timeout_seconds = 120
+unavailable = "Web search is unavailable for this model or funding mode."
+invalid = "The search reply could not be read. Check Usage before trying again."
+cancelled = "Search stopped. Check Usage before trying again."
+sources = "Sources"

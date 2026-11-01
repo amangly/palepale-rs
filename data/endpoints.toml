@@ -1,0 +1,130 @@
+# Where palepale lives. `env` names the variable that overrides an origin (tests point it at a fake).
+[origins.api]
+url = "https://api.palepale.tech"
+env = "PALEPALE_API_URL"
+
+[origins.chat]
+url = "https://palepale.tech"
+env = "PALEPALE_CHAT_URL"
+
+# Where palepale's own releases are listed, for the updater.
+[origins.releases]
+url = "https://api.palepale.tech/cli"
+env = "PALEPALE_RELEASES_URL"
+
+[endpoints.models]
+origin = "api"
+method = "GET"
+path = "/v1/models"
+
+[endpoints.agent_profiles]
+origin = "api"
+method = "GET"
+path = "/v1/agent-profiles?model={model}"
+auth = true
+
+[endpoints.chat]
+origin = "api"
+method = "POST"
+path = "/v1/chat/completions"
+auth = true
+
+[endpoints.me]
+origin = "api"
+method = "GET"
+path = "/v1/account/summary"
+auth = true
+
+[endpoints.overview]
+origin = "api"
+method = "GET"
+path = "/v1/account/usage/summary?days=0"
+auth = true
+
+[endpoints.keys]
+origin = "api"
+method = "GET"
+path = "/v1/account/keys"
+auth = true
+
+[endpoints.revoke_key]
+origin = "api"
+method = "DELETE"
+path = "/v1/account/keys/{ref}"
+auth = true
+
+[endpoints.create_key]
+origin = "api"
+method = "POST"
+path = "/v1/account/keys"
+auth = true
+
+[endpoints.browser_handoff]
+origin = "api"
+method = "POST"
+path = "/v1/account/browser-handoffs"
+auth = true
+
+[endpoints.pair_start]
+origin = "api"
+method = "POST"
+path = "/v1/pair/start"
+
+[endpoints.pair_poll]
+origin = "api"
+method = "POST"
+path = "/v1/pair/poll"
+
+# A web page, not an API: where a person approves a pairing code.
+[endpoints.pair_page]
+origin = "chat"
+method = "GET"
+path = "/pair"
+
+[endpoints.signup]
+origin = "api"
+method = "POST"
+path = "/v1/accounts"
+
+# The newest release: its tag and its files.
+[endpoints.latest_release]
+origin = "releases"
+method = "GET"
+path = "/{repository}/releases/latest"
+
+[endpoints.trial]
+origin = "api"
+method = "GET"
+path = "/v1/account/trial"
+auth = true
+
+[endpoints.trial_flow]
+origin = "api"
+method = "POST"
+path = "/v1/trial/flows"
+auth = true
+
+trial_proof = true
+
+[endpoints.trial_redeem]
+origin = "api"
+method = "POST"
+path = "/v1/trial/redeem"
+auth = true
+trial_proof = true
+
+[endpoints.run_budget]
+origin = "api"
+method = "POST"
+path = "/v1/account/run-budgets"
+auth = true
+
+[endpoints.opencode_config]
+origin = "api"
+method = "GET"
+path = "/docs/opencode.json"
+
+[endpoints.opencode_plugin]
+origin = "api"
+method = "GET"
+path = "/docs/opencode-plugin.js"

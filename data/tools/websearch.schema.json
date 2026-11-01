@@ -1,0 +1,1 @@
+{"type":"object","properties":{"query":{"type":"string","minLength":1,"maxLength":8000,"description":"Focused public search query"}},"required":["query"],"additionalProperties":false}

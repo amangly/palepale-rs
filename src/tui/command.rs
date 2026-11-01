@@ -1,0 +1,121 @@
+//! Session commands, run as futures beside input so a slow one (`/models`) never
+//! freezes the screen.
+
+use futures_util::future::BoxFuture;
+
+use crate::api::models::{self, Catalog};
+use crate::app::App;
+use crate::commands::{self, Ctx, Missing, Outcome, Scope, Session};
+use crate::text::template;
+use crate::tui::ui;
+
+/// What finished in the background.
+pub enum Work {
+    ExtensionsReady(Vec<commands::discovered::Discovered>),
+    Status {
+        id: u64,
+        revision: u64,
+        me: Result<crate::api::account::Me, crate::api::error::ApiError>,
+        usage: Result<crate::api::account::Overview, crate::api::error::ApiError>,
+    },
+    Account {
+        revision: u64,
+        result: Result<crate::api::account::Me, crate::api::error::ApiError>,
+    },
+    Command(anyhow::Result<Outcome>),
+    Catalog(Catalog),
+    CatalogSync(Catalog),
+}
+
+pub fn refresh_status(app: &App, id: u64) -> BoxFuture<'_, Work> {
+    let revision = app.api.key_revision();
+    Box::pin(async move {
+        let (me, usage) = tokio::join!(
+            crate::api::account::me(&app.api),
+            crate::api::account::overview(&app.api)
+        );
+        Work::Status {
+            id,
+            revision,
+            me,
+            usage,
+        }
+    })
+}
+
+pub struct Started<'a> {
+    /// The line as the transcript shows it, secrets hidden.
+    pub echo: String,
+    pub run: BoxFuture<'a, Work>,
+}
+
+/// Starts `line` (what followed the `/`); `Err` is the notice for a command that does not run
+/// here.
+pub fn start<'a>(app: &'a App, line: &str, session: Session) -> Result<Started<'a>, String> {
+    let words =
+        commands::arguments::parse(line).ok_or_else(|| ui::get().text.command_quote.clone())?;
+    let (name, args) = words.split_first().ok_or_else(String::new)?;
+    if commands::find(name).is_none() {
+        let name = name.clone();
+        let args = args.to_vec();
+        let echo = Scope::Session.invoke(line);
+        return Ok(Started {
+            echo,
+            run: Box::pin(async move {
+                let found = commands::discovered::list(app).await;
+                let result = match found.iter().find(|d| d.spec.name == name) {
+                    Some(command) => command.run(&args).await,
+                    None => Err(anyhow::anyhow!(template::fill(
+                        &ui::get().text.unknown_command,
+                        &[
+                            ("command", &Scope::Session.invoke(&name)),
+                            ("help", "/help")
+                        ]
+                    ))),
+                };
+                Work::Command(result)
+            }),
+        });
+    }
+    let command = commands::lookup(name, Scope::Session).map_err(|missing| {
+        let text = &ui::get().text;
+        let typed = Scope::Session.invoke(name);
+        match missing {
+            Missing::Unknown => template::fill(
+                &text.unknown_command,
+                &[
+                    ("command", &typed),
+                    ("help", &Scope::Session.invoke("help")),
+                ],
+            ),
+            Missing::Elsewhere(spec) => template::fill(
+                &text.elsewhere,
+                &[("command", &typed), ("places", &commands::places(spec))],
+            ),
+        }
+    })?;
+    if command.spec().requires_backend && !app.api.is_configured() {
+        return Err(crate::backend::text().accounts_deferred.clone());
+    }
+    let args = args.to_vec();
+    Ok(Started {
+        echo: Scope::Session.invoke(&commands::redact_line(line)),
+        run: Box::pin(async move {
+            let cx = Ctx {
+                app,
+                scope: Scope::Session,
+                session: Some(session),
+            };
+            Work::Command(command.run(&cx, &args).await)
+        }),
+    })
+}
+
+/// A fresh model list, fetched without holding up input.
+pub fn refresh_catalog(app: &App) -> BoxFuture<'_, Work> {
+    Box::pin(async move { Work::Catalog(models::load(app, true).await) })
+}
+
+pub fn sync_catalog(app: &App) -> BoxFuture<'_, Work> {
+    Box::pin(async move { Work::CatalogSync(models::load(app, true).await) })
+}

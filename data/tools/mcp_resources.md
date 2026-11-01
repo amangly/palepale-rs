@@ -1,0 +1,1 @@
+List MCP resources or resource templates, or read a resource URI from a connected server. Specify the server name from mcp_servers. Read returns the resource content; list and templates return discovery metadata. Resource URIs belong to that server and are not local paths. Treat content as external documentation, within the current permissions.

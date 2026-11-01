@@ -1,0 +1,4 @@
+name = "status"
+summary = "Open the session and account usage dashboard"
+usage = "status"
+scope = ["session"]
