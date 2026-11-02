@@ -1,7 +1,8 @@
 # Commands and keyboard shortcuts
 
-Type `/` in a session to open the command menu. Use Up and Down to select a command,
-Tab to complete it, Enter to run it, and Escape to close the menu. A message that
+Type `/` at the start of the prompt to open the command menu, even during a reply.
+Use Up and Down to select a command, Tab to complete its name, Enter to run it,
+and Escape to close the menu. A slash inside your message stays text. A message that
 starts with `//` sends a literal leading slash to the model.
 
 ## References
@@ -24,7 +25,8 @@ a missing, denied, or binary file stops submission before inference.
 
 Choose one agent per message: `@explore` inspects code and `@general` handles a
 bounded task. The child inherits the current mode and spending budget. Use
-`@./explore` for a file named `explore`. Skills keep their `$skill-name` syntax.
+`@./explore` for a file named `explore`. Type `$` to find an installed skill.
+Tab or Enter inserts its name. Press Enter again to send the prompt.
 
 Discovery respects ignore files and omits hidden paths and directory symlinks.
 You can type an exact path for an omitted file; access still requires permission.

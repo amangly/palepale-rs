@@ -12,6 +12,8 @@ pub struct Text {
     pub empty: String,
     pub file: String,
     pub folder: String,
+    pub skills_title: String,
+    pub skills_empty: String,
     pub agent: String,
     pub multiple_agents: String,
     pub too_many: String,
@@ -28,13 +30,18 @@ pub fn text() -> &'static Text {
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct Mention {
+    pub sigil: char,
     pub span: Range<usize>,
     pub path: String,
     pub closed: bool,
 }
 
 pub fn parse(text: &str) -> Vec<Mention> {
-    scan(text).0
+    scan(text)
+        .0
+        .into_iter()
+        .filter(|token| token.sigil == '@')
+        .collect()
 }
 
 pub fn unescape(text: &str) -> String {
@@ -68,6 +75,27 @@ fn scan(text: &str) -> (Vec<Mention>, Vec<Range<usize>>) {
             i += 2;
             continue;
         }
+        if code == 0 && boundary && c == '$' {
+            let start = i;
+            i += 1;
+            let body = i;
+            while i < text.len() && !text[i..].starts_with(char::is_whitespace) {
+                i += text[i..].chars().next().unwrap().len_utf8();
+            }
+            let word = &text[body..i];
+            if word.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-') {
+                found.push(Mention {
+                    sigil: c,
+                    span: start..i,
+                    path: word.into(),
+                    closed: true,
+                });
+            } else {
+                // Resume normal scanning for backticks and other Markdown delimiters.
+                i = body;
+            }
+            continue;
+        }
         if code == 0 && c == '@' && boundary {
             let start = i;
             i += 1;
@@ -95,6 +123,7 @@ fn scan(text: &str) -> (Vec<Mention>, Vec<Range<usize>>) {
                 body + path.len()
             };
             found.push(Mention {
+                sigil: '@',
                 span: start..end,
                 path: path.replace('\\', "/"),
                 closed,
@@ -108,9 +137,18 @@ fn scan(text: &str) -> (Vec<Mention>, Vec<Range<usize>>) {
 }
 
 pub fn active(text: &str, cursor: usize) -> Option<Mention> {
-    parse(text)
+    scan(text)
+        .0
         .into_iter()
         .find(|m| m.span.start < cursor && cursor <= m.span.end)
+}
+
+pub fn skill_names(text: &str) -> impl Iterator<Item = String> {
+    scan(text)
+        .0
+        .into_iter()
+        .filter(|t| t.sigil == '$')
+        .map(|t| t.path)
 }
 
 pub fn quote(path: &str) -> String {
@@ -164,6 +202,29 @@ mod tests {
         assert_eq!(&"你好 @sr rest"[m.span], "@sr");
         assert_eq!(active("@", 1).unwrap().path, "");
         assert!(!parse("@\"unfinished")[0].closed);
+    }
+
+    #[test]
+    fn skills_share_cursor_detection_but_skip_code_and_file_paths() {
+        let input = "你好 $review @src/main.rs `$inline` ```\n$fenced\n``` @\"folder $file\" $$literal $(command) $another-skill";
+        assert_eq!(
+            skill_names(input).collect::<Vec<_>>(),
+            ["review", "another-skill"]
+        );
+        assert_eq!(
+            parse(input).into_iter().map(|m| m.path).collect::<Vec<_>>(),
+            ["src/main.rs", "folder $file"]
+        );
+        let text = "你好 $rev suffix";
+        let token = active(text, "你好 $rev".len()).unwrap();
+        assert_eq!(token.sigil, '$');
+        assert_eq!(&text[token.span], "$rev");
+        assert_eq!(active("$", 1).unwrap().path, "");
+        assert!(active("`$rev`", 5).is_none());
+        assert_eq!(
+            skill_names("$bad` $code ` $good").collect::<Vec<_>>(),
+            ["good"]
+        );
     }
     #[test]
     fn ranking_and_quoting() {

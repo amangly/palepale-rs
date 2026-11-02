@@ -483,7 +483,7 @@ impl<'a> Tui<'a> {
             let app = self.app;
             work.push(Box::pin(async move {
                 app.mcp.start_enabled(app).await;
-                Work::ExtensionsReady(commands::discovered::list(app).await)
+                command::refresh_extensions(app).await
             }));
         }
         if self.app.api.is_configured() && settings::env("PALEPALE_NO_AUTO_LOGIN").is_none() {
@@ -534,7 +534,7 @@ impl<'a> Tui<'a> {
                         self.progress = None;
                         self.queue.clear();
                         let app = self.app;
-                        work.push(Box::pin(async move { Work::ExtensionsReady(commands::discovered::list(app).await) }));
+                        work.push(Box::pin(async move { command::refresh_extensions(app).await }));
                         work.push(command::sync_catalog(app));
                         while let Ok(event) = events.try_recv() {
                             self.agent(event);
@@ -545,14 +545,14 @@ impl<'a> Tui<'a> {
                         job = None;
                         if matches!(&done, Done::Extensions(extension_ui::Done::Loaded { .. })) {
                             let app = self.app;
-                            work.push(Box::pin(async move { Work::ExtensionsReady(commands::discovered::list(app).await) }));
+                            work.push(Box::pin(async move { command::refresh_extensions(app).await }));
                         }
                         self.job_done(done)
                     }
                     Some(done) = work.next(), if !work.is_empty() => {
                         if matches!(&done, Work::Command(Ok(_))) {
                             let app = self.app;
-                            work.push(Box::pin(async move { Work::ExtensionsReady(commands::discovered::list(app).await) }));
+                            work.push(Box::pin(async move { command::refresh_extensions(app).await }));
                         }
                         self.finish(done)
                     },
@@ -939,37 +939,22 @@ impl<'a> Tui<'a> {
                 self.card_key(&key, running);
                 Step::Continue
             }
-            Input::Key(key) => {
-                match keymap::get().action(&key) {
-                    Some(action) => {
-                        self.sync_mentions();
-                        if self.mentions.key(action, &mut self.editor) {
-                            return Step::Continue;
-                        }
-                        // The command popup takes its keys first; it is closed during a run,
-                        // where Tab steers.
-                        if !running {
-                            match self.palette.key(action, &self.editor.text()) {
-                                palette::Step::Ignored => {}
-                                palette::Step::Handled => return Step::Continue,
-                                palette::Step::Complete(text) => {
-                                    self.editor.set_text(&text);
-                                    return Step::Continue;
-                                }
-                                palette::Step::Run(name) => {
-                                    self.editor.set_text(&Scope::Session.invoke(&name));
-                                    return self.submit(running);
-                                }
-                            }
-                        }
-                        self.action(action, running)
+            Input::Key(key) => match keymap::get().action(&key) {
+                Some(action) => {
+                    self.sync_mentions();
+                    if self.mentions.key(action, &mut self.editor) {
+                        return Step::Continue;
                     }
-                    None => {
-                        self.editor.type_key(&key);
-                        Step::Continue
+                    if let Some(step) = self.command_key(action, running) {
+                        return step;
                     }
+                    self.action(action, running)
                 }
-            }
+                None => {
+                    self.editor.type_key(&key);
+                    Step::Continue
+                }
+            },
         }
     }
 
@@ -1438,6 +1423,23 @@ impl<'a> Tui<'a> {
         self.shared.set_mode(&modes[(at + 1) % modes.len()]);
     }
 
+    fn command_key(&mut self, action: Action, running: bool) -> Option<Step<'a>> {
+        let text = self.editor.text();
+        let word = palette::word(&text, self.editor.cursor())?;
+        match self.palette.key(action, word) {
+            palette::Step::Ignored => return None,
+            palette::Step::Handled => {}
+            palette::Step::Complete(command) => {
+                self.editor.set_text(&command);
+            }
+            palette::Step::Run(name) => {
+                self.editor.set_text(&Scope::Session.invoke(&name));
+                return Some(self.submit(running));
+            }
+        }
+        Some(Step::Continue)
+    }
+
     fn sync_mentions(&mut self) {
         let mode = self.shared.mode();
         let policy = crate::permission::gate::Policy {
@@ -1460,7 +1462,7 @@ impl<'a> Tui<'a> {
             })
             .collect();
         self.mentions
-            .sync(&self.editor, &self.app.paths.project, &agents);
+            .sync(&self.editor, &self.app.paths.project, &agents, &policy);
     }
 
     /// Completes a slash command name when only one fits.
@@ -1497,7 +1499,8 @@ impl<'a> Tui<'a> {
     /// Applies what a command finished with.
     fn finish(&mut self, done: Work) -> Step<'a> {
         let outcome: CommandOutcome = match done {
-            Work::ExtensionsReady(discovered) => {
+            Work::ExtensionsReady(discovered, skills) => {
+                self.mentions.set_skills(skills);
                 self.palette
                     .set_discovered(discovered.into_iter().map(|d| d.spec).collect());
                 if let Some(manager) = &mut self.extensions {
@@ -1848,11 +1851,11 @@ impl<'a> Tui<'a> {
                 let profile = self.shared.agent_profile().is_some()
                     || self.selected_prompt == commands::godmode::text().custom_prompt_id;
                 live.push(frame::top(mode, profile, width));
-                if !running {
-                    let found = self.palette.open(&self.editor.text());
-                    if !found.is_empty() {
-                        floating = self.palette.render(&found, width);
-                    }
+                let text = self.editor.text();
+                let word = palette::word(&text, self.editor.cursor()).unwrap_or("");
+                let found = self.palette.open(word);
+                if !found.is_empty() {
+                    floating = self.palette.render(&found, width);
                 }
                 self.sync_mentions();
                 let mention_rows = self.mentions.render(width);
@@ -1988,6 +1991,43 @@ mod account_tests {
                 .filter_map(|i| tui.feed.copy_text(i))
                 .any(|text| text.contains("Trial") && text.contains("DeepSeek"))
         );
+    }
+
+    #[test]
+    fn commands_complete_during_a_turn_and_slashes_in_prose_stay_literal() {
+        use crate::io::term::KeyEvent;
+
+        let dir = tempfile::tempdir().unwrap();
+        let app = App::for_tests(dir.path());
+        let shared = Shared::new(mode::get("auto").unwrap());
+        let catalog = Catalog {
+            models: vec![],
+            source: models::Source::Unavailable,
+            fetched_at: None,
+            note: None,
+        };
+        let mut tui = Tui::new(&app, catalog, None, &shared, None, String::new());
+        tui.editor.set_text("explain /help");
+        assert!(tui.command_key(Action::Submit, true).is_none());
+        assert_eq!(tui.editor.text(), "explain /help");
+        tui.editor.set_text("/hel");
+        assert!(matches!(
+            tui.input(
+                Input::Key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE)),
+                true
+            ),
+            Step::Continue
+        ));
+        assert_eq!(tui.editor.text(), "/help ");
+        assert!(matches!(
+            tui.input(
+                Input::Key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE)),
+                true
+            ),
+            Step::Work(_)
+        ));
+        assert!(shared.drain_steer().is_empty());
+        assert!(shared.drain_follow().is_empty());
     }
 
     #[test]

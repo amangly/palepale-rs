@@ -1,5 +1,18 @@
 # Releases
 
+## v0.1.41 — 2026-11-02
+
+The `/` command menu now works while the agent is replying. Type `/` at the
+start of the prompt, use Tab to complete a command, and Enter to run it.
+
+Type `$` anywhere in a message to find an installed skill. Tab or Enter inserts
+the selected name, including skills without a slash command. Escape closes the
+menu and keeps your draft.
+
+Use `@` for files inside folders, such as `@src/auth/login.rs`. Paths with spaces
+are quoted when selected. File and skill selection preserve the surrounding
+text; press Enter again to send the message.
+
 ## v0.1.40 — 2026-11-02
 
 Type `@` to find project files, folders, and agents. Use Up/Down to select a

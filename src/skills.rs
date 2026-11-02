@@ -372,12 +372,9 @@ fn invocations(parts: &[Part]) -> Vec<String> {
     let mut names = Vec::new();
     for part in parts {
         if let Part::Text { text } = part {
-            for word in text.split_whitespace() {
-                if let Some(name) = word.strip_prefix('$')
-                    && valid_name(name)
-                    && !names.iter().any(|n| n == name)
-                {
-                    names.push(name.to_owned());
+            for name in crate::text::mentions::skill_names(text) {
+                if valid_name(&name) && !names.contains(&name) {
+                    names.push(name);
                 }
             }
         }

@@ -1032,7 +1032,11 @@ async fn a_command_typed_during_a_run_never_reaches_the_model() {
         s.type_text("go");
         s.send("\r");
         s.wait_for("sleep 3");
-        s.type_text("/login --key 1234 5678 9012 3456");
+        s.type_text("/log");
+        s.wait_for("┌ commands");
+        s.send("\t");
+        s.wait_gone("┌ commands");
+        s.type_text("--key 1234 5678 9012 3456");
         s.send("\r");
         s.wait_for("Logged in with device key …3456");
         s.wait_for("Hello there!");
@@ -2163,4 +2167,64 @@ async fn mentions_picker_inserts_without_sending_and_reads_the_selected_file() {
             .to_string()
             .contains("mention_pty_marker")
     );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn typing_shortcuts_keeps_the_draft_until_submission() {
+    let fake = Fake::start().await;
+    fake.script([Reply::sse("hello.sse")]);
+    let sandbox = Sandbox::default();
+    let skill = sandbox
+        .project
+        .path()
+        .join(".agents/skills/native-review/SKILL.md");
+    std::fs::create_dir_all(skill.parent().unwrap()).unwrap();
+    std::fs::write(skill, "---\nname: native-review\ndescription: Inspect the fixture\nmetadata:\n  palepale/slash: false\n---\nShortcut skill marker").unwrap();
+    for (path, body) in [
+        ("src/auth/login.rs", "Shortcut nested file marker"),
+        ("docs/review notes/guide.md", "Shortcut spaced path marker"),
+    ] {
+        let file = sandbox.project.path().join(path);
+        std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+        std::fs::write(file, body).unwrap();
+    }
+    sandbox.trust_project();
+    in_session(&fake, sandbox, Some(ENV_KEY), |s| {
+        s.wait_for("AUTO");
+        s.type_text("/hel");
+        s.wait_for("┌ commands");
+        s.wait_for("/help");
+        s.wait_quiet();
+        s.send("\r");
+        s.wait_gone("┌ commands");
+        s.type_text("Review draft /help $native");
+        s.wait_for("┌ Skills");
+        s.wait_for("native-review");
+        s.send("\t");
+        s.wait_gone("┌ Skills");
+        s.type_text("@src/auth/lo");
+        s.wait_for("┌ References");
+        s.wait_for("src/auth/login.rs");
+        s.send("\r");
+        s.wait_gone("┌ References");
+        s.type_text("@\"docs/review notes/gu");
+        s.wait_for("┌ References");
+        s.wait_for("docs/review notes/guide.md");
+        s.send("\r");
+        s.wait_gone("┌ References");
+        s.send("\r");
+        s.wait_for("Hello there!");
+    })
+    .await;
+    let requests = fake.chat_bodies();
+    assert_eq!(requests.len(), 1);
+    let messages = requests[0]["messages"].to_string();
+    for marker in [
+        "Review draft /help $native-review @src/auth/login.rs",
+        "Shortcut skill marker",
+        "Shortcut nested file marker",
+        "Shortcut spaced path marker",
+    ] {
+        assert!(messages.contains(marker), "{messages}");
+    }
 }

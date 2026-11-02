@@ -37,16 +37,20 @@ fn spec(name: String, summary: String) -> Spec {
 }
 
 pub async fn list(app: &App) -> Vec<Discovered> {
+    from_skills(app, &skills::load(app).await).await
+}
+
+pub async fn from_skills(app: &App, skills: &[skills::Skill]) -> Vec<Discovered> {
     let mut found = Vec::new();
-    for skill in skills::load(app).await {
+    for skill in skills {
         if skill.state == skills::State::Ready
             && skill.invocable
             && skill.slash
             && commands::find(&skill.name).is_none()
         {
             found.push(Discovered {
-                spec: spec(skill.name.clone(), skill.description),
-                source: Source::Skill(skill.name),
+                spec: spec(skill.name.clone(), skill.description.clone()),
+                source: Source::Skill(skill.name.clone()),
             });
         }
     }

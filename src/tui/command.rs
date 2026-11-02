@@ -11,7 +11,7 @@ use crate::tui::ui;
 
 /// What finished in the background.
 pub enum Work {
-    ExtensionsReady(Vec<commands::discovered::Discovered>),
+    ExtensionsReady(Vec<commands::discovered::Discovered>, Vec<(String, String)>),
     Status {
         id: u64,
         revision: u64,
@@ -25,6 +25,17 @@ pub enum Work {
     Command(anyhow::Result<Outcome>),
     Catalog(Catalog),
     CatalogSync(Catalog),
+}
+
+pub async fn refresh_extensions(app: &App) -> Work {
+    let skills = crate::skills::load(app).await;
+    let commands = commands::discovered::from_skills(app, &skills).await;
+    let skills = skills
+        .into_iter()
+        .filter(|s| s.state == crate::skills::State::Ready && s.invocable)
+        .map(|s| (s.name, s.description))
+        .collect();
+    Work::ExtensionsReady(commands, skills)
 }
 
 pub fn refresh_status(app: &App, id: u64) -> BoxFuture<'_, Work> {

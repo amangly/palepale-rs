@@ -29,6 +29,15 @@ pub enum Step {
     Run(String),
 }
 
+/// Only the command at the start of a prompt opens this menu.
+pub fn word(text: &str, cursor: usize) -> Option<&str> {
+    let command = text.trim_start();
+    let name = command.strip_prefix(Scope::Session.prefix())?;
+    let start = text.len() - command.len();
+    (start < cursor && cursor <= text.len() && !name.contains(char::is_whitespace))
+        .then_some(command)
+}
+
 /// Session commands whose name starts with what follows the `/`, alphabetically so an exact
 /// name comes before longer ones sharing it (`/mode` before `/models`).
 pub fn matches(text: &str) -> Vec<&'static Spec> {
@@ -148,6 +157,20 @@ mod tests {
 
     fn names(found: &[&Spec]) -> Vec<String> {
         found.iter().map(|s| s.name.clone()).collect()
+    }
+
+    #[test]
+    fn only_a_leading_command_opens_the_palette() {
+        assert_eq!(word("  /mo", 5), Some("/mo"));
+        for text in [
+            "draft /mo",
+            "path src/main",
+            "https://host",
+            "`/mo`",
+            "/login /mo",
+        ] {
+            assert!(word(text, text.len()).is_none(), "{text}");
+        }
     }
 
     #[test]

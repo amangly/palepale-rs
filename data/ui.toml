@@ -7,7 +7,7 @@ prompt = "› "
 user_mark = "│ "
 # Starts each stretch of the model's prose; what follows it hangs under the text.
 reply_mark = "› "
-placeholder = "Write a message…  / for commands"
+placeholder = "Write a message…  / commands · @ references · $ skills"
 tips = [
   "/help commands · /status usage · /models model",
 ]
