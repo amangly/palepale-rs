@@ -23,19 +23,19 @@ retry = false
 
 [insufficient_credit]
 title = "Out of available credit"
-hint = "Check the wallet and held credit in your Palepale account."
+hint = "Top up your account to send another paid request."
 retry = false
 
 [unavailable]
 after_output = true
 title = "The gateway could not complete this request"
-hint = "Check account usage before trying again; a provider may already have accepted it."
+hint = "The request may already be running. Any charge updates automatically."
 retry = false
 
 [pending_usage]
 after_output = true
-title = "Usage needs reconciliation"
-hint = "Credit remains held. Keep the request ID for support and do not retry automatically."
+title = "Usage is being checked"
+hint = "Your balance stays available. Any verified charge updates automatically."
 retry = false
 
 [capacity_limited]
@@ -264,5 +264,5 @@ retry = false
 
 [budget_exceeded]
 title = "Spending cap reached"
-hint = "Pending requests count toward your cap. Reduce the output budget, increase the cap explicitly, or start a new run if its budget expired."
+hint = "Increase the spending cap or start a new run if its budget expired."
 retry = false
