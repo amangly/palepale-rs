@@ -41,6 +41,23 @@ impl Editor {
         self.lines.join("\n")
     }
 
+    pub fn cursor(&self) -> usize {
+        self.lines[..self.row]
+            .iter()
+            .map(|line| line.len() + 1)
+            .sum::<usize>()
+            + self.col
+    }
+
+    pub fn replace(&mut self, range: std::ops::Range<usize>, value: &str) {
+        let mut text = self.text();
+        let cursor = range.start + value.len();
+        text.replace_range(range, value);
+        self.set_text(&text);
+        self.row = text[..cursor].bytes().filter(|b| *b == b'\n').count();
+        self.col = text[..cursor].rsplit('\n').next().unwrap_or_default().len();
+    }
+
     pub fn is_empty(&self) -> bool {
         self.lines.len() == 1 && self.lines[0].is_empty()
     }
@@ -399,6 +416,17 @@ mod tests {
         let mut e = Editor::new(10);
         e.insert(text);
         e
+    }
+
+    #[test]
+    fn completion_replaces_a_unicode_token_without_moving_surrounding_text() {
+        let mut editor = Editor::new(10);
+        editor.set_text("你好 @src end\nnext");
+        editor.replace("你好 ".len().."你好 @src".len(), "@src/main.rs ");
+        assert_eq!(editor.text(), "你好 @src/main.rs  end\nnext");
+        assert_eq!(editor.cursor(), "你好 @src/main.rs ".len());
+        editor.insert("here");
+        assert_eq!(editor.text(), "你好 @src/main.rs here end\nnext");
     }
 
     #[test]

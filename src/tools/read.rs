@@ -160,8 +160,9 @@ fn file(
     limit: Option<usize>,
 ) -> Output {
     let limits = &limits::get().tools;
-    let bytes = match io::fs::read_bytes(path) {
-        Ok(bytes) => bytes,
+    let bytes = match io::fs::read_bytes_limited(path, limits::get().mentions.input_bytes.value) {
+        Ok(Some(bytes)) => bytes,
+        Ok(None) => return Output::error(format!("{shown} does not exist.")),
         Err(e) => return Output::error(format!("Could not read {shown}: {e}")),
     };
     let sniff = &bytes[..bytes.len().min(limits.binary_sniff_bytes.value)];
@@ -244,6 +245,14 @@ fn list(path: &std::path::Path, shown: &str, depth: usize) -> Output {
             out,
             "\n[{} more entries; use glob to search.]",
             entries.len() - max
+        );
+    }
+    let cut = truncate::cut(&out, truncate::Keep::Head, max, limits.max_bytes.value);
+    if cut.truncated() {
+        out = format!(
+            "{}\n{}",
+            cut.text,
+            crate::text::mentions::text().directory_cut
         );
     }
     Output::ok(out.trim_end().to_owned()).with_details(json!({ "entries": entries.len() }))

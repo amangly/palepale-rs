@@ -9,6 +9,72 @@ use grep_regex::RegexMatcherBuilder;
 use grep_searcher::{BinaryDetection, Searcher, SearcherBuilder, Sink, SinkContext, SinkMatch};
 use ignore::WalkBuilder;
 
+pub struct MentionPaths {
+    pub paths: Vec<String>,
+    pub truncated: bool,
+}
+
+/// Discovery runs outside the terminal loop and stops when its picker closes.
+pub fn mention_paths(
+    root: PathBuf,
+) -> (
+    std::sync::mpsc::Receiver<MentionPaths>,
+    tokio_util::sync::CancellationToken,
+) {
+    let (send, receive) = std::sync::mpsc::channel();
+    let cancel = tokio_util::sync::CancellationToken::new();
+    let worker = cancel.clone();
+    tokio::task::spawn_blocking(move || {
+        let _ = send.send(discover_mentions(&root, &worker));
+    });
+    (receive, cancel)
+}
+
+fn discover_mentions(root: &Path, cancel: &tokio_util::sync::CancellationToken) -> MentionPaths {
+    let max = crate::limits::get().mentions.entries.value;
+    let mut result = MentionPaths {
+        paths: Vec::new(),
+        truncated: false,
+    };
+    for (visited, entry) in WalkBuilder::new(root)
+        .follow_links(false)
+        .filter_entry(|e| e.file_name() != ".git")
+        .build()
+        .enumerate()
+    {
+        if cancel.is_cancelled() {
+            break;
+        }
+        if visited >= max {
+            result.truncated = true;
+            break;
+        }
+        let Ok(entry) = entry else {
+            result.truncated = true;
+            continue;
+        };
+        if entry.depth() == 0 {
+            continue;
+        }
+        let Some(kind) = entry.file_type() else {
+            continue;
+        };
+        if !kind.is_dir() && !kind.is_file() {
+            continue;
+        }
+        let mut name = relative_slashes(root, entry.path());
+        if name.contains(['"', '\n', '\r', '`']) {
+            continue;
+        }
+        if kind.is_dir() {
+            name.push('/');
+        }
+        result.paths.push(name);
+    }
+    result.paths.sort();
+    result
+}
+
 pub struct Found {
     pub path: PathBuf,
     pub modified: Option<SystemTime>,
@@ -264,6 +330,23 @@ mod tests {
         let mut names: Vec<String> = found.iter().map(|p| relative_slashes(root, p)).collect();
         names.sort();
         names
+    }
+
+    #[test]
+    fn mention_discovery_respects_ignores_and_cancellation() {
+        let dir = tree();
+        let cancel = tokio_util::sync::CancellationToken::new();
+        let result = discover_mentions(dir.path(), &cancel);
+        assert!(result.paths.contains(&"src/".to_owned()));
+        assert!(result.paths.contains(&"src/main.rs".to_owned()));
+        assert!(
+            !result
+                .paths
+                .iter()
+                .any(|p| p.starts_with("target/") || p.starts_with(".git"))
+        );
+        cancel.cancel();
+        assert!(discover_mentions(dir.path(), &cancel).paths.is_empty());
     }
 
     #[test]

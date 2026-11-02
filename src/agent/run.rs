@@ -59,7 +59,8 @@ pub async fn run(
             error: error.error,
         });
     }
-    let mut parts = with_reminder(cx, shared, prompt);
+    let mention_input = prompt.clone();
+    let mut parts = with_reminder(cx, shared, literal_mentions(shared, prompt));
     if shared.depth == 0 && shared.orient_once() {
         let context = tokio::select! {
             context = crate::agent::orient::snapshot(&cx.app.paths) => context,
@@ -105,7 +106,18 @@ pub async fn run(
     let mut summary_failed = false;
     let mut overflow_retried = false;
     let mut told_written = false;
-    let mut changed = false;
+    let mut changed =
+        match crate::agent::mentions::expand(cx, transcript, shared, &mention_input, &cancel).await
+        {
+            Ok(changed) => changed,
+            Err(outcome) => {
+                if let Some(shadow) = &shadow {
+                    finish_checkpoint(cx, transcript, shadow).await;
+                }
+                (cx.emit)(AgentEvent::RunEnd { outcome });
+                return outcome;
+            }
+        };
     let mut verified = 0;
     let mut completion = None;
 
@@ -305,7 +317,10 @@ pub async fn run(
             let steered = shared.drain_steer();
             if !steered.is_empty() {
                 for parts in steered {
-                    deliver(cx, shared, transcript, parts, &cancel, shadow.as_ref()).await;
+                    match deliver(cx, shared, transcript, parts, &cancel, shadow.as_ref()).await {
+                        Ok(edited) => changed |= edited,
+                        Err(outcome) => break 'run outcome,
+                    }
                 }
                 continue;
             }
@@ -389,7 +404,10 @@ pub async fn run(
             break Outcome::Done;
         }
         for parts in queued {
-            deliver(cx, shared, transcript, parts, &cancel, shadow.as_ref()).await;
+            match deliver(cx, shared, transcript, parts, &cancel, shadow.as_ref()).await {
+                Ok(edited) => changed |= edited,
+                Err(outcome) => break 'run outcome,
+            }
         }
     };
     if let Some(shadow) = &shadow {
@@ -438,7 +456,7 @@ async fn finish_checkpoint(
 
 /// Keeps `message`; a session file that can no longer be written is reported once, and the
 /// run goes on without it.
-fn record(cx: &RunCtx<'_>, transcript: &mut Transcript, message: Message) {
+pub(super) fn record(cx: &RunCtx<'_>, transcript: &mut Transcript, message: Message) {
     if let Err(unsaved) = transcript.push(message) {
         (cx.emit)(AgentEvent::Unsaved {
             path: unsaved.path.display().to_string(),
@@ -455,7 +473,8 @@ async fn deliver(
     parts: Vec<Part>,
     cancel: &tokio_util::sync::CancellationToken,
     shadow: Option<&crate::io::snapshot::Shadow>,
-) {
+) -> Result<bool, Outcome> {
+    let mention_input = parts.clone();
     let before = match shadow {
         Some(shadow) => finish_checkpoint(cx, transcript, shadow).await,
         None => None,
@@ -469,7 +488,7 @@ async fn deliver(
         .collect::<Vec<_>>()
         .join("\n");
     (cx.emit)(AgentEvent::Delivered { text });
-    let mut parts = with_reminder(cx, shared, parts);
+    let mut parts = with_reminder(cx, shared, literal_mentions(shared, parts));
     crate::skills::expand(
         cx.app,
         shared,
@@ -490,6 +509,18 @@ async fn deliver(
             error: error.error,
         });
     }
+    crate::agent::mentions::expand(cx, transcript, shared, &mention_input, cancel).await
+}
+
+fn literal_mentions(shared: &Shared, mut parts: Vec<Part>) -> Vec<Part> {
+    if shared.depth == 0 {
+        for part in &mut parts {
+            if let Part::Text { text } = part {
+                *text = crate::text::mentions::unescape(text);
+            }
+        }
+    }
+    parts
 }
 
 /// Mode changes reach the model as a reminder on the next user message, so the system prompt
@@ -637,9 +668,21 @@ mod tests {
             shared: &Shared,
             on: impl Fn(&AgentEvent, &Shared) + Send + Sync,
         ) -> (Outcome, Transcript, Vec<String>) {
+            self.run_prompt(shared, "go", on).await
+        }
+
+        async fn run_prompt(
+            &self,
+            shared: &Shared,
+            input: &str,
+            on: impl Fn(&AgentEvent, &Shared) + Send + Sync,
+        ) -> (Outcome, Transcript, Vec<String>) {
             let registry = Registry::builtin(&self.app);
             let events = Mutex::new(Vec::new());
             let emit = |event: AgentEvent| {
+                if matches!(&event, AgentEvent::ToolStart { name, .. } if name == "task") {
+                    *shared.session.lock().unwrap() = self.app.paths.home.join("parent.jsonl");
+                }
                 on(&event, shared);
                 let kind = serde_json::to_value(&event).unwrap()["type"]
                     .as_str()
@@ -657,7 +700,7 @@ mod tests {
                 emit: &emit,
             };
             let mut transcript = Transcript::new(None);
-            let prompt = vec![Part::Text { text: "go".into() }];
+            let prompt = vec![Part::Text { text: input.into() }];
             let outcome = run(&cx, &mut transcript, shared, prompt).await;
             (outcome, transcript, events.into_inner().unwrap())
         }
@@ -673,6 +716,189 @@ mod tests {
 
         fn requests(&self) -> Vec<Value> {
             self.script.lock().unwrap().1.clone()
+        }
+    }
+
+    #[tokio::test]
+    async fn mentions_read_once_and_reach_the_first_request_with_scoped_instructions() {
+        let h = Harness::new(vec![text("done")]).await;
+        h.write("nested/example.rs", "unique_source_marker");
+        h.write("nested/AGENTS.md", "unique_scope_instruction");
+        let (outcome, transcript, _) = h
+            .run_prompt(
+                &shared("auto"),
+                "Explain @nested/example.rs and @./nested/example.rs",
+                |_, _| {},
+            )
+            .await;
+        assert_eq!(outcome, Outcome::Done);
+        let reads = transcript
+            .messages
+            .iter()
+            .filter(|m| matches!(m, Message::Tool(t) if t.name == "read"))
+            .count();
+        assert_eq!(reads, 1);
+        let requests = h.requests();
+        assert_eq!(requests.len(), 1);
+        assert!(requests[0].to_string().contains("unique_source_marker"));
+        assert!(requests[0].to_string().contains("unique_scope_instruction"));
+    }
+
+    #[tokio::test]
+    async fn mention_reads_respect_permission_and_cancellation_without_inference() {
+        for approve in [false, true] {
+            let mut h = Harness::new(vec![]).await;
+            h.app
+                .settings
+                .permission
+                .push(crate::permission::rule::Rule {
+                    permission: "read".into(),
+                    pattern: "*".into(),
+                    action: crate::permission::rule::Action::Ask,
+                });
+            h.write("example.rs", "private_source_marker");
+            let state = shared("manual");
+            let (outcome, _, _) = h
+                .run_prompt(&state, "Read @example.rs", |event, state| {
+                    if let AgentEvent::Prompt { id, .. } = event {
+                        if approve {
+                            state.interrupt();
+                        } else {
+                            state.answer(*id, Reply::No { feedback: None });
+                        }
+                    }
+                })
+                .await;
+            assert!(matches!(outcome, Outcome::Rejected | Outcome::Aborted));
+            assert!(h.requests().is_empty());
+        }
+    }
+
+    #[tokio::test]
+    async fn queued_and_steering_mentions_resolve_when_delivered() {
+        for steering in [true, false] {
+            let h = Harness::new(vec![text("first"), text("second")]).await;
+            let state = shared("auto");
+            let once = std::sync::atomic::AtomicBool::new(false);
+            let (_, transcript, _) = h
+                .run(&state, |event, state| {
+                    if matches!(event, AgentEvent::MessageEnd { .. })
+                        && !once.swap(true, std::sync::atomic::Ordering::SeqCst)
+                    {
+                        h.write("later.txt", "late_source_marker");
+                        let parts = vec![Part::Text {
+                            text: "Read @later.txt".into(),
+                        }];
+                        if steering {
+                            state.steer(parts);
+                        } else {
+                            state.follow_up(parts);
+                        }
+                    }
+                })
+                .await;
+            assert_eq!(h.requests().len(), 2);
+            assert!(h.requests()[1].to_string().contains("late_source_marker"));
+            assert!(
+                transcript
+                    .messages
+                    .iter()
+                    .any(|m| matches!(m, Message::Tool(t) if t.name == "read" && !t.is_error))
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn selected_agent_runs_once_with_file_context_and_no_recursive_mentions() {
+        let h = Harness::new(vec![text("child answer"), text("parent answer")]).await;
+        h.write("example.rs", "literal @general and @missing.txt");
+        let (outcome, transcript, _) = h
+            .run_prompt(&shared("auto"), "@explore explain @example.rs", |_, _| {})
+            .await;
+        assert_eq!(outcome, Outcome::Done);
+        assert_eq!(h.requests().len(), 2);
+        assert!(h.requests()[0].to_string().contains("literal @general"));
+        assert_eq!(
+            transcript
+                .messages
+                .iter()
+                .filter(|m| matches!(m, Message::Tool(t) if t.name == "task"))
+                .count(),
+            1
+        );
+    }
+
+    #[tokio::test]
+    async fn multiple_agents_and_unreadable_mentions_do_not_start_inference() {
+        for input in [
+            "@general @explore do work",
+            "read @missing.txt",
+            "read @binary.dat",
+        ] {
+            let h = Harness::new(vec![]).await;
+            h.write("binary.dat", "a\0b");
+            let (outcome, _, _) = h.run_prompt(&shared("auto"), input, |_, _| {}).await;
+            assert_eq!(outcome, Outcome::Failed);
+            assert!(h.requests().is_empty());
+        }
+    }
+
+    #[tokio::test]
+    async fn selected_agent_keeps_plan_locks_and_parent_verification() {
+        for mode in ["plan", "auto"] {
+            let mut h = Harness::new(vec![
+                reply(
+                    "",
+                    &[(
+                        "write-from-child",
+                        "write",
+                        json!({"path":"child.txt","content":"written"}),
+                    )],
+                    "tool_calls",
+                ),
+                text("child done"),
+                text("parent done"),
+            ])
+            .await;
+            h.app.settings.verify = Some("echo verified".into());
+            let (outcome, transcript, _) = h
+                .run_prompt(&shared(mode), "@general write child.txt", |event, state| {
+                    if let AgentEvent::Prompt { id, .. } = event {
+                        state.answer(*id, Reply::Yes);
+                    }
+                })
+                .await;
+            assert_eq!(outcome, Outcome::Done);
+            let changed = crate::io::fs::kind(&h.app.paths.project.join("child.txt")).unwrap()
+                == crate::io::fs::Kind::File;
+            assert_eq!(changed, mode == "auto");
+            let verified = transcript
+                .messages
+                .iter()
+                .any(|m| matches!(m, Message::Tool(t) if t.call_id.starts_with("verify-")));
+            assert_eq!(verified, mode == "auto");
+        }
+    }
+
+    #[tokio::test]
+    async fn denied_mentions_do_not_bypass_read_or_task_rules() {
+        for (permission, input) in [
+            ("read", "@example.rs explain"),
+            ("task", "@explore explain"),
+        ] {
+            let mut h = Harness::new(vec![]).await;
+            h.write("example.rs", "secret marker");
+            h.app
+                .settings
+                .permission
+                .push(crate::permission::rule::Rule {
+                    permission: permission.into(),
+                    pattern: "*".into(),
+                    action: crate::permission::rule::Action::Deny,
+                });
+            let (outcome, _, _) = h.run_prompt(&shared("manual"), input, |_, _| {}).await;
+            assert_eq!(outcome, Outcome::Failed);
+            assert!(h.requests().is_empty());
         }
     }
 

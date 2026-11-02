@@ -4,6 +4,37 @@ Type `/` in a session to open the command menu. Use Up and Down to select a comm
 Tab to complete it, Enter to run it, and Escape to close the menu. A message that
 starts with `//` sends a literal leading slash to the model.
 
+## References
+
+Type `@` to find a project file, folder, or agent. Up/Down selects a result;
+Tab or Enter inserts it. Press Enter again to send. Escape closes the picker.
+While a turn runs, Tab still steers whenever the picker is closed.
+
+```text
+Explain @src/main.rs
+Review @"docs/design notes.md"
+Explain the layout of @src/tui/
+@explore trace authentication in @src/auth.rs
+```
+
+Files are read when the message reaches the agent, including queued follow-ups.
+Folders add a listing, not every file inside them. Read results appear in the
+conversation and remain available when you resume. Normal permissions apply;
+a missing, denied, or binary file stops submission before inference.
+
+Choose one agent per message: `@explore` inspects code and `@general` handles a
+bounded task. The child inherits the current mode and spending budget. Use
+`@./explore` for a file named `explore`. Skills keep their `$skill-name` syntax.
+
+Discovery respects ignore files and omits hidden paths and directory symlinks.
+You can type an exact path for an omitted file; access still requires permission.
+Use quotes for spaces or punctuation. Email addresses, URLs, and backtick code
+remain text. `@@name` sends a literal `@name`.
+
+One message accepts up to 16 unique file references with a 256 KiB context budget.
+Reads reject files larger than 8 MiB; ordinary line and output limits also apply.
+Discovery stops after 20,000 entries and reports when results are incomplete.
+
 ## Slash commands
 
 | Command | Action |

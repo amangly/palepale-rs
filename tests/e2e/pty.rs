@@ -2133,3 +2133,34 @@ async fn narrow_disconnected_session_keeps_the_editor_and_quits() {
     .await
     .unwrap();
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn mentions_picker_inserts_without_sending_and_reads_the_selected_file() {
+    let fake = Fake::start().await;
+    fake.script([Reply::sse("hello.sse")]);
+    let sandbox = Sandbox::default();
+    std::fs::write(
+        sandbox.project.path().join("mention-source.rs"),
+        "mention_pty_marker",
+    )
+    .unwrap();
+    let observed = fake.clone();
+    in_session(&fake, sandbox, Some(ENV_KEY), move |s| {
+        s.wait_for("AUTO");
+        s.type_text("Explain @mention-so");
+        s.wait_for("┌ References");
+        s.wait_for("mention-source.rs");
+        s.send("\r");
+        s.wait_gone("┌ References");
+        assert_eq!(observed.hits("/v1/chat/completions"), 0);
+        s.send("\r");
+        s.wait_for("Hello there!");
+    })
+    .await;
+    assert_eq!(fake.hits("/v1/chat/completions"), 1);
+    assert!(
+        fake.chat_bodies()[0]
+            .to_string()
+            .contains("mention_pty_marker")
+    );
+}

@@ -34,6 +34,7 @@ impl Limit<u64> {
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Limits {
+    pub mentions: MentionLimits,
     pub snapshot: SnapshotLimits,
     pub compaction: CompactionLimits,
     pub subagent: SubagentLimits,
@@ -274,4 +275,13 @@ mod tests {
         }
         walk("limits", &toml::from_str::<toml::Value>(SRC).unwrap());
     }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MentionLimits {
+    pub entries: Limit<usize>,
+    pub files: Limit<usize>,
+    pub input_bytes: Limit<usize>,
+    pub context_bytes: Limit<usize>,
 }

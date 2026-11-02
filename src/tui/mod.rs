@@ -37,3 +37,5 @@ mod view;
 mod welcome;
 
 pub use app::run;
+
+mod mentions;

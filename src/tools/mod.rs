@@ -19,7 +19,7 @@ mod read;
 pub(crate) mod shell;
 mod skill;
 pub(crate) mod target;
-mod task;
+pub(crate) mod task;
 mod todowrite;
 pub(crate) mod truncate;
 mod webfetch;

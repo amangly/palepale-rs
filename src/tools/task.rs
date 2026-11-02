@@ -29,6 +29,12 @@ static KINDS: LazyLock<Vec<Kind>> = LazyLock::new(|| {
     .map(|s| toml::from_str(s).expect("agent kind"))
     .collect()
 });
+pub fn catalog() -> impl Iterator<Item = (&'static str, &'static str)> {
+    KINDS
+        .iter()
+        .map(|kind| (kind.id.as_str(), kind.summary.as_str()))
+}
+
 static SPEC: LazyLock<Spec> = LazyLock::new(|| {
     let mut spec = Spec::load(
         "task",

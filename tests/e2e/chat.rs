@@ -667,3 +667,32 @@ async fn continuing_a_paid_session_in_trial_mode_uses_the_eligible_model() {
     );
     assert_eq!(bodies[1]["funding"], "trial");
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn resumed_mentions_use_saved_context_without_reopening_files() {
+    let fake = Fake::start().await;
+    fake.script([Reply::sse("hello.sse"), Reply::sse("hello.sse")]);
+    let sandbox = Sandbox::default();
+    let path = sandbox.project.path().join("saved.rs");
+    std::fs::write(&path, "saved_mention_marker").unwrap();
+    sandbox
+        .run(
+            &fake.url,
+            &["--mode", "auto", "--print", "Explain @saved.rs"],
+            WITH_KEY,
+        )
+        .await
+        .success();
+    std::fs::remove_file(&path).unwrap();
+    sandbox
+        .run(
+            &fake.url,
+            &["--continue", "--mode", "auto", "--print", "Explain more"],
+            WITH_KEY,
+        )
+        .await
+        .success();
+    assert_eq!(fake.hits("/v1/chat/completions"), 2);
+    let bodies = fake.chat_bodies();
+    assert!(bodies[1].to_string().contains("saved_mention_marker"));
+}

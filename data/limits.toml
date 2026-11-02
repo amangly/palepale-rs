@@ -427,3 +427,16 @@ reason = "allow the supported text-model catalog while rejecting oversized confi
 [opencode.plugin_bytes]
 value = 100000
 reason = "bound the model-refresh plugin installed with OpenCode configuration"
+
+[mentions.entries]
+value = 20000
+reason = "Bound project discovery without blocking terminal input."
+[mentions.files]
+value = 16
+reason = "Bound explicit references in a single message."
+[mentions.input_bytes]
+value = 8388608
+reason = "Bound source-file allocation before line paging."
+[mentions.context_bytes]
+value = 262144
+reason = "Bound total file context attached to one prompt."

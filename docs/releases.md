@@ -1,5 +1,19 @@
 # Releases
 
+## v0.1.40 — 2026-11-02
+
+Type `@` to find project files, folders, and agents. Use Up/Down to select a
+result and Tab or Enter to insert it. Enter sends the message after selection;
+Tab still steers a running turn when the picker is closed.
+
+File mentions add read results to the conversation, with normal permissions and
+size limits. Folder mentions add a directory listing. Use quotes for paths with
+spaces, and `@@name` for a literal `@name`. Saved sessions retain the read results.
+
+Use `@explore` to inspect code or `@general` to delegate a task. Children inherit
+the current mode and spending budget; PLAN restrictions and configured checks
+still apply. Example: `@explore explain authentication in @src/auth.rs`.
+
 ## v0.1.39 — 2026-11-02
 
 The agent can search when it needs current information. It uses the selected

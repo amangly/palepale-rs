@@ -185,6 +185,7 @@ struct Tui<'a> {
     blocks: Vec<Option<usize>>,
     editor: Editor,
     palette: Palette,
+    mentions: crate::tui::mentions::Picker,
     burst: Burst,
     queue: Vec<(Kind, String)>,
     /// Prompts waiting on the user; the first is on screen in place of the editor.
@@ -256,6 +257,7 @@ impl<'a> Tui<'a> {
             blocks: Vec::new(),
             editor,
             palette: Palette::default(),
+            mentions: crate::tui::mentions::Picker::default(),
             burst: Burst::new(limits.paste_gap_ms.ms(), limits.paste_min_keys.value),
             queue: Vec::new(),
             cards: VecDeque::new(),
@@ -555,7 +557,7 @@ impl<'a> Tui<'a> {
                         self.finish(done)
                     },
                     // Frames tick while the intro, a turn, or a toast moves.
-                    _ = tick.tick(), if turn.is_some() || self.toast.is_some() || self.intro.is_some() => {
+                    _ = tick.tick(), if turn.is_some() || self.toast.is_some() || self.intro.is_some() || self.mentions.loading() => {
                         self.advance_intro();
                         Step::Continue
                     },
@@ -940,6 +942,10 @@ impl<'a> Tui<'a> {
             Input::Key(key) => {
                 match keymap::get().action(&key) {
                     Some(action) => {
+                        self.sync_mentions();
+                        if self.mentions.key(action, &mut self.editor) {
+                            return Step::Continue;
+                        }
                         // The command popup takes its keys first; it is closed during a run,
                         // where Tab steers.
                         if !running {
@@ -1432,6 +1438,31 @@ impl<'a> Tui<'a> {
         self.shared.set_mode(&modes[(at + 1) % modes.len()]);
     }
 
+    fn sync_mentions(&mut self) {
+        let mode = self.shared.mode();
+        let policy = crate::permission::gate::Policy {
+            rules: &self.app.settings.permission,
+            mode,
+            plan_file: "",
+        };
+        let agents: Vec<_> = crate::tools::task::catalog()
+            .filter(|(id, _)| {
+                !matches!(
+                    policy.decide(&[crate::permission::gate::Ask::new("task", *id)]),
+                    crate::permission::gate::Decision::Deny(_)
+                )
+            })
+            .map(|(id, summary)| {
+                (
+                    id.to_owned(),
+                    format!("{}: {summary}", crate::text::mentions::text().agent),
+                )
+            })
+            .collect();
+        self.mentions
+            .sync(&self.editor, &self.app.paths.project, &agents);
+    }
+
     /// Completes a slash command name when only one fits.
     fn complete(&mut self) {
         let text = self.editor.text();
@@ -1822,6 +1853,11 @@ impl<'a> Tui<'a> {
                     if !found.is_empty() {
                         floating = self.palette.render(&found, width);
                     }
+                }
+                self.sync_mentions();
+                let mention_rows = self.mentions.render(width);
+                if !mention_rows.is_empty() {
+                    floating = mention_rows;
                 }
                 let ui = ui::get();
                 let prompt = Line::styled(&ui.prompt, Style::fg(&mode.color).bold());
