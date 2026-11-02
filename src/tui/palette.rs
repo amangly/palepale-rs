@@ -29,13 +29,10 @@ pub enum Step {
     Run(String),
 }
 
-/// Only the command at the start of a prompt opens this menu.
+/// Find the command token at the cursor, including inside a draft.
 pub fn word(text: &str, cursor: usize) -> Option<&str> {
-    let command = text.trim_start();
-    let name = command.strip_prefix(Scope::Session.prefix())?;
-    let start = text.len() - command.len();
-    (start < cursor && cursor <= text.len() && !name.contains(char::is_whitespace))
-        .then_some(command)
+    let token = crate::text::mentions::active(text, cursor)?;
+    (token.sigil == '/').then(|| &text[token.span])
 }
 
 /// Session commands whose name starts with what follows the `/`, alphabetically so an exact
@@ -160,15 +157,11 @@ mod tests {
     }
 
     #[test]
-    fn only_a_leading_command_opens_the_palette() {
+    fn commands_open_at_the_cursor_in_a_draft() {
         assert_eq!(word("  /mo", 5), Some("/mo"));
-        for text in [
-            "draft /mo",
-            "path src/main",
-            "https://host",
-            "`/mo`",
-            "/login /mo",
-        ] {
+        assert_eq!(word("asdasd /", 8), Some("/"));
+        assert_eq!(word("draft /hel suffix", 10), Some("/hel"));
+        for text in ["path src/main", "https://host", "`/mo`"] {
             assert!(word(text, text.len()).is_none(), "{text}");
         }
     }

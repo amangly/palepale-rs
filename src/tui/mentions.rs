@@ -172,10 +172,14 @@ impl Picker {
             return Vec::new();
         };
         let skills = token.sigil == '$';
+        let visible = crate::limits::get().tui.palette_rows.value.max(1);
+        let start = (self.selected + 1).saturating_sub(visible);
         let mut rows: Vec<_> = self
             .found
             .iter()
             .enumerate()
+            .skip(start)
+            .take(visible)
             .map(|(i, (path, label))| {
                 Line::styled(
                     format!(
@@ -234,11 +238,7 @@ fn ranked(
         .filter_map(|(path, label)| mentions::score(&path, query).map(|rank| (rank, path, label)))
         .collect();
     matches.sort_by(|a, b| (a.0, &a.1).cmp(&(b.0, &b.1)));
-    matches
-        .into_iter()
-        .take(crate::limits::get().tui.palette_rows.value)
-        .map(|(_, p, l)| (p, l))
-        .collect()
+    matches.into_iter().map(|(_, p, l)| (p, l)).collect()
 }
 
 #[cfg(test)]
@@ -248,6 +248,24 @@ mod tests {
         gate::Policy,
         rule::{Action as RuleAction, Rule},
     };
+
+    #[test]
+    fn every_match_is_reachable_beyond_the_first_visible_page() {
+        let count = crate::limits::get().tui.palette_rows.value + 3;
+        let mut picker = Picker::default();
+        picker.found = ranked(
+            (0..count).map(|i| (format!("file-{i:03}.txt"), String::new())),
+            "",
+        );
+        picker.token = mentions::active("draft @", 7);
+        let mut editor = Editor::new(10);
+        editor.set_text("draft @");
+        for _ in 1..count {
+            assert!(picker.key(Action::Down, &mut editor));
+        }
+        assert!(picker.key(Action::Submit, &mut editor));
+        assert_eq!(editor.text(), format!("draft @file-{:03}.txt ", count - 1));
+    }
 
     #[test]
     fn skill_completion_preserves_draft_and_respects_denials_and_escape() {

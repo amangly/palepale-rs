@@ -37,6 +37,7 @@ fn discover_mentions(root: &Path, cancel: &tokio_util::sync::CancellationToken) 
         truncated: false,
     };
     for (visited, entry) in WalkBuilder::new(root)
+        .standard_filters(false)
         .follow_links(false)
         .filter_entry(|e| e.file_name() != ".git")
         .build()
@@ -333,18 +334,15 @@ mod tests {
     }
 
     #[test]
-    fn mention_discovery_respects_ignores_and_cancellation() {
+    fn mention_discovery_includes_ignored_and_hidden_files_and_cancels() {
         let dir = tree();
         let cancel = tokio_util::sync::CancellationToken::new();
         let result = discover_mentions(dir.path(), &cancel);
         assert!(result.paths.contains(&"src/".to_owned()));
         assert!(result.paths.contains(&"src/main.rs".to_owned()));
-        assert!(
-            !result
-                .paths
-                .iter()
-                .any(|p| p.starts_with("target/") || p.starts_with(".git"))
-        );
+        assert!(result.paths.contains(&"target/junk.rs".to_owned()));
+        assert!(result.paths.contains(&".gitignore".to_owned()));
+        assert!(!result.paths.iter().any(|p| p.starts_with(".git/")));
         cancel.cancel();
         assert!(discover_mentions(dir.path(), &cancel).paths.is_empty());
     }

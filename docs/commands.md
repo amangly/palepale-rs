@@ -1,8 +1,10 @@
 # Commands and keyboard shortcuts
 
-Type `/` at the start of the prompt to open the command menu, even during a reply.
-Use Up and Down to select a command, Tab to complete its name, Enter to run it,
-and Escape to close the menu. A slash inside your message stays text. A message that
+Type `/` at the start of a word to open the command menu, even during a reply.
+Use Up and Down to select a command and Enter to run it. Inside a draft, Tab or
+Enter runs the command and keeps the surrounding text. At the start of an empty
+prompt, Tab completes the command name so you can add arguments. Escape closes
+the menu and keeps the text. A message that
 starts with `//` sends a literal leading slash to the model.
 
 ## References
@@ -28,7 +30,8 @@ bounded task. The child inherits the current mode and spending budget. Use
 `@./explore` for a file named `explore`. Type `$` to find an installed skill.
 Tab or Enter inserts its name. Press Enter again to send the prompt.
 
-Discovery respects ignore files and omits hidden paths and directory symlinks.
+Discovery includes hidden and ignored files throughout the current directory.
+Up/Down scrolls through all matches. Git internals and directory symlinks are omitted.
 You can type an exact path for an omitted file; access still requires permission.
 Use quotes for spaces or punctuation. Email addresses, URLs, and backtick code
 remain text. `@@name` sends a literal `@name`.

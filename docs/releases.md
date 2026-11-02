@@ -1,5 +1,16 @@
 # Releases
 
+## v0.1.42 — 2026-11-03
+
+The command menu opens when you type `/` after draft text, such as `asdasd /`.
+Choose a command with Up/Down, then Tab or Enter to run it and keep the
+surrounding draft. Escape closes the menu and keeps the typed text.
+
+The `@` picker includes hidden and ignored files throughout the current
+directory. Up/Down scrolls through every discovered match. Git internals and
+directory symlinks are omitted; existing discovery limits and read permissions
+still apply.
+
 ## v0.1.41 — 2026-11-02
 
 The `/` command menu now works while the agent is replying. Type `/` at the

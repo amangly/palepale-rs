@@ -1426,13 +1426,24 @@ impl<'a> Tui<'a> {
     fn command_key(&mut self, action: Action, running: bool) -> Option<Step<'a>> {
         let text = self.editor.text();
         let word = palette::word(&text, self.editor.cursor())?;
+        let token = crate::text::mentions::active(&text, self.editor.cursor())?;
+        let inline = !text[..token.span.start].trim().is_empty()
+            || !text[token.span.end..].trim().is_empty();
         match self.palette.key(action, word) {
             palette::Step::Ignored => return None,
             palette::Step::Handled => {}
             palette::Step::Complete(command) => {
+                if inline {
+                    self.editor.replace(token.span, "");
+                    return Some(self.command(command.trim().trim_start_matches('/')));
+                }
                 self.editor.set_text(&command);
             }
             palette::Step::Run(name) => {
+                if inline {
+                    self.editor.replace(token.span, "");
+                    return Some(self.command(&name));
+                }
                 self.editor.set_text(&Scope::Session.invoke(&name));
                 return Some(self.submit(running));
             }
@@ -1994,7 +2005,7 @@ mod account_tests {
     }
 
     #[test]
-    fn commands_complete_during_a_turn_and_slashes_in_prose_stay_literal() {
+    fn commands_complete_during_a_turn_and_preserve_inline_drafts() {
         use crate::io::term::KeyEvent;
 
         let dir = tempfile::tempdir().unwrap();
@@ -2008,8 +2019,11 @@ mod account_tests {
         };
         let mut tui = Tui::new(&app, catalog, None, &shared, None, String::new());
         tui.editor.set_text("explain /help");
-        assert!(tui.command_key(Action::Submit, true).is_none());
-        assert_eq!(tui.editor.text(), "explain /help");
+        assert!(matches!(
+            tui.command_key(Action::Submit, true),
+            Some(Step::Work(_))
+        ));
+        assert_eq!(tui.editor.text(), "explain ");
         tui.editor.set_text("/hel");
         assert!(matches!(
             tui.input(

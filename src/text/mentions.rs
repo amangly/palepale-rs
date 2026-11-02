@@ -75,7 +75,7 @@ fn scan(text: &str) -> (Vec<Mention>, Vec<Range<usize>>) {
             i += 2;
             continue;
         }
-        if code == 0 && boundary && c == '$' {
+        if code == 0 && boundary && matches!(c, '$' | '/') {
             let start = i;
             i += 1;
             let body = i;
@@ -83,7 +83,9 @@ fn scan(text: &str) -> (Vec<Mention>, Vec<Range<usize>>) {
                 i += text[i..].chars().next().unwrap().len_utf8();
             }
             let word = &text[body..i];
-            if word.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-') {
+            if word.bytes().all(|b| {
+                b.is_ascii_alphanumeric() || b == b'-' || (c == '/' && matches!(b, b':' | b'_'))
+            }) {
                 found.push(Mention {
                     sigil: c,
                     span: start..i,

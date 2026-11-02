@@ -2183,6 +2183,8 @@ async fn typing_shortcuts_keeps_the_draft_until_submission() {
     for (path, body) in [
         ("src/auth/login.rs", "Shortcut nested file marker"),
         ("docs/review notes/guide.md", "Shortcut spaced path marker"),
+        (".hidden/ignored.txt", "Shortcut hidden file marker"),
+        (".ignore", ".hidden/\n"),
     ] {
         let file = sandbox.project.path().join(path);
         std::fs::create_dir_all(file.parent().unwrap()).unwrap();
@@ -2191,12 +2193,15 @@ async fn typing_shortcuts_keeps_the_draft_until_submission() {
     sandbox.trust_project();
     in_session(&fake, sandbox, Some(ENV_KEY), |s| {
         s.wait_for("AUTO");
-        s.type_text("/hel");
+        s.type_text("asdasd /");
+        s.wait_for("┌ commands");
+        s.type_text("hel");
         s.wait_for("┌ commands");
         s.wait_for("/help");
         s.wait_quiet();
         s.send("\r");
         s.wait_gone("┌ commands");
+        s.wait_for("asdasd ");
         s.type_text("Review draft /help $native");
         s.wait_for("┌ Skills");
         s.wait_for("native-review");
@@ -2212,6 +2217,11 @@ async fn typing_shortcuts_keeps_the_draft_until_submission() {
         s.wait_for("docs/review notes/guide.md");
         s.send("\r");
         s.wait_gone("┌ References");
+        s.type_text("@.hidden/ignored");
+        s.wait_for("┌ References");
+        s.wait_for(".hidden/ignored.txt");
+        s.send("\r");
+        s.wait_gone("┌ References");
         s.send("\r");
         s.wait_for("Hello there!");
     })
@@ -2220,10 +2230,11 @@ async fn typing_shortcuts_keeps_the_draft_until_submission() {
     assert_eq!(requests.len(), 1);
     let messages = requests[0]["messages"].to_string();
     for marker in [
-        "Review draft /help $native-review @src/auth/login.rs",
+        "asdasd Review draft /help $native-review @src/auth/login.rs",
         "Shortcut skill marker",
         "Shortcut nested file marker",
         "Shortcut spaced path marker",
+        "Shortcut hidden file marker",
     ] {
         assert!(messages.contains(marker), "{messages}");
     }
