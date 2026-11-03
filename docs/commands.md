@@ -63,7 +63,6 @@ Discovery stops after 20,000 entries and reports when results are incomplete.
 | `/keys revoke <ref> --yes` | Revoke the specified inference key. |
 | `/mcp` | Open the MCP server manager. |
 | `/skills` | Open the skill browser. |
-| `/forums` | Manage forums and their login state. Alias: `/forum`. |
 | `/godmode [profile\|custom [apply]\|off\|status]` | Choose a server profile or test your own system prompt. |
 | `/quit` | Leave the session. Alias: `/exit`. |
 
@@ -71,10 +70,6 @@ Discovery stops after 20,000 entries and reports when results are incomplete.
 and removing sources. See [MCP servers and skills](mcp-and-skills.md) for syntax,
 discovery, imports, and authentication. Connected MCP prompts appear as
 `/server:prompt`; quote arguments that contain spaces.
-
-For forums, use `/forums list`, `/forums add <url or name>`, `/forums login <forum>`,
-`/forums logout <forum>`, `/forums remove <forum>`, or
-`/forums search <forum> <words>`.
 
 Account and key commands use the gateway configured for this session. Inference
 keys start with `pk_`; owner credentials start with `po_`. Account numbers and

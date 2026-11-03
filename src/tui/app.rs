@@ -39,7 +39,6 @@ use crate::tui::editor::Editor;
 use crate::tui::effort as effort_picker;
 use crate::tui::extensions::{self as extension_ui, Manager};
 use crate::tui::feed::{Block, Feed};
-use crate::tui::forums::{self, Forums};
 use crate::tui::godmode as godmode_picker;
 use crate::tui::keymap::{self, Action};
 use crate::tui::login::{self, Login};
@@ -84,7 +83,6 @@ enum Step<'a> {
 /// What a card's network work came to, for the card that started it.
 enum Done {
     Login(login::Done),
-    Forums(forums::Done),
     Extensions(extension_ui::Done),
 }
 
@@ -202,8 +200,6 @@ struct Tui<'a> {
     dashboard_id: u64,
     session_usage: Usage,
     session_requests: u64,
-    /// The `/forums` card, likewise.
-    forums: Option<Forums>,
     extensions: Option<Manager>,
     extension_id: u64,
     /// The turn in flight, for the working line.
@@ -270,7 +266,6 @@ impl<'a> Tui<'a> {
             dashboard_id: 0,
             session_usage: Usage::default(),
             session_requests: 0,
-            forums: None,
             extensions: None,
             extension_id: 0,
             progress: None,
@@ -761,7 +756,7 @@ impl<'a> Tui<'a> {
                 }
             }
             // Closing a card drops whatever it was waiting on.
-            if self.login.is_none() && self.forums.is_none() && self.extensions.is_none() {
+            if self.login.is_none() && self.extensions.is_none() {
                 job = None;
             }
         }
@@ -886,8 +881,6 @@ impl<'a> Tui<'a> {
             Input::Paste(text) => {
                 if let Some(card) = &mut self.login {
                     card.insert(&text);
-                } else if let Some(card) = &mut self.forums {
-                    card.insert(&text);
                 } else if let Some(card) = &mut self.extensions {
                     card.insert(&text);
                 } else if let Some(card) = self.cards.front_mut() {
@@ -898,7 +891,6 @@ impl<'a> Tui<'a> {
                 Step::Continue
             }
             Input::Key(key) if self.login.is_some() => self.login_key(&key),
-            Input::Key(key) if self.forums.is_some() => self.forums_key(&key),
             Input::Key(key) if self.extensions.is_some() => {
                 let action = keymap::get().action(&key);
                 let next = self.extensions.as_mut().expect("guarded").key(action, &key);
@@ -993,34 +985,6 @@ impl<'a> Tui<'a> {
         Step::Job(login::run(self.app, job).map(Done::Login).boxed())
     }
 
-    fn forums_key(&mut self, key: &crate::io::term::KeyEvent) -> Step<'a> {
-        let action = keymap::get().action(key);
-        if action == Some(Action::CycleMode) {
-            self.cycle_mode();
-            return Step::Continue;
-        }
-        match &mut self.forums {
-            Some(card) => {
-                let next = card.key(action, key);
-                self.forums_next(next)
-            }
-            None => Step::Continue,
-        }
-    }
-
-    fn forums_next(&mut self, next: forums::Next) -> Step<'a> {
-        match next {
-            forums::Next::Stay => {}
-            forums::Next::Run(job) => {
-                return Step::Job(forums::run(self.app, job).map(Done::Forums).boxed());
-            }
-            forums::Next::Note(text) => self.feed.notice(&text, "done"),
-            forums::Next::Error(text) => self.feed.notice(&text, "error"),
-            forums::Next::Close => self.forums = None,
-        }
-        Step::Continue
-    }
-
     /// Hands a card's finished work back to it; what it asks next may be more work.
     fn job_done(&mut self, done: Done) -> Step<'a> {
         match done {
@@ -1037,20 +1001,6 @@ impl<'a> Tui<'a> {
                     Step::Work(command::refresh_catalog(self.app))
                 } else {
                     Step::Continue
-                }
-            }
-            Done::Forums(done) => {
-                // The prompt names the forums to browse; an added or removed one changes it.
-                if matches!(done, forums::Done::Changed { .. }) {
-                    self.system = self
-                        .model
-                        .as_ref()
-                        .map(|model| system_prompt::build(&self.app.paths, model))
-                        .unwrap_or_default();
-                }
-                match self.forums.as_mut().map(|card| card.finished(done)) {
-                    Some(next) => self.forums_next(next),
-                    None => Step::Continue,
                 }
             }
         }
@@ -1681,10 +1631,6 @@ impl<'a> Tui<'a> {
                             .expect("MCP prompt arguments serialize"),
                     }]);
                 }
-                Effect::Forums { login } => match crate::forums::store::load(&self.app.paths) {
-                    Ok(list) => self.forums = Some(Forums::new(list, login.as_deref())),
-                    Err(e) => self.feed.notice(&format!("{e:#}"), "error"),
-                },
                 Effect::NewConversation => return Step::NewConversation,
                 Effect::Send(text) => return Step::Send(vec![Part::Text { text }]),
                 Effect::CopyLastReply => match self.feed.last_reply() {
@@ -1828,8 +1774,6 @@ impl<'a> Tui<'a> {
         let session_info = self.session();
         let card = if let Some(login) = &self.login {
             Some(login.render(width))
-        } else if let Some(forums) = &self.forums {
-            Some(forums.render(width))
         } else if let Some(manager) = &self.extensions {
             Some(manager.render(width, height.saturating_sub(live.len() + 3).max(5)))
         } else if let Some(picker) = &self.effort_picker {

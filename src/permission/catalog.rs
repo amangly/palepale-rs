@@ -34,10 +34,6 @@ pub const BASH_WRITE: Permission = permission("bash_write", Effect::ChangesFiles
 pub const EXTERNAL_DIRECTORY: Permission = permission("external_directory", Effect::Other);
 pub const WEBFETCH: Permission = permission("webfetch", Effect::Other);
 pub const WEBSEARCH: Permission = permission("websearch", Effect::Other);
-/// Reading a forum (sections, topics, threads, search); default-allowed, per host.
-pub const FORUM: Permission = permission("forum", Effect::Other);
-/// Posting to a forum; the posting tool also confirms the content with the user every time.
-pub const FORUM_POST: Permission = permission("forum_post", Effect::Other);
 pub const TODO: Permission = permission("todo", Effect::Other);
 pub const TASK: Permission = permission("task", Effect::Other);
 pub const QUESTION: Permission = permission("question", Effect::Other);
@@ -60,8 +56,6 @@ const ALL: &[Permission] = &[
     EXTERNAL_DIRECTORY,
     WEBFETCH,
     WEBSEARCH,
-    FORUM,
-    FORUM_POST,
     TODO,
     TASK,
     QUESTION,

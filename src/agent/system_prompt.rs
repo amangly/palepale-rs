@@ -1,9 +1,5 @@
 //! The system prompt, ordered stable-first so vendors that cache prompt prefixes can reuse it.
 
-use std::sync::LazyLock;
-
-use serde::Deserialize;
-
 use crate::api::models::Model;
 use crate::io;
 use crate::paths::Paths;
@@ -17,19 +13,6 @@ const HEADLESS: &str = include_str!("../../data/prompts/headless.md");
 
 pub fn headless(system: String) -> String {
     format!("{system}\n\n{}", HEADLESS.trim_end())
-}
-
-static FORUMS: LazyLock<Forums> = LazyLock::new(|| {
-    toml::from_str(include_str!("../../data/prompts/forums.toml"))
-        .expect("data/prompts/forums.toml is checked by tests")
-});
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct Forums {
-    frame: String,
-    line: String,
-    hint: String,
 }
 
 /// Reminders a mode can name in data/modes/*.toml; one line per prompt file.
@@ -90,40 +73,9 @@ fn build_with_base(paths: &Paths, model: &Model, base: &str) -> String {
             .trim_end()
             .to_owned()
         }),
-        forums(paths),
         Some(env.trim_end().to_owned()),
     ];
     parts.into_iter().flatten().collect::<Vec<_>>().join("\n\n")
-}
-
-/// The forums this machine can browse, each with its hint, so the model knows to look there.
-fn forums(paths: &Paths) -> Option<String> {
-    // An unreadable store is reported where forums are used; the prompt just goes without.
-    let list = crate::forums::store::load(paths).ok()?;
-    if list.is_empty() {
-        return None;
-    }
-    let lines: Vec<String> = list
-        .iter()
-        .map(|forum| {
-            let line = template::fill(
-                &FORUMS.line,
-                &[("name", &forum.name), ("host", &forum.host())],
-            );
-            match forum.hint.as_str() {
-                "" => line,
-                hint => format!(
-                    "{line}\n{}",
-                    template::fill(&FORUMS.hint, &[("hint", hint)])
-                ),
-            }
-        })
-        .collect();
-    Some(
-        template::fill(&FORUMS.frame, &[("forums", &lines.join("\n"))])
-            .trim()
-            .to_owned(),
-    )
 }
 
 pub fn reminder(name: &str) -> Option<&'static str> {
@@ -176,26 +128,5 @@ mod tests {
         assert!(prompt.contains(".agents/skills") && prompt.contains("startup_timeout_secs"));
         model.capabilities.tool_calling = false;
         assert!(!build(&paths, &model).contains("<palepale_setup>"));
-    }
-
-    #[test]
-    fn the_forums_to_browse_are_named_with_their_hints() {
-        let root = tempfile::tempdir().unwrap();
-        let paths = Paths::at(root.path().join("home"), root.path().join("proj"));
-        // With no store yet, the seed is what there is to browse.
-        let seed = &crate::forums::data().seed[0];
-        let prompt = build(&paths, &model());
-        assert!(
-            prompt.contains(&format!(
-                "- {} ({})\n  {}",
-                seed.name,
-                seed.host(),
-                seed.hint
-            )),
-            "{prompt}"
-        );
-        assert!(prompt.find("<forums>") < prompt.find("<env>"));
-        crate::forums::store::remove(&paths, &seed.name).unwrap();
-        assert!(!build(&paths, &model()).contains("<forums>"));
     }
 }

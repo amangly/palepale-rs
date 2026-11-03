@@ -4,6 +4,32 @@ use crate::fake_palepale::{Fake, Reply};
 use crate::{Sandbox, WITH_KEY};
 
 #[tokio::test(flavor = "multi_thread")]
+async fn removed_forum_integration_is_absent_from_help_and_model_requests() {
+    let fake = Fake::start().await;
+    fake.script([Reply::sse("hello.sse")]);
+    let sandbox = Sandbox::default();
+    let legacy = sandbox.home().join("forums.json");
+    let contents = "unused legacy forum state";
+    std::fs::write(&legacy, contents).unwrap();
+    let help = sandbox.run(&fake.url, &["help"], WITH_KEY).await;
+    assert!(!help.success().stdout().contains("forums"));
+    sandbox
+        .run(&fake.url, &["--print", "hello"], WITH_KEY)
+        .await
+        .success();
+    let bodies = fake.chat_bodies();
+    assert_eq!(bodies.len(), 1);
+    assert!(!bodies[0]["tools"].as_array().unwrap().iter().any(|tool| {
+        tool["function"]["name"]
+            .as_str()
+            .unwrap()
+            .starts_with("forum_")
+    }));
+    assert!(!bodies[0]["messages"].to_string().contains("<forums>"));
+    assert_eq!(std::fs::read_to_string(legacy).unwrap(), contents);
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn run_budget_is_created_once_and_attached_to_every_agent_turn() {
     let fake = Fake::start().await;
     fake.script([

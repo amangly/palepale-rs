@@ -62,11 +62,6 @@ impl Paths {
         self.home.join("prefs.json")
     }
 
-    /// The forums the user added and the session cookies for the ones logged in.
-    pub fn forums(&self) -> PathBuf {
-        self.home.join("forums.json")
-    }
-
     /// Project folders whose own config may loosen the settings.
     pub fn trusted(&self) -> PathBuf {
         self.home.join("trusted.json")

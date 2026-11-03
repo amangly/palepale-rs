@@ -8,7 +8,7 @@ exclude = ["crates/cffetch", "bench/cache"]
 name = "palepale"
 default-run = "palepale"
 autotests = false
-version = "0.1.42"
+version = "0.1.43"
 edition = "2024"
 rust-version = "1.98"
 description = "Palepale native terminal coding agent"
@@ -39,7 +39,6 @@ jiff = { version = "0.2.37", features = ["serde"] }
 jsonschema = { version = "0.58.6", default-features = false }
 pulldown-cmark = { version = "0.13.4", default-features = false }
 process-wrap = { version = "10.0.1", default-features = false, features = ["tokio1", "creation-flags", "job-object", "process-group", "kill-on-drop"] }
-quick-xml = "0.37.5"
 reqwest = { version = "0.13.5", default-features = false, features = ["json", "stream", "http2", "rustls", "system-proxy"] }
 rmcp = { version = "=3.5.1", default-features = false, features = ["client", "transport-child-process", "transport-streamable-http-client-reqwest", "reqwest", "auth"] }
 serde = { version = "1.0.229", features = ["derive"] }

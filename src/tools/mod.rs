@@ -7,7 +7,6 @@ mod edit_match;
 mod finish;
 pub use finish::NAME as FINISH;
 pub mod files;
-mod forum;
 mod fs;
 mod glob;
 mod grep;
@@ -79,11 +78,6 @@ impl Check {
 
     pub fn with_preview(mut self, preview: impl Into<String>) -> Self {
         self.preview = Some(preview.into());
-        self
-    }
-
-    pub fn with_confirmation(mut self) -> Self {
-        self.confirm = true;
         self
     }
 }
@@ -224,11 +218,6 @@ impl Registry {
             Arc::new(grep::Grep),
             Arc::new(webfetch::WebFetch),
             Arc::new(websearch::WebSearch),
-            Arc::new(forum::Sections),
-            Arc::new(forum::Topics),
-            Arc::new(forum::ThreadTool),
-            Arc::new(forum::Search),
-            Arc::new(forum::Post),
             Arc::new(todowrite::TodoWrite),
             Arc::new(task::Task),
             Arc::new(question::Question),

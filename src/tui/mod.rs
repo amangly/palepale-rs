@@ -12,7 +12,6 @@ mod editor;
 mod effort;
 mod extensions;
 mod feed;
-mod forums;
 mod frame;
 mod godmode;
 mod header;

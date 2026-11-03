@@ -7,7 +7,6 @@ mod battery;
 mod cli;
 mod commands;
 mod extensions;
-mod forums;
 mod frontend;
 mod install;
 mod io;

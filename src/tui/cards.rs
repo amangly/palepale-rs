@@ -106,8 +106,6 @@ pub fn title(tool: &str, arguments: &str) -> Option<String> {
         .into_iter()
         .filter_map(|key| arg_text(&at(&args, &key)))
         .collect();
-    // With `title_join` several present args fold onto one line (a forum and its section or search
-    // term); otherwise the first present one titles the card, as every other tool does.
     let title = match spec.title_join {
         Some(sep) => (!present.is_empty()).then(|| present.join(&sep)),
         None => present.into_iter().next(),
@@ -372,43 +370,6 @@ mod tests {
                 "{tool} in data/tool_cards.toml is not a tool"
             );
         }
-    }
-
-    #[test]
-    fn a_forum_call_folds_onto_one_header_line() {
-        let line = header(
-            "forum_search",
-            r#"{"forum":"unknowncheats","query":"aimbot"}"#,
-            State::Done,
-        );
-        assert_eq!(
-            line.to_tagged(),
-            "[done]● [/][bold]forum_search[/] [muted]unknowncheats · aimbot[/]"
-        );
-        // A missing arg is skipped, not shown as a gap.
-        let thread = header("forum_thread", r#"{"forum":"uc"}"#, State::Done);
-        assert_eq!(
-            thread.to_tagged(),
-            "[done]● [/][bold]forum_thread[/] [muted]uc[/]"
-        );
-        // A batched call shows its ids on the one line.
-        let batched = header(
-            "forum_thread",
-            r#"{"forum":"uc","topic":["318822","318823"]}"#,
-            State::Done,
-        );
-        assert_eq!(
-            batched.to_tagged(),
-            "[done]● [/][bold]forum_thread[/] [muted]uc › 318822, 318823[/]"
-        );
-        // forum_search asks for one line only: no body.
-        let card = finished(
-            "forum_search",
-            r#"{"forum":"uc","query":"x"}"#,
-            &result("[42] a topic\n[43] another", None, false),
-            60,
-        );
-        assert_eq!(card.len(), 1);
     }
 
     #[test]

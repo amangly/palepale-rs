@@ -6,7 +6,6 @@ mod battery;
 mod copy;
 pub mod discovered;
 mod extensions;
-pub mod forums;
 pub mod godmode;
 mod help;
 mod init;
@@ -193,11 +192,6 @@ pub enum Effect {
     /// Start MCP sign-in in the terminal's cancellable browser-link card.
     McpAuth(String),
     McpPrompt(String),
-    /// Open the session's forums card, at the login for the forum with this base URL when one
-    /// was named.
-    Forums {
-        login: Option<String>,
-    },
 }
 
 /// Markdown to show, and effects for the session to apply.
@@ -247,7 +241,6 @@ pub static COMMANDS: &[&dyn Command] = &[
     &install::Install,
     &uninstall::Uninstall,
     &models::Models,
-    &forums::Forums,
     &mode::Mode,
     &godmode::Godmode,
     &prompt::Prompt,

@@ -2413,7 +2413,7 @@ checksum = "1a80800c0488c3a21695ea981a54918fbb37abf04f4d0720c453632255e2ff0e"
 
 [[package]]
 name = "palepale"
-version = "0.1.42"
+version = "0.1.43"
 dependencies = [
  "anyhow",
  "arboard",
@@ -2444,7 +2444,6 @@ dependencies = [
  "portable-pty",
  "process-wrap",
  "pulldown-cmark",
- "quick-xml",
  "reqwest",
  "rmcp",
  "serde",
@@ -2670,15 +2669,6 @@ dependencies = [
  "bitflags 2.13.2",
  "memchr",
  "unicase",
-]
-
-[[package]]
-name = "quick-xml"
-version = "0.37.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "331e97a1af0bf59823e6eadffe373d7b27f485be8748f71471c662c1f269b7fb"
-dependencies = [
- "memchr",
 ]
 
 [[package]]

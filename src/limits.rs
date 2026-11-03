@@ -46,7 +46,6 @@ pub struct Limits {
     pub agent: AgentLimits,
     pub tools: ToolLimits,
     pub update: UpdateLimits,
-    pub forums: ForumLimits,
     pub edit: EditLimits,
     pub tui: TuiLimits,
     pub extensions: ExtensionLimits,
@@ -206,14 +205,6 @@ pub struct UpdateLimits {
     pub check_timeout_secs: Limit<u64>,
     pub download_max_bytes: Limit<usize>,
     pub metadata_max_bytes: Limit<usize>,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct ForumLimits {
-    pub page_size: Limit<i64>,
-    pub batch_max: Limit<usize>,
-    pub directory_results: Limit<i64>,
 }
 
 #[derive(Debug, Deserialize)]

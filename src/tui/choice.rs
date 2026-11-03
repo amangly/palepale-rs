@@ -66,8 +66,6 @@ pub struct Choice {
     input: Option<Editor>,
     /// What the typed words answer: a reason for "No", or free text.
     input_for: Pick,
-    /// The keys line under the options, when the default's "esc no" is not what Esc does.
-    hint: Option<String>,
 }
 
 impl Choice {
@@ -81,13 +79,7 @@ impl Choice {
             selected: 0,
             input: None,
             input_for: Pick::Text { masked: false },
-            hint: None,
         }
-    }
-
-    pub fn with_hint(mut self, hint: impl Into<String>) -> Self {
-        self.hint = Some(hint.into());
-        self
     }
 
     /// Asks to allow a call; every ask is on the card, since approving one call approves all.
@@ -234,7 +226,7 @@ impl Card for Choice {
                 lines.extend(input.render(width, 3, &prompt, ""));
                 &text.input_hint
             }
-            None => self.hint.as_ref().unwrap_or(&text.hint),
+            None => &text.hint,
         };
         lines.push(Line::styled(format!(" {hint}"), border).truncate(width));
         lines

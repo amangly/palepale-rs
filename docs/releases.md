@@ -1,5 +1,11 @@
 # Releases
 
+## v0.1.43 — 2026-11-04
+
+Removed the built-in forum integration, including `/forums`, forum tools,
+login screens, and automatic instructions to search forums first. Existing
+local forum state is ignored and left untouched.
+
 ## v0.1.42 — 2026-11-03
 
 The command menu opens when you type `/` after draft text, such as `asdasd /`.

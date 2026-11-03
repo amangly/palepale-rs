@@ -1579,67 +1579,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn mandatory_confirmation_stays_pending_when_switching_to_auto() {
-        use crate::forums::{Forum, store};
-
-        for mode in ["manual", "auto"] {
-            let h = Harness::new(vec![
-                reply(
-                    "",
-                    &[("post", "forum_post", json!({
-                        "forum": "fixture", "section": "1", "subject": "Draft", "body": "Review me"
-                    }))],
-                    "tool_calls",
-                ),
-                text("done"),
-            ])
-            .await;
-            store::add(
-                &h.app.paths,
-                Forum {
-                    id: "fixture".into(),
-                    name: "Fixture".into(),
-                    base_url: "http://127.0.0.1:1".into(),
-                    kind: "mobiquo".into(),
-                    ..Forum::default()
-                },
-            )
-            .unwrap();
-            let (_, transcript, events) = h
-                .run(&shared(mode), |event, shared| {
-                    if let AgentEvent::Prompt { id, prompt, .. } = event {
-                        let crate::agent::prompt::Prompt::Permission {
-                            confirm, preview, ..
-                        } = prompt
-                        else {
-                            panic!("{prompt:?}");
-                        };
-                        assert!(confirm);
-                        assert!(preview.as_ref().unwrap().contains("Review me"));
-                        shared.set_mode(crate::mode::get("auto").unwrap());
-                        assert!(shared.waiting(*id));
-                        assert!(shared.answer(*id, Reply::Unavailable));
-                    }
-                })
-                .await;
-            assert_eq!(events.iter().filter(|e| *e == "prompt").count(), 1);
-            let result = transcript
-                .messages
-                .iter()
-                .find_map(|m| match m {
-                    Message::Tool(r) => Some(r),
-                    _ => None,
-                })
-                .unwrap();
-            assert_eq!(result.refused.as_deref(), Some("unconfirmed"));
-            assert_eq!(
-                result.asks,
-                [crate::permission::gate::Ask::new("forum_post", "127.0.0.1")]
-            );
-        }
-    }
-
-    #[tokio::test]
     async fn calls_in_a_cut_off_reply_are_never_run() {
         let h = Harness::new(vec![
             reply(
