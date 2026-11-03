@@ -1,0 +1,5 @@
+name = "client-key"
+summary = "Read the private credential for a connected app"
+usage = "client-key <absolute-key-file>"
+hidden = true
+scope = ["cli"]

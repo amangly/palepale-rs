@@ -118,6 +118,7 @@ impl Fake {
             .route("/v1/chat/completions", post(chat))
             .route("/v1/account/run-budgets",post(||async{axum::Json(json!({"id":"44444444-4444-4444-8444-444444444444","expires_at":"2099-01-01T00:00:00Z","limit_microdollars":"2000000","spent_microdollars":"0","reserved_microdollars":"0"}))}))
             .route("/docs/opencode.json",get(opencode_config))
+            .route("/docs/clients.json",get(client_config))
             .route("/docs/opencode-plugin.js",get(||async{"export default { id: 'palepale.fixture', setup() {} }"}))
             .route("/v1/account/summary", get(me))
             .route("/v1/account/trial", get(trial_status))
@@ -262,6 +263,13 @@ async fn opencode_config(State(state): State<Shared>) -> impl IntoResponse {
     let base = state.lock().unwrap().base.clone();
     axum::Json(
         json!({"providers":{"palepale":{"package":"@opencode/ai/providers/openai-compatible","settings":{"baseURL":format!("{base}/v1")},"models":{"fixture":{"name":"Fixture"}}}}}),
+    )
+}
+
+async fn client_config(State(state): State<Shared>) -> impl IntoResponse {
+    let base = state.lock().unwrap().base.clone();
+    axum::Json(
+        json!({"api_base_url":base,"protocols":["responses","messages"],"codex":{"models":[{"slug":"fixture"}]},"claude":{"models":[{"id":"fixture","name":"Fixture","max_output_tokens":1024,"context_window":32768}]}}),
     )
 }
 

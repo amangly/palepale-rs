@@ -66,6 +66,19 @@ The [command reference](docs/commands.md) covers slash commands, shortcuts, and 
 Use `/godmode` to toggle the server-managed coding profile for the selected model. The profile stays on the backend; the CLI only sends the toggle.
 
 https://github.com/user-attachments/assets/b2fdc082-ca27-4072-a5a2-e3253d2cdf64
+## Codex and Claude Code
+
+With the client installed, connect it to Palepale in API mode:
+
+```sh
+palepale codex
+palepale claude
+```
+
+Restart the client after connecting. Add a model ID to either command to choose
+one explicitly. Setup backs up changed settings and keeps the inference key in
+a private file. See [client setup](docs/clients.md) for requirements and limits.
+
 ## Guides
 
 - [Commands and keyboard shortcuts](docs/commands.md)

@@ -135,6 +135,15 @@ pub async fn run() -> ExitCode {
 }
 
 async fn dispatch(cli: Cli) -> anyhow::Result<ExitCode> {
+    // Credential helpers must work even when the current project's configuration is broken.
+    if !cli.print
+        && !cli.json
+        && let Some(Sub::Words(words)) = &cli.command
+        && let Some(key) = commands::clients::credential_helper(words)
+    {
+        term::out(&format!("{}\n", key?));
+        return Ok(ExitCode::SUCCESS);
+    }
     let start = crate::session::Start {
         selection: if let Some(id) = cli.resume {
             crate::session::store::Selection::Id(id)

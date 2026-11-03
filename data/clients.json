@@ -1,0 +1,28 @@
+{
+  "codex_provider": {
+    "name": "Palepale",
+    "wire_api": "responses",
+    "request_max_retries": 0,
+    "stream_max_retries": 0,
+    "supports_websockets": false
+  },
+  "codex_reset": ["profile", "forced_login_method", "model_reasoning_effort", "model_verbosity", "model_context_window", "model_auto_compact_token_limit"],
+  "claude_env": {
+    "ANTHROPIC_API_KEY": "",
+    "ANTHROPIC_AUTH_TOKEN": "",
+    "CLAUDE_CODE_OAUTH_TOKEN": "",
+    "CLAUDE_CODE_USE_BEDROCK": "",
+    "CLAUDE_CODE_USE_VERTEX": "",
+    "CLAUDE_CODE_USE_FOUNDRY": "",
+    "MAX_THINKING_TOKENS": "0",
+    "CLAUDE_CODE_EFFORT_LEVEL": "auto",
+    "CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING": "1",
+    "ENABLE_TOOL_SEARCH": "false",
+    "CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS": "1"
+  },
+  "claude_model_keys": ["ANTHROPIC_MODEL", "ANTHROPIC_DEFAULT_MODEL", "ANTHROPIC_DEFAULT_OPUS_MODEL", "ANTHROPIC_DEFAULT_SONNET_MODEL", "ANTHROPIC_DEFAULT_HAIKU_MODEL", "CLAUDE_CODE_SUBAGENT_MODEL", "ANTHROPIC_CUSTOM_MODEL_OPTION"],
+  "setup_timeout_secs": 15,
+  "catalog_bytes": 1000000,
+  "auth_timeout_ms": 5000,
+  "auth_refresh_ms": 300000
+}

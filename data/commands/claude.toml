@@ -1,0 +1,9 @@
+name = "claude"
+aliases = ["claude-code"]
+summary = "Connect Claude Code to your Palepale account"
+usage = "claude [model]"
+requires_backend = true
+scope = ["cli"]
+
+[text]
+ready = "Claude Code connected to Palepale using {model}. Restart Claude Code to apply the provider."

@@ -3,6 +3,7 @@
 
 pub mod arguments;
 mod battery;
+pub mod clients;
 mod copy;
 pub mod discovered;
 mod extensions;
@@ -230,6 +231,9 @@ pub static COMMANDS: &[&dyn Command] = &[
     &login::Login,
     &web::Web,
     &opencode::OpenCode,
+    &clients::CODEX,
+    &clients::CLAUDE,
+    &clients::ClientKey,
     &trial::Trial,
     &logout::Logout,
     &signup::Signup,

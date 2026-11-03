@@ -1,5 +1,15 @@
 # Releases
 
+## v0.1.44 — 2026-11-04
+
+Run `palepale codex` or `palepale claude` to connect an installed client to your
+Palepale account in API mode. Add a model ID to select one explicitly, then restart
+the client. Setup backs up changed settings and stores the inference key privately.
+
+The gateway supports stateless Responses and Messages requests, streamed text,
+function tools and text tool results through the existing billing and spending
+limits. See [client setup](clients.md) for supported features and requirements.
+
 ## v0.1.43 — 2026-11-04
 
 Removed the built-in forum integration, including `/forums`, forum tools,

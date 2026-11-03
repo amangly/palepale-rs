@@ -1,0 +1,8 @@
+name = "codex"
+summary = "Connect Codex to your Palepale account"
+usage = "codex [model]"
+requires_backend = true
+scope = ["cli"]
+
+[text]
+ready = "Codex connected to Palepale using {model}. Restart Codex to apply the provider."

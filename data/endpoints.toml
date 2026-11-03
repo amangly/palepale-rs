@@ -17,6 +17,11 @@ origin = "api"
 method = "GET"
 path = "/v1/models"
 
+[endpoints.client_config]
+origin = "api"
+method = "GET"
+path = "/docs/clients.json"
+
 [endpoints.agent_profiles]
 origin = "api"
 method = "GET"
