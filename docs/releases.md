@@ -1,5 +1,17 @@
 # Releases
 
+## v0.1.45 — 2026-11-04
+
+Claude Code now lists every compatible Palepale model in `/model`. Rerun
+`palepale claude` after updating, then restart Claude Code.
+
+Disconnect an app with `palepale opencode --logout`, `palepale codex --logout`,
+or `palepale claude --logout`. These commands work offline and keep your
+Palepale login and other providers.
+
+The gateway now accepts desktop code-mode tools, including a normal message
+with the free-form `exec` tool enabled.
+
 ## v0.1.44 — 2026-11-04
 
 Run `palepale codex` or `palepale claude` to connect an installed client to your

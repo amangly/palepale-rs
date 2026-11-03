@@ -38,10 +38,33 @@ impl Command for Connect {
     ) -> BoxFuture<'a, anyhow::Result<Outcome>> {
         Box::pin(async move {
             anyhow::ensure!(
-                args.len() <= 1 && args.first().is_none_or(|s| !s.starts_with('-')),
+                args.len() <= 1
+                    && args
+                        .first()
+                        .is_none_or(|s| s == "--logout" || !s.starts_with('-')),
                 "Usage: palepale {}",
                 self.spec.usage
             );
+            let (variable, folder) = match self.kind {
+                io::clients::Kind::Codex => ("CODEX_HOME", ".codex"),
+                io::clients::Kind::Claude => ("CLAUDE_CONFIG_DIR", ".claude"),
+            };
+            let root = if let Some(value) = settings::env(variable) {
+                PathBuf::from(value)
+            } else {
+                io::fs::home_dir()
+                    .ok_or_else(|| anyhow::anyhow!("No user home directory"))?
+                    .join(folder)
+            };
+            anyhow::ensure!(root.is_absolute(), "{variable} must be an absolute path");
+            let text: toml::Value = toml::from_str(self.source)?;
+            if args.first().is_some_and(|arg| arg == "--logout") {
+                io::clients::disconnect(self.kind, &root)?;
+                return Ok(text["text"]["disconnected"]
+                    .as_str()
+                    .expect("disconnect text")
+                    .into());
+            }
             if !cx.app.api.has_key() {
                 io::term::out(&format!("{}\n", super::login::pair_here(cx.app).await?));
             }
@@ -57,18 +80,6 @@ impl Command for Connect {
                     std::time::Duration::from_secs(io::clients::config().setup_timeout_secs),
                 )
                 .await?;
-            let (variable, folder) = match self.kind {
-                io::clients::Kind::Codex => ("CODEX_HOME", ".codex"),
-                io::clients::Kind::Claude => ("CLAUDE_CONFIG_DIR", ".claude"),
-            };
-            let root = if let Some(value) = settings::env(variable) {
-                PathBuf::from(value)
-            } else {
-                io::fs::home_dir()
-                    .ok_or_else(|| anyhow::anyhow!("No user home directory"))?
-                    .join(folder)
-            };
-            anyhow::ensure!(root.is_absolute(), "{variable} must be an absolute path");
             let model = io::clients::install(
                 self.kind,
                 &root,
@@ -77,7 +88,6 @@ impl Command for Connect {
                 &endpoints::origin("api"),
                 (args.first().map(String::as_str), &cx.app.settings.model),
             )?;
-            let text: toml::Value = toml::from_str(self.source)?;
             Ok(fill(
                 text["text"]["ready"].as_str().expect("client setup text"),
                 &[("model", &model)],

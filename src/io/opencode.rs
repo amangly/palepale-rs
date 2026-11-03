@@ -1,4 +1,4 @@
-use super::fs::{self, Access};
+use super::fs;
 use anyhow::{Context, ensure};
 use serde_json::{Value, json};
 use std::path::Path;
@@ -35,22 +35,45 @@ pub fn install(
     let old = fs::read_string(&path)?;
     let merged = merge(old.as_deref().unwrap_or("{}"), &fresh)?;
     let bytes = serde_json::to_vec_pretty(&merged)?;
-    if let Some(old) = old {
-        fs::write_new(
-            &path.with_extension(format!("palepale-{:016x}.bak", fastrand::u64(..))),
-            old.as_bytes(),
-            Access::Private,
-        )?;
-    }
     // The secret is separate from exportable configuration and is never printed.
-    fs::write_atomic(&root.join("palepale.key"), key.as_bytes(), Access::Private)?;
-    fs::write_atomic(
-        &root.join("plugins/palepale-models.js"),
-        plugin,
-        Access::Private,
-    )?;
-    fs::write_atomic(&path, &bytes, Access::Private)?;
+    super::clients::commit_files(&[
+        (root.join("palepale.key"), key.as_bytes().to_vec()),
+        (root.join("plugins/palepale-models.js"), plugin.to_vec()),
+        (path, bytes),
+    ])?;
     Ok(())
+}
+
+pub fn disconnect(root: &Path) -> anyhow::Result<()> {
+    let mut writes = Vec::new();
+    for name in ["opencode.jsonc", "opencode.json"] {
+        let path = root.join(name);
+        if let Some(old) = fs::read_string(&path)? {
+            let mut doc: Value = jsonc_parser::parse_to_serde_value(&old, &Default::default())
+                .context("Invalid OpenCode configuration; no files were changed")?;
+            let before = doc.clone();
+            let object = doc
+                .as_object_mut()
+                .context("OpenCode config must be an object")?;
+            if let Some(providers) = object.get_mut("providers").and_then(Value::as_object_mut) {
+                providers.remove("palepale");
+            }
+            for key in ["model", "small_model"] {
+                if object
+                    .get(key)
+                    .and_then(Value::as_str)
+                    .is_some_and(|s| s.starts_with("palepale/"))
+                {
+                    object.remove(key);
+                }
+            }
+            if doc != before {
+                writes.push((path, serde_json::to_vec_pretty(&doc)?));
+            }
+        }
+    }
+    super::clients::commit_files(&writes)?;
+    super::client_state::forget(root, &["palepale.key", "plugins/palepale-models.js"])
 }
 
 fn validate_provider(fresh: &Value, api_origin: &str) -> anyhow::Result<()> {
@@ -103,6 +126,7 @@ fn merge(old: &str, fresh: &Value) -> anyhow::Result<Value> {
 
 #[cfg(test)]
 mod tests {
+    use super::fs::Access;
     use super::*;
     fn catalog() -> Value {
         json!({"providers":{"palepale":{"package":"@opencode/ai/providers/openai-compatible","settings":{"baseURL":"https://api.palepale.tech/v1"},"models":{"fixture":{}}}}})

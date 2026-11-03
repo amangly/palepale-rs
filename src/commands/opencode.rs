@@ -12,6 +12,7 @@ static SPEC: LazyLock<Spec> = LazyLock::new(|| Spec::parse(SOURCE));
 #[derive(Deserialize)]
 struct Text {
     ready: String,
+    disconnected: String,
 }
 #[derive(Deserialize)]
 struct Config {
@@ -29,7 +30,27 @@ impl Command for OpenCode {
         args: &'a [String],
     ) -> BoxFuture<'a, anyhow::Result<Outcome>> {
         Box::pin(async move {
-            cx.no_args(&SPEC, args)?;
+            anyhow::ensure!(
+                args.is_empty() || args == ["--logout"],
+                "Usage: palepale {}",
+                SPEC.usage
+            );
+            let root = settings::env("XDG_CONFIG_HOME")
+                .map(std::path::PathBuf::from)
+                .unwrap_or(
+                    io::fs::home_dir()
+                        .ok_or_else(|| anyhow::anyhow!("No user home directory"))?
+                        .join(".config"),
+                )
+                .join("opencode");
+            anyhow::ensure!(
+                root.is_absolute(),
+                "XDG_CONFIG_HOME must be an absolute path"
+            );
+            if !args.is_empty() {
+                io::opencode::disconnect(&root)?;
+                return Ok(TEXT.text.disconnected.clone().into());
+            }
             if !cx.app.api.has_key() {
                 io::term::out(&format!("{}\n", super::login::pair_here(cx.app).await?));
             }
@@ -54,14 +75,6 @@ impl Command for OpenCode {
                     limits::get().opencode.setup_timeout_secs.secs(),
                 )
                 .await?;
-            let root = settings::env("XDG_CONFIG_HOME")
-                .map(std::path::PathBuf::from)
-                .unwrap_or(
-                    io::fs::home_dir()
-                        .ok_or_else(|| anyhow::anyhow!("No user home directory"))?
-                        .join(".config"),
-                )
-                .join("opencode");
             io::opencode::install(
                 &root,
                 &config.body,

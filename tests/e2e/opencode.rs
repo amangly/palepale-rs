@@ -103,6 +103,15 @@ async fn codex_and_claude_connect_in_api_mode_without_inference_or_key_output() 
         assert!(!saved.contains(CLIENT_KEY));
         assert!(saved.contains("client-key"));
         assert!(saved.contains("fixture"));
+        if client == "claude" {
+            let config: Value = serde_json::from_str(&saved).unwrap();
+            assert_eq!(config["modelPicker"]["replaceBuiltInOptions"], true);
+            assert_eq!(config["modelPicker"]["options"][1]["model"], "fixture-two");
+            assert_eq!(
+                config["modelPicker"]["options"].as_array().unwrap().len(),
+                2
+            );
+        }
         let broken_project = sandbox.project.path().join("broken-project");
         std::fs::create_dir_all(broken_project.join(".palepale")).unwrap();
         std::fs::write(broken_project.join(".palepale/config.toml"), "broken{").unwrap();
@@ -121,5 +130,92 @@ async fn codex_and_claude_connect_in_api_mode_without_inference_or_key_output() 
     }
     assert_eq!(fake.hits("/docs/clients.json"), 2);
     assert_eq!(fake.hits("/v1/account/summary"), 2);
+    assert_eq!(fake.hits("/v1/chat/completions"), 0);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn disconnect_is_offline_idempotent_and_keeps_other_client_settings() {
+    let fake = Fake::start().await;
+    let sandbox = Sandbox::default();
+    for (client, variable, file, original) in [
+        (
+            "codex",
+            "CODEX_HOME",
+            "config.toml",
+            "model = 'previous'\napproval_policy = 'on-request'\n",
+        ),
+        (
+            "claude",
+            "CLAUDE_CONFIG_DIR",
+            "settings.json",
+            r#"{"model":"previous","permissions":{"deny":["Bash(rm *)"]}}"#,
+        ),
+        (
+            "opencode",
+            "XDG_CONFIG_HOME",
+            "opencode.json",
+            r#"{"model":"other/model","providers":{"other":{}}}"#,
+        ),
+    ] {
+        let env_root = sandbox.home().join(client);
+        let root = if client == "opencode" {
+            env_root.join("opencode")
+        } else {
+            env_root.clone()
+        };
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(root.join(file), original).unwrap();
+        for disconnect in [false, true, true] {
+            let mut command = tokio::process::Command::new(binary());
+            command.arg(client);
+            if disconnect {
+                command.arg("--logout");
+            }
+            command
+                .current_dir(sandbox.project.path())
+                .envs(launch_env(
+                    sandbox.home(),
+                    &fake.url,
+                    if disconnect { None } else { Some(CLIENT_KEY) },
+                ))
+                .env(variable, &env_root)
+                .stdin(Stdio::null())
+                .kill_on_drop(true);
+            for name in CLEARED {
+                if *name != "PALEPALE_API_KEY" {
+                    command.env_remove(name);
+                }
+            }
+            if disconnect {
+                command
+                    .env_remove("PALEPALE_API_KEY")
+                    .env("PALEPALE_OFFLINE", "1");
+            }
+            let run = Run(
+                tokio::time::timeout(Duration::from_secs(30), command.output())
+                    .await
+                    .unwrap()
+                    .unwrap(),
+            );
+            run.success();
+            assert!(!run.stdout().contains(CLIENT_KEY));
+            assert!(!run.stderr().contains(CLIENT_KEY));
+        }
+        assert!(!root.join("palepale.key").exists());
+        assert!(!root.join("palepale-models.json").exists());
+        assert!(!root.join("plugins/palepale-models.js").exists());
+        let saved = std::fs::read_to_string(root.join(file)).unwrap();
+        if client == "codex" {
+            let actual: toml::Value = toml::from_str(&saved).unwrap();
+            let expected: toml::Value = toml::from_str(original).unwrap();
+            assert_eq!(actual, expected);
+        } else {
+            assert_eq!(
+                serde_json::from_str::<Value>(&saved).unwrap(),
+                serde_json::from_str::<Value>(original).unwrap()
+            );
+        }
+    }
+    assert_eq!(fake.hits("/v1/account/summary"), 3);
     assert_eq!(fake.hits("/v1/chat/completions"), 0);
 }

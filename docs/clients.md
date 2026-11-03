@@ -28,10 +28,12 @@ approval settings and saved subscription credentials remain. An active default
 profile and model-specific overrides are cleared so they cannot keep the old
 provider or context limits active. Named profiles remain available.
 
-Claude Code uses `CLAUDE_CONFIG_DIR`, or `~/.claude`. Setup merges `settings.json`,
-selects the Palepale model and points the built-in model aliases and subagents at
-that model. It clears competing provider credentials in the settings environment,
-sets context/output limits, and disables extended-thinking and deferred-tool
+Claude Code uses `CLAUDE_CONFIG_DIR`, or `~/.claude`. Setup merges `settings.json`
+and lists every compatible Palepale model in `/model`, without duplicate family
+entries. This requires Claude Code 2.1.242 or later. Background family aliases use
+the setup model; subagents inherit the active model. Setup clears competing
+provider credentials in the settings environment, uses context/output limits
+that fit every listed model, and disables extended-thinking and deferred-tool
 features that the adapter does not support. Existing permissions, hooks and
 unrelated settings remain. Managed or project settings can take precedence;
 check `/status` if the client still selects another provider.
@@ -43,10 +45,26 @@ settings, model catalog and setup output. Keep Palepale installed at that path;
 reconnect after moving it or replacing a revoked key. The credential helper
 works without loading project configuration or contacting the API.
 
-Every changed existing file gets a sibling `*.palepale-*.bak` backup. Reconnecting
-with unchanged settings makes no new backups. To undo setup, close the client and
-restore the config backup. Backups of credential files are private too. Existing
-subscription credentials are not deleted.
+Every changed existing file gets a private sibling `*.palepale-*.bak` backup.
+Reconnecting with unchanged settings makes no new backups. Rerun setup to refresh
+the model list.
+
+## Disconnect
+
+Close the client, then run its command:
+
+```sh
+palepale opencode --logout
+palepale codex --logout
+palepale claude --logout
+```
+
+Disconnect works offline. It removes the app's Palepale key and integration.
+Codex and Claude Code restore settings saved by this setup version, preserving
+later edits. Older connections are cleared; their original settings remain in
+the sibling backups. Other providers, saved subscription logins and your Palepale
+login stay available. Restart the client afterward. Already-running clients may
+retain a cached key until closed; disconnect does not revoke the shared key.
 
 ## Supported behavior
 
@@ -54,7 +72,9 @@ The gateway adapts Responses for Codex and Messages for Claude Code to Palepale'
 existing completion service. Text streams incrementally. User images, function
 tools, matching tool results, cancellation and usage accounting use the same
 admission and billing rules as the native CLI. Codex function namespaces retain
-their identities across turns. Tool results currently support text only.
+their identities across turns. Desktop code mode supports free-form source and
+its matching tool results. Code executes in the client. Tool results currently
+support text only.
 
 The Responses path is stateless: clients replay history. Stored responses,
 `previous_response_id`, hosted tools, strict function-schema guarantees and

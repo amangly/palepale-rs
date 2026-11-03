@@ -1,8 +1,9 @@
 name = "codex"
 summary = "Connect Codex to your Palepale account"
-usage = "codex [model]"
-requires_backend = true
+usage = "codex [model | --logout]"
+requires_backend = false
 scope = ["cli"]
 
 [text]
 ready = "Codex connected to Palepale using {model}. Restart Codex to apply the provider."
+disconnected = "Codex disconnected. Restart Codex. Your Palepale login stays active."

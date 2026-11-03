@@ -193,5 +193,7 @@ Commands supported in both places, such as `login`, `models`, `sessions`, `mcp`,
 commands; `/help` lists session commands.
 
 `palepale opencode` connects an installed OpenCode V2 client with a backed-up config merge.
+Use `palepale codex` or `palepale claude` for those clients. Add `--logout` to
+any of these commands to disconnect that app, then restart it.
 `palepale --budget 2.00` caps paid spend for the invocation, including pending holds.
 It does not reduce the output limit automatically; an unaffordable request stops before dispatch.

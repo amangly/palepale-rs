@@ -20,6 +20,7 @@ pub struct Config {
     codex_reset: Vec<String>,
     claude_env: BTreeMap<String, String>,
     claude_model_keys: Vec<String>,
+    claude_reset: Vec<String>,
     pub setup_timeout_secs: u64,
     catalog_bytes: usize,
     auth_timeout_ms: u64,
@@ -128,6 +129,7 @@ pub fn install(
             let mut doc = old
                 .parse::<toml_edit::DocumentMut>()
                 .context("Invalid Codex configuration; no files were changed")?;
+            let before = toml_json(&old)?;
             for key in &config().codex_reset {
                 doc.remove(key);
             }
@@ -154,12 +156,18 @@ pub fn install(
                 serde_json::to_vec_pretty(&json!({"models":models}))?,
             ));
             writes.push((path, doc.to_string().into_bytes()));
+            writes.push(super::client_state::remember(
+                &root,
+                &prior_settings(kind, &root, &before)?,
+                &toml_json(&doc.to_string())?,
+            )?);
         }
         Kind::Claude => {
             let path = root.join("settings.json");
             let old = fs::read_string(&path)?.unwrap_or_else(|| "{}".into());
             let mut doc: Value = serde_json::from_str(&old)
                 .context("Invalid Claude Code configuration; no files were changed")?;
+            let before = doc.clone();
             let object = doc
                 .as_object_mut()
                 .context("Claude Code settings must be an object")?;
@@ -171,6 +179,9 @@ pub fn install(
             for (key, value) in &config().claude_env {
                 env.insert(key.clone(), json!(value));
             }
+            for key in &config().claude_reset {
+                env.remove(key);
+            }
             for key in &config().claude_model_keys {
                 env.insert(key.clone(), json!(id));
             }
@@ -178,27 +189,59 @@ pub fn install(
                 "ANTHROPIC_BASE_URL".into(),
                 json!(origin.trim_end_matches('/')),
             );
-            env.insert(
-                "ANTHROPIC_CUSTOM_MODEL_OPTION_NAME".into(),
-                json!(model["name"].as_str().unwrap_or(id)),
-            );
-            let output = model["max_output_tokens"]
-                .as_u64()
-                .filter(|n| *n > 0)
-                .context("Missing model output limit")?;
+            let mut options = Vec::new();
+            let mut output = u64::MAX;
+            let mut context = u64::MAX;
+            let mut ids = std::collections::BTreeSet::new();
+            for entry in models {
+                let model_id = entry["id"].as_str().context("Invalid model id")?;
+                ensure!(
+                    !model_id.is_empty()
+                        && model_id.len() <= 96
+                        && model_id
+                            .bytes()
+                            .all(|b| b.is_ascii_alphanumeric() || b"._-".contains(&b)),
+                    "Invalid model id"
+                );
+                let max_output = entry["max_output_tokens"]
+                    .as_u64()
+                    .filter(|n| *n > 0)
+                    .context("Missing model output limit")?;
+                let window = entry["context_window"]
+                    .as_u64()
+                    .filter(|n| *n > max_output)
+                    .context("Missing model context limit")?;
+                output = output.min(max_output);
+                context = context.min(window);
+                if ids.insert(model_id) {
+                    let label = entry["name"].as_str().unwrap_or(model_id);
+                    let duplicate_label = models
+                        .iter()
+                        .filter(|m| m["name"].as_str() == Some(label))
+                        .count()
+                        > 1;
+                    let mut option = json!({"model":model_id,"label":label});
+                    if duplicate_label {
+                        option["description"] = json!(model_id);
+                    }
+                    options.push(option);
+                }
+            }
+            // These Claude settings are session-wide, including after switching models.
             env.insert(
                 "CLAUDE_CODE_MAX_OUTPUT_TOKENS".into(),
                 json!(output.to_string()),
             );
-            let context = model["context_window"]
-                .as_u64()
-                .filter(|n| *n > output)
-                .context("Missing model context limit")?;
             env.insert(
                 "CLAUDE_CODE_MAX_CONTEXT_TOKENS".into(),
                 json!(context.to_string()),
             );
             object.insert("model".into(), json!(id));
+            object.insert(
+                "modelPicker".into(),
+                json!({"replaceBuiltInOptions":true,"options":options}),
+            );
+            object.insert("availableModels".into(), json!(ids));
             object.insert("alwaysThinkingEnabled".into(), json!(false));
             object.insert(
                 "apiKeyHelper".into(),
@@ -208,11 +251,162 @@ pub fn install(
                     shell_path(&key_path)?
                 )),
             );
+            writes.push(super::client_state::remember(
+                &root,
+                &prior_settings(kind, &root, &before)?,
+                &doc,
+            )?);
             writes.push((path, serde_json::to_vec_pretty(&doc)?));
         }
     }
     commit_files(&writes)?;
     Ok(id.to_owned())
+}
+
+fn toml_json(text: &str) -> anyhow::Result<Value> {
+    Ok(serde_json::to_value(toml::from_str::<toml::Value>(text)?)?)
+}
+
+fn owns_claude(root: &Path, value: &Value) -> anyhow::Result<bool> {
+    let helper = format!(" client-key {}", shell_path(&root.join("palepale.key"))?);
+    Ok(value["apiKeyHelper"]
+        .as_str()
+        .is_some_and(|s| s.ends_with(&helper)))
+}
+
+fn legacy_settings(kind: Kind, root: &Path, current: &Value) -> anyhow::Result<Value> {
+    let mut restored = current.clone();
+    let object = restored
+        .as_object_mut()
+        .context("Client settings must be an object")?;
+    match kind {
+        Kind::Codex => {
+            if current["model_provider"] == "palepale" {
+                for key in [
+                    "model_provider",
+                    "model",
+                    "model_catalog_json",
+                    "web_search",
+                    "model_reasoning_summary",
+                ] {
+                    object.remove(key);
+                }
+            }
+            if let Some(providers) = object
+                .get_mut("model_providers")
+                .and_then(Value::as_object_mut)
+            {
+                providers.remove("palepale");
+                if providers.is_empty() {
+                    object.remove("model_providers");
+                }
+            }
+        }
+        Kind::Claude if owns_claude(root, current)? => {
+            for key in [
+                "apiKeyHelper",
+                "model",
+                "modelPicker",
+                "availableModels",
+                "alwaysThinkingEnabled",
+            ] {
+                object.remove(key);
+            }
+            if let Some(env) = object.get_mut("env").and_then(Value::as_object_mut) {
+                for key in config()
+                    .claude_env
+                    .keys()
+                    .chain(&config().claude_model_keys)
+                    .chain(&config().claude_reset)
+                    .map(String::as_str)
+                    .chain([
+                        "ANTHROPIC_BASE_URL",
+                        "CLAUDE_CODE_MAX_OUTPUT_TOKENS",
+                        "CLAUDE_CODE_MAX_CONTEXT_TOKENS",
+                    ])
+                {
+                    env.remove(key);
+                }
+                if env.is_empty() {
+                    object.remove("env");
+                }
+            }
+        }
+        Kind::Claude => {}
+    }
+    Ok(restored)
+}
+
+fn prior_settings(kind: Kind, root: &Path, current: &Value) -> anyhow::Result<Value> {
+    if super::client_state::restore(root, current)?.is_some() {
+        Ok(current.clone())
+    } else {
+        legacy_settings(kind, root, current)
+    }
+}
+
+pub fn disconnect(kind: Kind, root: &Path) -> anyhow::Result<()> {
+    let root = fs::canonical(root);
+    let path = root.join(match kind {
+        Kind::Codex => "config.toml",
+        Kind::Claude => "settings.json",
+    });
+    if let Some(old) = fs::read_string(&path)? {
+        let current = match kind {
+            Kind::Codex => toml_json(&old)?,
+            Kind::Claude => serde_json::from_str(&old)?,
+        };
+        ensure!(current.is_object(), "Client settings must be an object");
+        if matches!(kind, Kind::Codex) || owns_claude(&root, &current)? {
+            let restored = match super::client_state::restore(&root, &current)? {
+                Some(saved) => saved,
+                None => legacy_settings(kind, &root, &current)?,
+            };
+            if restored != current {
+                let bytes = match kind {
+                    Kind::Codex => {
+                        let value: toml::Value = serde_json::from_value(restored)?;
+                        let fresh = toml::to_string(&value)?.parse::<toml_edit::DocumentMut>()?;
+                        let mut doc = old.parse::<toml_edit::DocumentMut>()?;
+                        update_table(doc.as_table_mut(), fresh.as_table());
+                        doc.to_string().into_bytes()
+                    }
+                    Kind::Claude => serde_json::to_vec_pretty(&restored)?,
+                };
+                super::client_state::save(&path, &bytes)?;
+            }
+        }
+    }
+    let artifacts: &[&str] = match kind {
+        Kind::Codex => &["palepale.key", "palepale-models.json"],
+        Kind::Claude => &["palepale.key"],
+    };
+    super::client_state::forget(&root, artifacts)
+}
+
+fn update_table(current: &mut dyn toml_edit::TableLike, fresh: &dyn toml_edit::TableLike) {
+    let keys: Vec<_> = current.iter().map(|(k, _)| k.to_owned()).collect();
+    for key in keys {
+        if !fresh.contains_key(&key) {
+            current.remove(&key);
+        }
+    }
+    for (key, value) in fresh.iter() {
+        if let (Some(old), Some(new)) = (
+            current
+                .get_mut(key)
+                .and_then(toml_edit::Item::as_table_like_mut),
+            value.as_table_like(),
+        ) {
+            update_table(old, new);
+        } else if current.get(key).map(ToString::to_string) != Some(value.to_string()) {
+            if let Some(old) = current.get_mut(key) {
+                *old = value.clone();
+            } else {
+                current.insert(key, value.clone());
+            }
+        }
+    }
 }
 
 fn shell_path(path: &Path) -> anyhow::Result<String> {
@@ -231,7 +425,7 @@ fn shell_path(path: &Path) -> anyhow::Result<String> {
     }
 }
 
-fn commit_files(writes: &[(PathBuf, Vec<u8>)]) -> anyhow::Result<()> {
+pub(super) fn commit_files(writes: &[(PathBuf, Vec<u8>)]) -> anyhow::Result<()> {
     let originals: Vec<_> = writes
         .iter()
         .map(|(p, _)| fs::read_string(p))
@@ -368,8 +562,113 @@ mod tests {
         assert_eq!(doc["env"]["ANTHROPIC_AUTH_TOKEN"], "");
         assert_eq!(doc["env"]["CLAUDE_CODE_USE_VERTEX"], "");
         assert_eq!(doc["env"]["ANTHROPIC_DEFAULT_HAIKU_MODEL"], "fixture");
+        assert_eq!(doc["modelPicker"]["options"][0]["model"], "fixture");
         assert!(doc["apiKeyHelper"].as_str().unwrap().contains("client-key"));
     }
+    #[test]
+    fn reconnect_preserves_the_original_settings_and_later_user_edits() {
+        for kind in [Kind::Codex, Kind::Claude] {
+            let dir = tempfile::tempdir().unwrap();
+            let (name, original) = match kind {
+                Kind::Codex => (
+                    "config.toml",
+                    "# existing\nmodel = 'original'\nweb_search = 'cached'\n[model_providers.other]\nname = 'Other'\n",
+                ),
+                Kind::Claude => (
+                    "settings.json",
+                    r#"{"model":"original","env":{"ANTHROPIC_AUTH_TOKEN":"fixture-original-token"},"alwaysThinkingEnabled":false}"#,
+                ),
+            };
+            let path = dir.path().join(name);
+            fs::write_atomic(&path, original.as_bytes(), Access::Private).unwrap();
+            for _ in 0..2 {
+                install(
+                    kind,
+                    dir.path(),
+                    &catalog(),
+                    &key(),
+                    "https://api.palepale.tech",
+                    (None, "fixture"),
+                )
+                .unwrap();
+            }
+            let connected = fs::read_string(&path).unwrap().unwrap();
+            let edited = match kind {
+                Kind::Codex => format!("approval_policy = 'never'\n{connected}"),
+                Kind::Claude => {
+                    let mut doc: Value = serde_json::from_str(&connected).unwrap();
+                    doc["permissions"] = json!({"deny":["Bash(rm *)"]});
+                    serde_json::to_string(&doc).unwrap()
+                }
+            };
+            fs::write_atomic(&path, edited.as_bytes(), Access::Private).unwrap();
+            disconnect(kind, dir.path()).unwrap();
+            let saved = fs::read_string(&path).unwrap().unwrap();
+            match kind {
+                Kind::Codex => {
+                    let doc = toml_json(&saved).unwrap();
+                    assert_eq!(doc["model"], "original");
+                    assert_eq!(doc["approval_policy"], "never");
+                    assert_eq!(doc["web_search"], "cached");
+                    assert_eq!(doc["model_providers"]["other"]["name"], "Other");
+                    assert!(saved.contains("# existing"));
+                }
+                Kind::Claude => {
+                    let doc: Value = serde_json::from_str(&saved).unwrap();
+                    assert_eq!(doc["model"], "original");
+                    assert_eq!(doc["env"]["ANTHROPIC_AUTH_TOKEN"], "fixture-original-token");
+                    assert_eq!(doc["alwaysThinkingEnabled"], false);
+                    assert_eq!(doc["permissions"]["deny"][0], "Bash(rm *)");
+                }
+            }
+            assert!(!dir.path().join("palepale.key").exists());
+            disconnect(kind, dir.path()).unwrap();
+            assert_eq!(saved, fs::read_string(&path).unwrap().unwrap());
+        }
+    }
+
+    #[test]
+    fn disconnect_removes_old_installations_even_after_reconnecting() {
+        for kind in [Kind::Codex, Kind::Claude] {
+            for reconnect in [false, true] {
+                let dir = tempfile::tempdir().unwrap();
+                install(
+                    kind,
+                    dir.path(),
+                    &catalog(),
+                    &key(),
+                    "https://api.palepale.tech",
+                    (None, "fixture"),
+                )
+                .unwrap();
+                fs::remove(&dir.path().join("palepale-connection.json")).unwrap();
+                if reconnect {
+                    install(
+                        kind,
+                        dir.path(),
+                        &catalog(),
+                        &key(),
+                        "https://api.palepale.tech",
+                        (None, "fixture"),
+                    )
+                    .unwrap();
+                }
+                disconnect(kind, dir.path()).unwrap();
+                let name = match kind {
+                    Kind::Codex => "config.toml",
+                    Kind::Claude => "settings.json",
+                };
+                let saved = fs::read_string(&dir.path().join(name)).unwrap().unwrap();
+                let doc = match kind {
+                    Kind::Codex => toml_json(&saved).unwrap(),
+                    Kind::Claude => serde_json::from_str(&saved).unwrap(),
+                };
+                assert_eq!(doc, json!({}));
+                assert!(!dir.path().join("palepale.key").exists());
+            }
+        }
+    }
+
     #[test]
     fn invalid_config_catalog_model_or_owner_key_never_changes_files() {
         for kind in [Kind::Codex, Kind::Claude] {

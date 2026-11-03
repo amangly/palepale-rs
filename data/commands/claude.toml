@@ -1,9 +1,10 @@
 name = "claude"
 aliases = ["claude-code"]
 summary = "Connect Claude Code to your Palepale account"
-usage = "claude [model]"
-requires_backend = true
+usage = "claude [model | --logout]"
+requires_backend = false
 scope = ["cli"]
 
 [text]
-ready = "Claude Code connected to Palepale using {model}. Restart Claude Code to apply the provider."
+ready = "Claude Code connected using {model}. Restart Claude Code, then use /model to choose a Palepale model. Model picker requires Claude Code 2.1.242+."
+disconnected = "Claude Code disconnected. Restart Claude Code. Your Palepale login stays active."
