@@ -1,5 +1,10 @@
 # Releases
 
+## v0.1.46 — 2026-11-04
+
+The Uncensored filter now includes models with the Zero Refusal badge, including
+Palepale. Open `/models` and press Tab to switch filters.
+
 ## v0.1.45 — 2026-11-04
 
 Claude Code now lists every compatible Palepale model in `/model`. Rerun

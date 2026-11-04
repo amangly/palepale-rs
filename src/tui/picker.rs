@@ -61,15 +61,17 @@ impl Picker {
     }
 
     fn rebuild(&mut self) {
-        let badge = &ui::get().picker.uncensored_badge;
+        let badges = &ui::get().picker.uncensored_badges;
         let mut visible: Vec<_> = self
             .models
             .iter()
             .filter(|m| {
                 self.filter != Filter::Uncensored
-                    || m.presentation
-                        .as_ref()
-                        .is_some_and(|p| p.badges.iter().any(|b| b.eq_ignore_ascii_case(badge)))
+                    || m.presentation.as_ref().is_some_and(|p| {
+                        p.badges.iter().any(|badge| {
+                            badges.iter().any(|value| badge.eq_ignore_ascii_case(value))
+                        })
+                    })
             })
             .collect();
         if self.filter == Filter::Cheapest {
@@ -236,6 +238,24 @@ mod tests {
         assert!(matches!(empty.key(Some(Action::Submit)), Step::Stay));
         empty.key(Some(Action::Tab));
         assert_eq!(empty.ids.len(), 1);
+    }
+
+    #[test]
+    fn zero_refusal_models_appear_in_uncensored_without_a_name_match() {
+        let mut catalog = catalog();
+        catalog.models[0].id = "palepale".into();
+        catalog.models[0].presentation = Some(api::Presentation {
+            name: "Palepale".into(),
+            badges: vec!["Cybersecurity".into(), "Zero Refusal".into(), "ZDR".into()],
+        });
+        catalog.models[1].presentation = Some(api::Presentation {
+            name: "Other model".into(),
+            badges: vec!["Cybersecurity".into(), "ZDR".into()],
+        });
+        let mut picker = Picker::new(&catalog, "palepale");
+        picker.key(Some(Action::Tab));
+        assert_eq!(picker.ids, vec!["palepale"]);
+        assert!(matches!(picker.key(Some(Action::Submit)), Step::Pick(id) if id == "palepale"));
     }
 
     #[test]

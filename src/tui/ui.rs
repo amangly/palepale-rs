@@ -90,7 +90,7 @@ pub struct PickerText {
     pub title: String,
     pub hint: String,
     pub filters: [String; 3],
-    pub uncensored_badge: String,
+    pub uncensored_badges: Vec<String>,
     pub cheapest_note: String,
     pub empty: String,
     pub switched: String,
