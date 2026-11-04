@@ -1,5 +1,10 @@
 # Releases
 
+## v0.1.49 — 2026-11-05
+
+Codex setup now shows model-returned thinking automatically. Run `palepale codex`
+again after updating, then restart Codex. Thinking appears when the model returns it.
+
 ## v0.1.48 — 2026-11-04
 
 Connect Cline CLI and its VS Code extension with `palepale cline`. Setup adds

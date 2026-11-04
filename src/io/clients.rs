@@ -141,7 +141,7 @@ pub fn install(
             doc["model_provider"] = toml_edit::value("palepale");
             doc["model"] = toml_edit::value(id);
             doc["web_search"] = toml_edit::value("disabled");
-            doc["model_reasoning_summary"] = toml_edit::value("none");
+            doc["model_reasoning_summary"] = toml_edit::value("auto");
             let catalog_path = root.join("palepale-models.json");
             doc["model_catalog_json"] = toml_edit::value(catalog_path.to_string_lossy().as_ref());
             let mut provider = config().codex_provider.clone();
@@ -532,6 +532,7 @@ mod tests {
             Some("client-key")
         );
         assert_eq!(credential(&dir.path().join("palepale.key")).unwrap(), key());
+        assert_eq!(doc["model_reasoning_summary"].as_str(), Some("auto"));
         assert_eq!(
             fs::read_string(&dir.path().join("auth.json"))
                 .unwrap()

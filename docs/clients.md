@@ -28,6 +28,9 @@ approval settings and saved subscription credentials remain. An active default
 profile and model-specific overrides are cleared so they cannot keep the old
 provider or context limits active. Named profiles remain available.
 
+Thinking appears automatically when the model returns it. Rerun `palepale codex`
+after updating to replace older settings that hid reasoning summaries.
+
 Claude Code uses `CLAUDE_CONFIG_DIR`, or `~/.claude`. Setup merges `settings.json`
 and lists every compatible Palepale model in `/model`, without duplicate family
 entries. This requires Claude Code 2.1.242 or later. Background family aliases use
