@@ -1,0 +1,1 @@
+{"type":"object","properties":{"path":{"type":"string","description":"Local image file, absolute or relative to the project."}},"required":["path"],"additionalProperties":false}

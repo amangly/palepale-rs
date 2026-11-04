@@ -172,6 +172,7 @@ pub struct AgentLimits {
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ToolLimits {
+    pub image_max_bytes: Limit<usize>,
     pub max_lines: Limit<usize>,
     pub max_bytes: Limit<usize>,
     pub max_line_chars: Limit<usize>,

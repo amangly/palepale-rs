@@ -1,0 +1,6 @@
+attached = "Attached image: {path} ({mime}, {bytes} bytes)."
+unsupported = "{path} is not a supported PNG, JPEG, GIF or WebP image. Export other formats to PNG first."
+unavailable = "The selected model cannot view images. Select a model with image input support and try again."
+not_file = "{path} is not an image file."
+missing = "{path} does not exist."
+read_failed = "Could not read {path}: {error}"

@@ -1,4 +1,4 @@
 id = "explore"
 summary = "Inspect code and references without changing project files"
-tools = ["read", "glob", "grep", "webfetch", "websearch"]
+tools = ["read", "view_image", "glob", "grep", "webfetch", "websearch"]
 prompt = "You are a subagent inspecting one part of a coding task. Read the relevant sources and return a concise answer with file paths and evidence. Do not change files."

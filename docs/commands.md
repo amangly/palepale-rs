@@ -152,6 +152,11 @@ The optional `decompile` tool lists functions and requests pseudocode from a loc
 `kuna` executable. It follows file-read permissions and reports a missing executable
 without installing anything. Disassembly through `bash` remains available.
 
+With an image-capable model selected, ask `Inspect the screenshot at screenshots/error.png`.
+The agent can use `view_image` to open local PNG, JPEG, GIF, or WebP files up to 2 MiB
+each. Images follow read permissions and stay in the saved session. Give the path
+as plain text; `@` references still use the text reader.
+
 ## Server profiles
 
 On the Palepale Bun gateway, `/godmode` opens the profile picker. The server keeps

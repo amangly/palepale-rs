@@ -156,6 +156,10 @@ reason = "paths one fs call moves, copies or deletes; the permission card lists 
 value = 500
 reason = "a directory listing past this is better explored with glob"
 
+[tools.image_max_bytes]
+value = 2097152
+reason = "Bound base64 image attachments below the gateway request limit."
+
 [tools.binary_sniff_bytes]
 value = 8192
 reason = "a NUL byte this early means the file is not text (git uses the same window)"

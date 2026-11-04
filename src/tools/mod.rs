@@ -21,6 +21,7 @@ pub(crate) mod target;
 pub(crate) mod task;
 mod todowrite;
 pub(crate) mod truncate;
+mod view_image;
 mod webfetch;
 mod websearch;
 mod write;
@@ -202,12 +203,14 @@ impl Registry {
                 limits.grep_context_max.value.to_string(),
             ),
             ("read_batch_max", limits.read_batch_max.value.to_string()),
+            ("image_max_bytes", limits.image_max_bytes.value.to_string()),
             ("grep_batch_max", limits.grep_batch_max.value.to_string()),
             ("list_depth_max", limits.list_depth_max.value.to_string()),
             ("fs_batch_max", limits.fs_batch_max.value.to_string()),
         ];
         let tools: Vec<Arc<dyn Tool>> = vec![
             Arc::new(read::Read),
+            Arc::new(view_image::ViewImage),
             Arc::new(decompile::Decompile),
             Arc::new(skill::Skill),
             Arc::new(write::Write),
@@ -255,6 +258,11 @@ impl Registry {
             registry
                 .tools
                 .retain(|tool| tool.spec().name != "websearch");
+        }
+        if !view_image::supported(model) {
+            registry
+                .tools
+                .retain(|tool| tool.spec().name != "view_image");
         }
         registry
     }

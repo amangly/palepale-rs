@@ -4,6 +4,54 @@ use crate::fake_palepale::{Fake, Reply};
 use crate::{Sandbox, WITH_KEY};
 
 #[tokio::test(flavor = "multi_thread")]
+async fn local_image_tool_sends_visual_content_and_preserves_it_in_the_session() {
+    use base64::{Engine, engine::general_purpose::STANDARD};
+    let image = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII=";
+    let fake = Fake::start().await;
+    fake.script([Reply::sse("view_image.sse"), Reply::sse("hello.sse")]);
+    let sandbox = Sandbox::default();
+    std::fs::write(
+        sandbox.project.path().join("screen.png"),
+        STANDARD.decode(image).unwrap(),
+    )
+    .unwrap();
+    sandbox
+        .run(
+            &fake.url,
+            &["--mode", "auto", "-p", "Inspect screen.png"],
+            WITH_KEY,
+        )
+        .await
+        .success();
+    let bodies = fake.chat_bodies();
+    assert_eq!(bodies.len(), 2);
+    assert!(
+        bodies[0]["tools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|tool| tool["function"]["name"] == "view_image")
+    );
+    let messages = bodies[1]["messages"].as_array().unwrap();
+    let result = messages
+        .iter()
+        .position(|message| message["role"] == "tool" && message["tool_call_id"] == "image_1")
+        .unwrap();
+    assert!(
+        !messages[result]["content"]
+            .as_str()
+            .unwrap()
+            .contains(image)
+    );
+    let content = messages[result + 1]["content"].as_array().unwrap();
+    assert!(content.iter().any(|part| part["type"] == "image_url"
+        && part["image_url"]["url"] == format!("data:image/png;base64,{image}")));
+    let saved = std::fs::read_to_string(&sandbox.sessions()[0]).unwrap();
+    assert!(saved.contains(image));
+    assert!(saved.contains("image/png"));
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn removed_forum_integration_is_absent_from_help_and_model_requests() {
     let fake = Fake::start().await;
     fake.script([Reply::sse("hello.sse")]);

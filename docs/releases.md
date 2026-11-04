@@ -1,5 +1,14 @@
 # Releases
 
+## v0.1.47 — 2026-11-04
+
+Image-capable models can now open local PNG, JPEG, GIF and WebP files with
+`view_image`. Give the file path in your prompt. Images follow read permissions
+and stay in the session so the model can use them on later turns.
+
+Run `palepale models --refresh` to load current capabilities. For OpenCode, run
+`palepale opencode` again and restart it.
+
 ## v0.1.46 — 2026-11-04
 
 The Uncensored filter now includes models with the Zero Refusal badge, including
