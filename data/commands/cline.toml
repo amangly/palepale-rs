@@ -1,0 +1,10 @@
+name = "cline"
+aliases = ["cline-code"]
+summary = "Connect Cline to your Palepale account"
+usage = "cline [model | --logout]"
+requires_backend = false
+scope = ["cli"]
+
+[text]
+ready = "Cline connected using {model}. Restart Cline or VS Code, then choose Palepale in the provider list."
+disconnected = "Cline disconnected. Restart Cline or VS Code. Your Palepale login stays active."

@@ -33,7 +33,7 @@ pub fn config() -> &'static Config {
     &CONFIG
 }
 
-fn validate_key(key: &str) -> anyhow::Result<()> {
+pub(super) fn validate_key(key: &str) -> anyhow::Result<()> {
     ensure!(
         key.starts_with("pk_")
             && key.len() == 46
@@ -53,16 +53,7 @@ pub fn credential(path: &Path) -> anyhow::Result<String> {
     Ok(key)
 }
 
-pub fn install(
-    kind: Kind,
-    root: &Path,
-    bytes: &[u8],
-    key: &str,
-    origin: &str,
-    selection: (Option<&str>, &str),
-) -> anyhow::Result<String> {
-    let (selected, preferred) = selection;
-    validate_key(key)?;
+pub(super) fn catalog(bytes: &[u8], origin: &str) -> anyhow::Result<Value> {
     ensure!(
         bytes.len() <= config().catalog_bytes,
         "Client catalog is too large"
@@ -85,6 +76,20 @@ pub fn install(
             && actual.fragment().is_none(),
         "Client catalog points to a different or insecure API; no files were changed"
     );
+    Ok(catalog)
+}
+
+pub fn install(
+    kind: Kind,
+    root: &Path,
+    bytes: &[u8],
+    key: &str,
+    origin: &str,
+    selection: (Option<&str>, &str),
+) -> anyhow::Result<String> {
+    let (selected, preferred) = selection;
+    validate_key(key)?;
+    let catalog = catalog(bytes, origin)?;
     let (name, protocol, id_key) = match kind {
         Kind::Codex => ("codex", "responses", "slug"),
         Kind::Claude => ("claude", "messages", "id"),
@@ -426,13 +431,23 @@ fn shell_path(path: &Path) -> anyhow::Result<String> {
 }
 
 pub(super) fn commit_files(writes: &[(PathBuf, Vec<u8>)]) -> anyhow::Result<()> {
+    write_files(writes, true)
+}
+
+/// Callers with their own restoration record avoid copying credentials into backups.
+pub(super) fn replace_files(writes: &[(PathBuf, Vec<u8>)]) -> anyhow::Result<()> {
+    write_files(writes, false)
+}
+
+fn write_files(writes: &[(PathBuf, Vec<u8>)], backup: bool) -> anyhow::Result<()> {
     let originals: Vec<_> = writes
         .iter()
         .map(|(p, _)| fs::read_string(p))
         .collect::<Result<_, _>>()?;
     let suffix = format!("palepale-{:016x}.bak", fastrand::u64(..));
     for ((path, bytes), old) in writes.iter().zip(&originals) {
-        if let Some(old) = old
+        if backup
+            && let Some(old) = old
             && old.as_bytes() != bytes
         {
             fs::write_new(

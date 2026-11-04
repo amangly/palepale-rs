@@ -5,6 +5,75 @@ use std::process::Stdio;
 use std::time::Duration;
 
 #[tokio::test(flavor = "multi_thread")]
+async fn cline_setup_exports_the_catalog_and_disconnects_offline() {
+    let fake = Fake::start().await;
+    let sandbox = Sandbox::default();
+    let root = sandbox.home().join("cline");
+    for disconnect in [false, true, true] {
+        let mut command = tokio::process::Command::new(binary());
+        command
+            .args(["cline", if disconnect { "--logout" } else { "fixture" }])
+            .current_dir(sandbox.project.path())
+            .envs(launch_env(
+                sandbox.home(),
+                &fake.url,
+                if disconnect { None } else { Some(CLIENT_KEY) },
+            ))
+            .env("CLINE_DIR", &root)
+            .env_remove("CLINE_DATA_DIR")
+            .stdin(Stdio::null())
+            .kill_on_drop(true);
+        for name in CLEARED {
+            if *name != "PALEPALE_API_KEY" {
+                command.env_remove(name);
+            }
+        }
+        if disconnect {
+            command
+                .env_remove("PALEPALE_API_KEY")
+                .env("PALEPALE_OFFLINE", "1");
+        }
+        let run = Run(
+            tokio::time::timeout(Duration::from_secs(30), command.output())
+                .await
+                .unwrap()
+                .unwrap(),
+        );
+        run.success();
+        assert!(!run.stdout().contains(CLIENT_KEY));
+        assert!(!run.stderr().contains(CLIENT_KEY));
+        let settings = root.join("data/settings");
+        let providers: Value = serde_json::from_str(
+            &std::fs::read_to_string(settings.join("providers.json")).unwrap(),
+        )
+        .unwrap();
+        let models: Value =
+            serde_json::from_str(&std::fs::read_to_string(settings.join("models.json")).unwrap())
+                .unwrap();
+        if disconnect {
+            assert!(providers["providers"].get("palepale").is_none());
+            assert!(models["providers"].get("palepale").is_none());
+        } else {
+            assert_eq!(
+                providers["providers"]["palepale"]["settings"]["baseUrl"],
+                format!("{}/v1", fake.url)
+            );
+            assert_eq!(
+                providers["providers"]["palepale"]["settings"]["apiKey"],
+                CLIENT_KEY
+            );
+            assert_eq!(
+                models["providers"]["palepale"]["models"]["fixture"]["supportsVision"],
+                true
+            );
+        }
+    }
+    assert_eq!(fake.hits("/docs/clients.json"), 1);
+    assert_eq!(fake.hits("/v1/account/summary"), 1);
+    assert_eq!(fake.hits("/v1/chat/completions"), 0);
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn setup_merges_existing_jsonc_and_exports_only_an_inference_key() {
     let fake = Fake::start().await;
     let sandbox = Sandbox::default();

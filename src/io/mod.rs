@@ -3,6 +3,7 @@
 
 mod client_state;
 pub mod clients;
+pub mod cline;
 pub mod clipboard;
 pub mod clock;
 pub mod decompile_cache;

@@ -1,4 +1,4 @@
-# Codex and Claude Code
+# Connect coding clients
 
 Palepale can configure Codex and Claude Code to use your Palepale account in API
 mode. Install the client first, then run:
@@ -49,6 +49,35 @@ Every changed existing file gets a private sibling `*.palepale-*.bak` backup.
 Reconnecting with unchanged settings makes no new backups. Rerun setup to refresh
 the model list.
 
+## Cline CLI and VS Code
+
+Install the latest Cline CLI or VS Code extension, then close both clients and run:
+
+```sh
+palepale cline
+```
+
+Restart Cline. In VS Code, select **Palepale** from the provider list. For the CLI,
+run `cline` in your project folder. To select a model during setup, run
+`palepale cline <model-id>`. Rerun setup and restart to refresh the model list.
+
+Both clients share `~/.cline/data/settings/providers.json` and `models.json`.
+`CLINE_DIR` changes the Cline root; `CLINE_DATA_DIR` overrides its data directory.
+Use the same directory for setup and Cline. Palepale merges only its own provider
+and models. Other providers remain. The inference key stays in Cline's private
+provider settings; disconnect removes it. Reconnecting does not create key backups.
+
+Streaming and local tools use Cline's normal workflow. Image-capable models can
+receive attachments in VS Code or `cline "Describe @./screenshot.png"` in the CLI.
+Models use their default reasoning effort. Cline's price display is an estimate;
+Palepale's usage records determine the charge.
+
+Local verification uses Cline CLI 3.0.74 and VS Code extension 4.1.26 with a fake
+gateway, including an image, a local file tool, its result and the final reply.
+The extension test selects Palepale through its saved model-picker state.
+No supplier request is sent.
+[Cline configuration](https://docs.cline.bot/getting-started/config).
+
 ## Disconnect
 
 Close the client, then run its command:
@@ -57,6 +86,7 @@ Close the client, then run its command:
 palepale opencode --logout
 palepale codex --logout
 palepale claude --logout
+palepale cline --logout
 ```
 
 Disconnect works offline. It removes the app's Palepale key and integration.
