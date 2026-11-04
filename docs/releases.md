@@ -1,5 +1,14 @@
 # Releases
 
+## v0.1.48 — 2026-11-04
+
+Connect Cline CLI and its VS Code extension with `palepale cline`. Setup adds
+Palepale's models, prices and image capabilities while keeping other providers.
+Restart Cline after setup. In VS Code, select Palepale in the provider list.
+
+Use `palepale cline <model-id>` to choose a model or `palepale cline --logout`
+to disconnect both clients. Disconnect works offline and keeps your Palepale login.
+
 ## v0.1.47 — 2026-11-04
 
 Image-capable models can now open local PNG, JPEG, GIF and WebP files with
