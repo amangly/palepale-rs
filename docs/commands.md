@@ -191,6 +191,7 @@ Run these from your shell rather than the slash menu:
 | `palepale keys export-owner <file> --yes` | Export the owner credential to a private plaintext file. |
 | `palepale install` | Install for the current user and add Palepale to PATH. |
 | `palepale uninstall` | Remove the installation; retain keys and sessions. |
+| `palepale discord setup\|run\|status\|logout` | Configure or run a Discord chat bot. See [setup](clients.md#discord-bot). |
 | `palepale update` | Check for and install a newer verified release. |
 
 Commands supported in both places, such as `login`, `models`, `sessions`, `mcp`, and

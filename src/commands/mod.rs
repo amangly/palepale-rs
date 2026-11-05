@@ -7,6 +7,7 @@ mod battery;
 pub mod clients;
 mod cline;
 mod copy;
+mod discord;
 pub mod discovered;
 mod extensions;
 pub mod godmode;
@@ -262,6 +263,7 @@ pub static COMMANDS: &[&dyn Command] = &[
     &quit::Quit,
     &keytest::KeyTest,
     &battery::Battery,
+    &discord::Discord,
 ];
 
 /// A command by name or alias, if it exists at all (whatever its scope).

@@ -6,6 +6,7 @@ mod backend;
 mod battery;
 mod cli;
 mod commands;
+mod discord;
 mod extensions;
 mod frontend;
 mod install;

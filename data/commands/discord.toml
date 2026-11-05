@@ -1,0 +1,5 @@
+name = "discord"
+summary = "Run Palepale as a Discord bot"
+usage = "discord <setup [--owner ID] [--allow-user ID] [--allow-role ID] [--free-channel ID] [--thread]|run|status|logout|help>"
+requires_backend = false
+scope = ["cli"]

@@ -1,0 +1,13 @@
+{
+  "name": "palepale",
+  "description": "Chat with Palepale",
+  "type": 1,
+  "options": [
+    {"name":"ask","description":"Send a message","type":1,"options":[{"name":"message","description":"Your message","type":3,"required":true,"max_length":4000}]},
+    {"name":"model","description":"Show or change your session model","type":1,"options":[{"name":"id","description":"Model ID from Palepale","type":3}]},
+    {"name":"reset","description":"Clear your conversation","type":1},
+    {"name":"stop","description":"Stop your current reply","type":1},
+    {"name":"usage","description":"Show your session token usage","type":1},
+    {"name":"help","description":"Show bot commands","type":1}
+  ]
+}

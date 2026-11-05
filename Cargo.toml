@@ -8,7 +8,7 @@ exclude = ["crates/cffetch", "bench/cache"]
 name = "palepale"
 default-run = "palepale"
 autotests = false
-version = "0.1.51"
+version = "0.1.52"
 edition = "2024"
 rust-version = "1.98"
 description = "Palepale native terminal coding agent"
@@ -51,6 +51,7 @@ syntect = { version = "5.3.0", default-features = false, features = ["default-sy
 thiserror = "2.0.21"
 tokio = { version = "1.53.1", features = ["rt-multi-thread", "macros", "sync", "time", "io-util", "signal", "process", "net"] }
 tokio-util = "0.7.19"
+tokio-tungstenite = { version = "0.28.0", features = ["rustls-tls-native-roots"] }
 toml = "1.1.6"
 toml_edit = "0.25.17"
 ttfx = { git = "https://github.com/omacom/ttfx", rev = "921bd551c308c235e01c5867f0199efe0691c271" }

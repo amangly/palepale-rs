@@ -58,6 +58,14 @@ impl Paths {
         self.home.join("auth.json")
     }
 
+    pub fn discord_config(&self) -> PathBuf {
+        self.home.join("discord.toml")
+    }
+
+    pub fn discord_token(&self) -> PathBuf {
+        self.home.join("discord.token")
+    }
+
     pub fn prefs(&self) -> PathBuf {
         self.home.join("prefs.json")
     }

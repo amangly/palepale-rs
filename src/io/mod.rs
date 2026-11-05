@@ -8,6 +8,7 @@ pub mod cline;
 pub mod clipboard;
 pub mod clock;
 pub mod decompile_cache;
+pub mod discord;
 pub mod exec;
 pub mod fetch;
 pub mod fs;

@@ -79,6 +79,12 @@ Restart the client after connecting. Add a model ID to either command to choose
 one explicitly. Setup backs up changed settings and keeps the inference key in
 a private file. See [client setup](docs/clients.md) for requirements and limits.
 
+## Discord bot
+
+Run `palepale discord setup --owner YOUR_DISCORD_USER_ID`, then
+`palepale discord run`. Approved users can chat by mention, DM or `/palepale ask`.
+See [setup and commands](docs/clients.md#discord-bot).
+
 ## Antigravity CLI and IDE
 
 With Antigravity installed, connect its gateway mode to Palepale:

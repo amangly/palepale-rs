@@ -1,0 +1,45 @@
+api = "https://discord.com/api/v10"
+gateway = "wss://gateway.discord.gg/?v=10&encoding=json"
+request_secs = 15
+stream_update_ms = 1800
+reconnect_secs = 5
+max_reconnect_secs = 60
+max_event_bytes = 1048576
+max_reply_bytes = 131072
+max_display_units = 28000
+message_units = 1900
+event_queue = 64
+dedup_events = 2048
+system = "You are Palepale, a concise Discord assistant. Reply to the user directly. You have no access to local files, commands, moderation actions, or other conversations. Never claim to perform an action you cannot execute."
+
+[defaults]
+owner = ""
+model = ""
+allow_users = []
+allow_roles = []
+free_response_channels = []
+auto_thread = false
+max_concurrent = 2
+max_sessions = 64
+history_turns = 10
+history_bytes = 131072
+# Zero uses the selected model's published output limit.
+max_output_tokens = 0
+
+[text]
+help = "Use /palepale ask, model, reset, stop or usage. Mention me to chat in a channel."
+denied = "This bot is limited to approved users and roles."
+busy = "A reply is already running here. Use /palepale stop to cancel it."
+capacity = "The bot is busy. Try again after a reply finishes."
+thinking = "Thinking…"
+empty = "Send a text message. Attachments are not supported in this bot yet."
+reset = "Session reset."
+stopping = "Stopping the reply."
+idle = "No reply is running."
+stopped = "Reply stopped. Usage already processed may still be charged."
+limit = "The reply reached its output limit. Ask to continue."
+failed = "The reply could not be confirmed. Check Palepale Usage before sending it again."
+unsupported = "This bot cannot run tools or moderation actions."
+no_reply = "The model returned no text."
+no_usage = "No verified token usage in this session yet."
+delivery_failed = "Discord delivery failed. Inference was not replayed."

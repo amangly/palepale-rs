@@ -1,5 +1,16 @@
 # Releases
 
+## v0.1.52 — 2026-11-06
+
+Run a Discord chat bot with `palepale discord setup --owner USER_ID`, then
+`palepale discord run`. Approved users can chat by mention, DM or `/palepale ask`.
+Replies stream through your Palepale account, with separate conversations per
+user and channel, optional threads, model selection and cancellation.
+
+Use `palepale --budget 2 discord run` to set a run budget. This version supports
+text chat; attachments, local tools and moderation actions are not included.
+See [Discord setup](clients.md#discord-bot).
+
 ## v0.1.51 — 2026-11-06
 
 Close Antigravity IDE and start it with `palepale antigravity --ide`. The launcher

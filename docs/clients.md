@@ -122,6 +122,55 @@ Disconnect with:
 palepale antigravity --logout
 ```
 
+## Discord bot
+
+Run a Discord chat bot with your Palepale account. Keep the CLI running on your
+computer or VPS; the host account pays for every reply.
+
+```sh
+palepale discord setup --owner YOUR_DISCORD_USER_ID
+palepale discord run
+```
+
+Create a bot in the [Discord Developer Portal](https://discord.com/developers/applications).
+Enable **Message Content Intent**. Leave **Interactions Endpoint URL** empty;
+commands arrive through the Gateway. Setup asks for the token without echoing
+it, registers `/palepale`, and prints an invite link. It also accepts
+`DISCORD_BOT_TOKEN`. Never put the token in a command argument.
+
+Only the owner has access at first. Add `--allow-user ID` or `--allow-role ID`
+during setup to grant access. Role access applies inside servers, not DMs.
+Approved users can DM the bot or mention it in a channel. `--free-channel ID`
+removes the mention requirement there; it does not grant access. `--thread`
+starts a thread for channel mentions. Follow-up messages in that thread need no mention.
+
+| Discord command | Action |
+| --- | --- |
+| `/palepale ask` | Send a message |
+| `/palepale model` | List models or select one |
+| `/palepale reset` | Clear your conversation |
+| `/palepale stop` | Cancel your active reply |
+| `/palepale usage` | Show verified session tokens |
+| `/palepale help` | Show commands |
+
+Conversations are separate for each user and channel or thread. History stays
+in memory until reset or exit; the oldest idle histories are removed when the
+session limit is reached. Changing models starts a fresh conversation.
+Replies update as text arrives and split at Discord's message limit. Attachments,
+local tools and moderation actions are not supported in this version.
+
+Choose the default model with `palepale --model MODEL_ID discord setup`.
+Use `palepale --budget 2 discord run` to apply a $2 run budget through the gateway.
+Stop does not undo usage already processed; check Palepale Usage for charges.
+Trials are not supported by the bot.
+
+`palepale discord status` shows local configuration and whether another process
+holds the bot lock. `palepale discord logout` removes local setup without changing
+your Palepale login or removing the Discord bot. Clear `DISCORD_BOT_TOKEN` too if set.
+Configuration lives in `~/.palepale/discord.toml` (or `PALEPALE_HOME`): user/role
+access, mention-free channels, threading, concurrent replies and history limits.
+Restart the bot after editing it. Only one bot process can use the same home.
+
 ## Disconnect
 
 Close the client, then run its command:
