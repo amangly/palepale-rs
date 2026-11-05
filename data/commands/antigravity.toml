@@ -5,5 +5,5 @@ requires_backend = false
 scope = ["cli"]
 
 [text]
-ready = "Antigravity connected using {model}. Start the CLI with palepale antigravity --run. For the IDE, close all its windows and run palepale antigravity --ide."
+ready = "Saved Antigravity settings for {model}. Open the Palepale IDE window with palepale antigravity --ide. For the standalone CLI, use palepale antigravity --run."
 disconnected = "Antigravity disconnected. Restart Antigravity CLI or IDE. Your Palepale login stays active."

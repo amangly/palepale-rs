@@ -202,24 +202,42 @@ fn restore(document: &mut Value, field: &str, previous: Option<Value>) {
 }
 
 fn ide_executable() -> anyhow::Result<PathBuf> {
-    let launcher = super::proc::which("antigravity-ide")
-        .context("Install Antigravity IDE and add antigravity-ide to PATH")?;
+    let launcher = super::proc::which("antigravity-ide");
     #[cfg(windows)]
     {
-        // The official Windows bin/antigravity-ide.cmd wraps the native executable.
-        let exe = launcher
-            .parent()
+        // A terminal opened before IDE installation may still have the old PATH.
+        let on_path = launcher
+            .as_deref()
             .and_then(Path::parent)
-            .context("Invalid Antigravity IDE install directory")?
-            .join("Antigravity IDE.exe");
-        ensure!(
-            exe.is_file(),
-            "Antigravity IDE.exe is missing from the install directory"
-        );
-        Ok(exe)
+            .and_then(Path::parent);
+        let user = crate::settings::env("LOCALAPPDATA")
+            .map(|p| PathBuf::from(p).join("Programs/Antigravity IDE"));
+        let system =
+            crate::settings::env("ProgramFiles").map(|p| PathBuf::from(p).join("Antigravity IDE"));
+        [on_path, user.as_deref(), system.as_deref()]
+            .into_iter()
+            .flatten()
+            .map(|dir| dir.join("Antigravity IDE.exe"))
+            .find(|exe| exe.is_file())
+            .context("Install Antigravity IDE or add its bin directory to PATH")
     }
     #[cfg(not(windows))]
-    Ok(launcher)
+    launcher.context("Install Antigravity IDE and add antigravity-ide to PATH")
+}
+
+fn ide_args(root: &Path, args: &[String]) -> Vec<String> {
+    let mut forwarded = Vec::new();
+    // Electron hands launches for the same profile to the already-running process.
+    if !args
+        .iter()
+        .take_while(|arg| arg.as_str() != "--")
+        .any(|arg| arg == "--user-data-dir" || arg.starts_with("--user-data-dir="))
+    {
+        forwarded.push("--user-data-dir".into());
+        forwarded.push(root.join("palepale-ide").to_string_lossy().into_owned());
+    }
+    forwarded.extend_from_slice(args);
+    forwarded
 }
 
 pub async fn launch(root: &Path, origin: &str, ide: bool, args: &[String]) -> anyhow::Result<()> {
@@ -255,15 +273,18 @@ pub async fn launch(root: &Path, origin: &str, ide: bool, args: &[String]) -> an
     } else {
         super::proc::which("agy").context("Install Antigravity CLI and add agy to PATH")?
     };
-    let mut forwarded = Vec::new();
+    let mut forwarded = if ide {
+        ide_args(root, args)
+    } else {
+        args.to_vec()
+    };
     if !ide
         && !args
             .iter()
             .any(|arg| arg == "--model" || arg.starts_with("--model="))
     {
-        forwarded.extend(["--model".into(), state.installed_model]);
+        forwarded.splice(..0, ["--model".into(), state.installed_model]);
     }
-    forwarded.extend_from_slice(args);
     let status = super::proc::run_attached(&exe, &forwarded, &env)
         .await
         .context("Could not start Antigravity")?;
@@ -300,6 +321,26 @@ pub fn disconnect(root: &Path) -> anyhow::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn ide_launch_isolates_the_default_profile_and_preserves_explicit_profile_and_ssh_args() {
+        let home = tempfile::tempdir().unwrap();
+        let ssh = [
+            "--remote".to_owned(),
+            "ssh-remote+dev".into(),
+            "/workspace".into(),
+        ];
+        let args = ide_args(home.path(), &ssh);
+        assert_eq!(args[0], "--user-data-dir");
+        assert_eq!(Path::new(&args[1]), home.path().join("palepale-ide"));
+        assert_eq!(args[2..], ssh);
+        for custom in [
+            vec!["--user-data-dir=custom".into()],
+            vec!["--user-data-dir".into(), "custom".into()],
+        ] {
+            assert_eq!(ide_args(home.path(), &custom), custom);
+        }
+    }
 
     fn catalog() -> Vec<u8> {
         serde_json::to_vec(&json!({

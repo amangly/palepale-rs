@@ -1,5 +1,12 @@
 # Releases
 
+## v0.1.53 — 2026-11-06
+
+`palepale antigravity --ide` opens a separate Palepale IDE profile so an existing
+Antigravity window cannot reuse its model session. Windows setup also finds the
+standard installation when the terminal has an older PATH. Choose a Palepale
+model in the new window. Run setup again to refresh the model list.
+
 ## v0.1.52 — 2026-11-06
 
 Run a Discord chat bot with `palepale discord setup --owner USER_ID`, then

@@ -94,10 +94,12 @@ settings, and selects the current Palepale model when available.
 It configures the OpenAI-compatible gateway at `https://api.palepale.tech` and
 keeps the inference key in the private gateway settings file. Existing settings
 remain in place. Use `palepale antigravity <model-id>` to choose a model.
-Close all Antigravity IDE windows, then start it with `palepale antigravity --ide`.
-The `antigravity-ide` launcher must be on PATH. Start the CLI with
-`palepale antigravity --run`. Pass extra arguments after `--`, for example
-`palepale antigravity --run -- --print "Hello"`.
+Open a Palepale IDE window with `palepale antigravity --ide`. It uses the profile
+at `~/.antigravity/palepale-ide` so another open IDE window cannot reuse its model
+session. Complete the IDE's first-run setup if prompted. A custom install needs
+`antigravity-ide` on PATH. Windows also checks the standard installation folders.
+Use `palepale antigravity --run` for the standalone CLI. Pass extra arguments after
+`--`, for example `palepale antigravity --run -- --print "Hello"`.
 Both launchers pass gateway settings to the app process. Your shell profile stays private. Rerun setup to refresh the model list.
 
 Connect the desktop app on your computer. For Antigravity CLI on a VPS, run
@@ -113,8 +115,10 @@ See [Antigravity gateway settings](https://docs.cloud.google.com/gemini/enterpri
 
 Verified locally with Antigravity CLI 1.5.1: model listing, streaming, a local
 file read and tool-result replay through a fake gateway using Palepale request
-validation. No provider inference was sent. Desktop and remote IDE runtime
-checks remain separate from this CLI verification.
+validation. Antigravity IDE 2.6.0 was also checked with the ordinary IDE open:
+the separate profile listed two fixture models, selected a different model and
+rendered its authenticated gateway reply. These checks use a local fake gateway.
+The model picker in a Remote SSH window still needs runtime verification.
 
 Disconnect with:
 
