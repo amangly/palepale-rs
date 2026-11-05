@@ -1,5 +1,11 @@
 # Releases
 
+## v0.1.50 — 2026-11-06
+
+Connect Antigravity with `palepale antigravity`, then start the CLI with
+`palepale antigravity --run`. Use `--logout` to disconnect.
+See [client setup](clients.md#antigravity-cli-and-ide) for model selection and SSH setup.
+
 ## v0.1.49 — 2026-11-05
 
 Codex setup now shows model-returned thinking automatically. Run `palepale codex`

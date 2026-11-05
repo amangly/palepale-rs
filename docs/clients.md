@@ -81,6 +81,47 @@ The extension test selects Palepale through its saved model-picker state.
 No supplier request is sent.
 [Cline configuration](https://docs.cline.bot/getting-started/config).
 
+## Antigravity CLI and IDE
+
+Install Antigravity, then run:
+
+```sh
+palepale antigravity
+```
+
+The command adds the gateway and compatible model list to Antigravity's user
+settings, and selects the current Palepale model when available.
+It configures the OpenAI-compatible gateway at `https://api.palepale.tech` and
+keeps the inference key in the private gateway settings file. Existing settings
+remain in place. Use `palepale antigravity <model-id>` to choose a model.
+Restart the desktop app after setup. Start the CLI with
+`palepale antigravity --run`. Pass extra arguments after `--`, for example
+`palepale antigravity --run -- --print "Hello"`.
+This passes the gateway key through the child process environment without
+changing your shell profile. Rerun setup to refresh the model list.
+
+Connect the desktop app on your computer. For Antigravity CLI on a VPS, run
+setup as the same SSH user. `ANTIGRAVITY_IDE_SERVER_ROOT` can point to the
+absolute `.antigravity-ide-server` path when the remote home cannot be inferred.
+That directory contains runtime files; setup writes `.antigravity/settings.json`
+and `.gemini/antigravity-cli/settings.json` in its parent directory.
+
+This requires an Antigravity build with OpenAI gateway mode. Administrator
+settings and `AGY_LLM_GATEWAY_*` variables override user settings. JetBrains and
+Zed's ACP server requires the Gemini wire protocol; setup leaves ACP unchanged.
+See [Antigravity gateway settings](https://docs.cloud.google.com/gemini/enterprise/docs/ai-developer-tools/deploy-enterprise-gateway).
+
+Verified locally with Antigravity CLI 1.5.1: model listing, streaming, a local
+file read and tool-result replay through a fake gateway using Palepale request
+validation. No provider inference was sent. Desktop and remote IDE runtime
+checks remain separate from this CLI verification.
+
+Disconnect with:
+
+```sh
+palepale antigravity --logout
+```
+
 ## Disconnect
 
 Close the client, then run its command:
@@ -90,6 +131,7 @@ palepale opencode --logout
 palepale codex --logout
 palepale claude --logout
 palepale cline --logout
+palepale antigravity --logout
 ```
 
 Disconnect works offline. It removes the app's Palepale key and integration.

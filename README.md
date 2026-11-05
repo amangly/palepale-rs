@@ -79,6 +79,19 @@ Restart the client after connecting. Add a model ID to either command to choose
 one explicitly. Setup backs up changed settings and keeps the inference key in
 a private file. See [client setup](docs/clients.md) for requirements and limits.
 
+## Antigravity CLI and IDE
+
+With Antigravity installed, connect its gateway mode to Palepale:
+
+```sh
+palepale antigravity
+```
+
+Restart the desktop app, or use `palepale antigravity --run` for the CLI.
+Rerun setup to refresh models, or use
+`palepale antigravity --logout` to disconnect. For CLI use over SSH, run setup
+on the remote host as the same user. See [client setup](docs/clients.md).
+
 ## Guides
 
 - [Commands and keyboard shortcuts](docs/commands.md)

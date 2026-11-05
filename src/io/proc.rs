@@ -97,6 +97,20 @@ pub fn current_exe() -> io::Result<PathBuf> {
     std::env::current_exe()
 }
 
+/// Run an installed client in this terminal with credentials confined to its process.
+pub async fn run_attached(
+    exe: &Path,
+    args: &[String],
+    env: &[(String, String)],
+) -> io::Result<std::process::ExitStatus> {
+    tokio::process::Command::new(exe)
+        .args(args)
+        .envs(env.iter().map(|(key, value)| (key, value)))
+        .kill_on_drop(true)
+        .status()
+        .await
+}
+
 /// Reopens in this terminal with the same arguments, environment and working directory.
 pub async fn relaunch(exe: &Path) -> io::Result<std::process::ExitCode> {
     let args = std::env::args_os().skip(1);

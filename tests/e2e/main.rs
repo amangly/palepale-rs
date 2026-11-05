@@ -2,6 +2,7 @@
 // Tests arrange the outside world directly; the io-wrapper rule is for the product code.
 #![allow(clippy::disallowed_methods, clippy::disallowed_macros)]
 
+mod antigravity;
 mod chat;
 mod extensions;
 mod fake_palepale;

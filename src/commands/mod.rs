@@ -1,6 +1,7 @@
 //! Commands: `palepale <name>` on the command line, `/name` inside a session. One file per
 //! command, one line in `COMMANDS`; where each works is data (`scope` in its spec).
 
+mod antigravity;
 pub mod arguments;
 mod battery;
 pub mod clients;
@@ -231,6 +232,7 @@ pub static COMMANDS: &[&dyn Command] = &[
     &help::Help,
     &login::Login,
     &web::Web,
+    &antigravity::Antigravity,
     &opencode::OpenCode,
     &clients::CODEX,
     &clients::CLAUDE,
