@@ -87,7 +87,8 @@ With Antigravity installed, connect its gateway mode to Palepale:
 palepale antigravity
 ```
 
-Restart the desktop app, or use `palepale antigravity --run` for the CLI.
+Close Antigravity IDE, then launch it with `palepale antigravity --ide`.
+Use `palepale antigravity --run` for the CLI.
 Rerun setup to refresh models, or use
 `palepale antigravity --logout` to disconnect. For CLI use over SSH, run setup
 on the remote host as the same user. See [client setup](docs/clients.md).

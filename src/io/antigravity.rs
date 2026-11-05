@@ -201,7 +201,28 @@ fn restore(document: &mut Value, field: &str, previous: Option<Value>) {
     }
 }
 
-pub async fn launch(root: &Path, origin: &str, args: &[String]) -> anyhow::Result<()> {
+fn ide_executable() -> anyhow::Result<PathBuf> {
+    let launcher = super::proc::which("antigravity-ide")
+        .context("Install Antigravity IDE and add antigravity-ide to PATH")?;
+    #[cfg(windows)]
+    {
+        // The official Windows bin/antigravity-ide.cmd wraps the native executable.
+        let exe = launcher
+            .parent()
+            .and_then(Path::parent)
+            .context("Invalid Antigravity IDE install directory")?
+            .join("Antigravity IDE.exe");
+        ensure!(
+            exe.is_file(),
+            "Antigravity IDE.exe is missing from the install directory"
+        );
+        Ok(exe)
+    }
+    #[cfg(not(windows))]
+    Ok(launcher)
+}
+
+pub async fn launch(root: &Path, origin: &str, ide: bool, args: &[String]) -> anyhow::Result<()> {
     let state = read_state(root)?.context("Run palepale antigravity first")?;
     let settings = read_document(&root.join("settings.json"))?;
     ensure!(
@@ -229,18 +250,23 @@ pub async fn launch(root: &Path, origin: &str, args: &[String]) -> anyhow::Resul
             "X-Palepale-Client: antigravity".into(),
         ),
     ];
-    let exe = super::proc::which("agy").context("Install Antigravity CLI and add agy to PATH")?;
+    let exe = if ide {
+        ide_executable()?
+    } else {
+        super::proc::which("agy").context("Install Antigravity CLI and add agy to PATH")?
+    };
     let mut forwarded = Vec::new();
-    if !args
-        .iter()
-        .any(|arg| arg == "--model" || arg.starts_with("--model="))
+    if !ide
+        && !args
+            .iter()
+            .any(|arg| arg == "--model" || arg.starts_with("--model="))
     {
         forwarded.extend(["--model".into(), state.installed_model]);
     }
     forwarded.extend_from_slice(args);
     let status = super::proc::run_attached(&exe, &forwarded, &env)
         .await
-        .context("Could not start Antigravity CLI")?;
+        .context("Could not start Antigravity")?;
     ensure!(status.success(), "Antigravity exited with {status}");
     Ok(())
 }

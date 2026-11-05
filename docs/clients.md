@@ -94,11 +94,11 @@ settings, and selects the current Palepale model when available.
 It configures the OpenAI-compatible gateway at `https://api.palepale.tech` and
 keeps the inference key in the private gateway settings file. Existing settings
 remain in place. Use `palepale antigravity <model-id>` to choose a model.
-Restart the desktop app after setup. Start the CLI with
+Close all Antigravity IDE windows, then start it with `palepale antigravity --ide`.
+The `antigravity-ide` launcher must be on PATH. Start the CLI with
 `palepale antigravity --run`. Pass extra arguments after `--`, for example
 `palepale antigravity --run -- --print "Hello"`.
-This passes the gateway key through the child process environment without
-changing your shell profile. Rerun setup to refresh the model list.
+Both launchers pass gateway settings to the app process. Your shell profile stays private. Rerun setup to refresh the model list.
 
 Connect the desktop app on your computer. For Antigravity CLI on a VPS, run
 setup as the same SSH user. `ANTIGRAVITY_IDE_SERVER_ROOT` can point to the

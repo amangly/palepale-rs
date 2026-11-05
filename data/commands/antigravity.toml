@@ -1,9 +1,9 @@
 name = "antigravity"
 summary = "Connect Antigravity CLI and IDE gateway mode to your Palepale account"
-usage = "antigravity [model | --logout | --run [-- agy arguments...]]"
+usage = "antigravity [model | --logout | --run [-- CLI arguments...] | --ide [-- IDE arguments...]]"
 requires_backend = false
 scope = ["cli"]
 
 [text]
-ready = "Antigravity connected using {model}. Restart the IDE, or run palepale antigravity --run for the CLI."
+ready = "Antigravity connected using {model}. Start the CLI with palepale antigravity --run. For the IDE, close all its windows and run palepale antigravity --ide."
 disconnected = "Antigravity disconnected. Restart Antigravity CLI or IDE. Your Palepale login stays active."

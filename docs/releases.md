@@ -1,5 +1,10 @@
 # Releases
 
+## v0.1.51 — 2026-11-06
+
+Close Antigravity IDE and start it with `palepale antigravity --ide`. The launcher
+passes your connected gateway settings to the IDE and its local backend.
+
 ## v0.1.50 — 2026-11-06
 
 Connect Antigravity with `palepale antigravity`, then start the CLI with

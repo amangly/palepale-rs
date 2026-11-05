@@ -37,7 +37,8 @@ impl Command for Antigravity {
     ) -> BoxFuture<'a, anyhow::Result<Outcome>> {
         Box::pin(async move {
             anyhow::ensure!(
-                args.first().is_some_and(|s| s == "--run")
+                args.first()
+                    .is_some_and(|s| matches!(s.as_str(), "--run" | "--ide"))
                     || (args.len() <= 1
                         && args
                             .first()
@@ -50,13 +51,19 @@ impl Command for Antigravity {
                 settings::env("ANTIGRAVITY_IDE_SERVER_ROOT").map(PathBuf::from),
                 io::fs::home_dir(),
             )?;
-            if args.first().is_some_and(|arg| arg == "--run") {
+            if let Some(mode @ ("--run" | "--ide")) = args.first().map(String::as_str) {
                 let forwarded = if args.get(1).is_some_and(|arg| arg == "--") {
                     &args[2..]
                 } else {
                     &args[1..]
                 };
-                io::antigravity::launch(&root, &endpoints::origin("api"), forwarded).await?;
+                io::antigravity::launch(
+                    &root,
+                    &endpoints::origin("api"),
+                    mode == "--ide",
+                    forwarded,
+                )
+                .await?;
                 return Ok(Outcome::default());
             }
             if args.first().is_some_and(|arg| arg == "--logout") {
