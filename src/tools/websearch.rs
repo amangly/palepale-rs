@@ -19,7 +19,6 @@ static DATA: LazyLock<Data> = LazyLock::new(|| {
 #[derive(Deserialize)]
 struct Data {
     max_query_bytes: usize,
-    max_output_tokens: u64,
     timeout_seconds: u64,
     unavailable: String,
     invalid: String,
@@ -71,7 +70,8 @@ async fn search(args: &Value, cx: &ToolCx<'_>) -> anyhow::Result<Output> {
     let run = cx
         .run
         .ok_or_else(|| anyhow::anyhow!(DATA.unavailable.clone()))?;
-    let mut body = json!({"model":run.model.id,"messages":[{"role":"user","content":args["query"]}],"web_search_options":{"search_context_size":"low"},"max_tokens":DATA.max_output_tokens.min(run.model.max_output_tokens),"stream":false});
+    // The gateway defaults to the current provider maximum, including reasoning.
+    let mut body = json!({"model":run.model.id,"messages":[{"role":"user","content":args["query"]}],"web_search_options":{"search_context_size":"low"},"stream":false});
     if run.model.capabilities.reasoning_content {
         body["include_reasoning"] = false.into();
     }

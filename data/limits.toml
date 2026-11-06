@@ -370,9 +370,6 @@ reason = "preserve recent complete turns verbatim"
 [compaction.trigger_percent]
 value = 80
 reason = "reserve room to summarize before the context fills"
-[compaction.summary_tokens]
-value = 2048
-reason = "bound the summary request and retained summary"
 [subagent.parallel]
 value = 2
 reason = "bound concurrent delegated requests"

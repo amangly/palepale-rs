@@ -316,7 +316,7 @@ async fn load_catalog(app: &App, refresh: bool) -> Catalog {
         return from_cache(cache, None);
     }
 
-    let note = match fetch(app).await {
+    let note = match fetch(&app.api).await {
         Ok(models) => {
             let cache = Cached {
                 fetched_at: now,
@@ -349,10 +349,9 @@ async fn load_catalog(app: &App, refresh: bool) -> Catalog {
     }
 }
 
-async fn fetch(app: &App) -> Result<Vec<Model>, String> {
+pub(super) async fn fetch(api: &crate::api::Api) -> Result<Vec<Model>, String> {
     let timeout = limits::get().models.fetch_timeout_ms.ms();
-    let resp = app
-        .api
+    let resp = api
         .call("models", Call::default(), timeout)
         .await
         .map_err(|e| e.to_string())?;

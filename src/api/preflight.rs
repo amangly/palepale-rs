@@ -31,9 +31,7 @@ pub fn config() -> &'static Config {
 }
 
 pub fn output_limit(model: &crate::api::models::Model) -> u64 {
-    model
-        .default_max_output_tokens
-        .unwrap_or(model.max_output_tokens)
+    model.max_output_tokens
 }
 
 pub fn check_trial(model: &str, trial: bool) -> Result<(), ErrorInfo> {

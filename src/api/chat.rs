@@ -32,6 +32,33 @@ pub async fn stream(
     cancel: &CancellationToken,
     on: &mut (dyn FnMut(Event<'_>) + Send),
 ) -> Assistant {
+    stream_with_limit(api, turn, cancel, on, None).await
+}
+
+pub async fn stream_with_limit(
+    api: &Api,
+    turn: &Turn<'_>,
+    cancel: &CancellationToken,
+    on: &mut (dyn FnMut(Event<'_>) + Send),
+    output_limit: Option<u64>,
+) -> Assistant {
+    // A running session can outlive a route or capability change. Refresh before
+    // inference, never by replaying a possibly accepted paid request.
+    let mut model = tokio::select! {
+        catalog = crate::api::models::fetch(api) => match catalog {
+            Ok(models) => models.into_iter().find(|model| model.id == turn.model.id)
+                .unwrap_or_else(|| Model { available: false, ..turn.model.clone() }),
+            Err(_) => turn.model.clone(),
+        },
+        () = cancel.cancelled() => return message(turn, Vec::new(), Finish::Aborted, None, None, None),
+    };
+    if let Some(limit) = output_limit {
+        model.max_output_tokens = model.max_output_tokens.min(limit);
+    }
+    let turn = &Turn {
+        model: &model,
+        ..*turn
+    };
     if let Err(error) = crate::api::preflight::check(turn) {
         return message(turn, Vec::new(), Finish::Error, None, Some(error), None);
     }

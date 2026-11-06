@@ -144,11 +144,6 @@ async fn summarize(
     let Some(cut) = cut(transcript) else {
         return Ok(None);
     };
-    let mut model = cx.model.clone();
-    model.max_output_tokens = model
-        .max_output_tokens
-        .min(crate::limits::get().compaction.summary_tokens.value);
-    model.default_max_output_tokens = Some(model.max_output_tokens);
     let from = transcript
         .compactions
         .last()
@@ -173,14 +168,13 @@ async fn summarize(
     });
     let profile = transcript.state.agent_profile.as_deref();
     let turn = Turn {
-        model: &model,
+        model: cx.model,
         system: cx.system,
         messages: &messages,
         tools: &[],
         agent_profile: profile,
         effort: cx.effort.as_deref(),
     };
-    preflight::check(&turn).map_err(|error| error.to_string())?;
     let reply = chat::stream(&cx.app.api, &turn, cancel, &mut |_| {}).await;
     if let Some(error) = reply.error {
         return Err(error.to_string());

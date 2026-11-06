@@ -1,5 +1,15 @@
 # Releases
 
+## v0.1.56 — 2026-11-07
+
+Chat, `/compact` and web search use the selected model's maximum output budget,
+including room for reasoning. Compaction and search no longer have separate
+2,048-token caps.
+
+The CLI refreshes model capabilities before each request so open sessions pick
+up changed limits. Explicit Discord output settings still apply. Requests are
+sent once; incomplete summaries preserve the original conversation.
+
 ## v0.1.55 — 2026-11-06
 
 The agent can use Jev for extra review when needed. AUTO runs paid reviews within

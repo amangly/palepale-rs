@@ -97,7 +97,7 @@ pub enum Finish {
     /// The model finished its reply.
     Done,
     ToolCalls,
-    /// Output hit `max_tokens`; on palepale a low balance can lower that cap silently.
+    /// Output reached the requested token budget, including reasoning.
     Length,
     Error,
     Aborted,

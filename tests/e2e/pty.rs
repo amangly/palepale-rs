@@ -1808,8 +1808,13 @@ async fn a_completed_turn_syncs_context_window_and_keeps_cached_list() {
     let mut changed = first.clone();
     changed["data"][0]["context_window"] = serde_json::json!(200_000);
     // A malformed response falls back; a valid empty catalog now clears the list.
-    fake.model_lists([first, changed, serde_json::json!({"error":"offline"})]);
-    fake.model_delays([Duration::ZERO, Duration::from_millis(400)]);
+    fake.model_lists([
+        first.clone(),
+        first,
+        changed,
+        serde_json::json!({"error":"offline"}),
+    ]);
+    fake.model_delays([Duration::ZERO, Duration::ZERO, Duration::from_millis(400)]);
     fake.script([Reply::sse("pty/long_context.sse")]);
     in_session(&fake, Sandbox::default(), Some(ENV_KEY), |s| {
         s.wait_for("AUTO");
@@ -1835,7 +1840,7 @@ async fn a_completed_turn_syncs_context_window_and_keeps_cached_list() {
         });
     })
     .await;
-    assert_eq!(fake.hits("/v1/models"), 3);
+    assert_eq!(fake.hits("/v1/models"), 4);
     assert!(fake.chat_bodies()[0].get("reasoning_effort").is_none());
 }
 

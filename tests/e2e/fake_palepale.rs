@@ -161,11 +161,8 @@ impl Fake {
     }
 
     pub fn model_lists(&self, lists: impl IntoIterator<Item = Value>) {
-        self.inner
-            .lock()
-            .unwrap()
-            .model_lists
-            .extend(lists.into_iter().map(|list| list.to_string()));
+        self.inner.lock().unwrap().model_lists =
+            lists.into_iter().map(|list| list.to_string()).collect();
     }
 
     pub fn agent_profile_lists(&self, lists: impl IntoIterator<Item = Value>) {
@@ -347,10 +344,15 @@ async fn models(State(inner): State<Shared>) -> impl IntoResponse {
     let (body, delay) = {
         let mut inner = inner.lock().unwrap();
         (
-            inner
-                .model_lists
-                .pop_front()
-                .unwrap_or_else(|| MODELS.to_owned()),
+            if inner.model_lists.len() > 1 {
+                inner.model_lists.pop_front().unwrap()
+            } else {
+                inner
+                    .model_lists
+                    .front()
+                    .cloned()
+                    .unwrap_or_else(|| MODELS.to_owned())
+            },
             inner.model_delays.pop_front().unwrap_or_default(),
         )
     };

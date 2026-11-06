@@ -238,18 +238,11 @@ impl Bot {
             touched,
         });
         session.touched = touched;
-        let mut model = self
+        let model = self
             .catalog
             .get(&session.model)
             .ok_or(data().text.failed.as_str())?
             .clone();
-        if self.config.max_output_tokens > 0 {
-            model.default_max_output_tokens = Some(
-                self.config
-                    .max_output_tokens
-                    .min(crate::api::preflight::output_limit(&model)),
-            );
-        }
         let cancel = self.cancel.child_token();
         session.active = Some(cancel.clone());
         Ok((model, session.messages.clone(), cancel))
@@ -394,7 +387,15 @@ impl Bot {
                 updates.send_replace(visible.clone());
             }
         };
-        let mut inference = Box::pin(chat::stream(&self.api, &turn, cancel, &mut on_delta));
+        let output_limit =
+            (self.config.max_output_tokens > 0).then_some(self.config.max_output_tokens);
+        let mut inference = Box::pin(chat::stream_with_limit(
+            &self.api,
+            &turn,
+            cancel,
+            &mut on_delta,
+            output_limit,
+        ));
         let mut next_update = Box::pin(io::clock::sleep(Duration::from_millis(
             data().stream_update_ms,
         )));

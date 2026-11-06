@@ -62,6 +62,8 @@ async fn agent_selects_native_search_with_same_model_and_budget() {
         "low"
     );
     assert!(bodies[1].get("tools").is_none());
+    assert!(bodies[1].get("max_tokens").is_none());
+    assert!(bodies[1].get("max_completion_tokens").is_none());
     assert!(
         bodies[2]["messages"]
             .as_array()

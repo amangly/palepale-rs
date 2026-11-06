@@ -555,7 +555,7 @@ mod tests {
     use std::sync::{Arc, Mutex};
 
     use axum::Router;
-    use axum::routing::post;
+    use axum::routing::{get, post};
     use serde_json::{Value, json};
 
     use super::*;
@@ -593,25 +593,55 @@ mod tests {
         _dir: tempfile::TempDir,
         app: App,
         script: Script,
+        catalog: Arc<Mutex<Option<Model>>>,
         model: Model,
     }
 
     impl Harness {
         async fn new(replies: Vec<String>) -> Self {
+            Self::with_output_floor(replies, 0).await
+        }
+
+        async fn with_output_floor(replies: Vec<String>, minimum_output: u64) -> Self {
             let script: Script = Arc::new(Mutex::new((replies.into(), Vec::new())));
             let state = script.clone();
+            let catalog: Arc<Mutex<Option<Model>>> = Arc::new(Mutex::new(None));
+            let catalog_state = catalog.clone();
+            let published = catalog.clone();
             let router = Router::new().route(
                 "/v1/chat/completions",
                 post(move |body: String| {
                     let state = state.clone();
+                    let published = published.clone();
                     async move {
                         let mut s = state.lock().unwrap();
                         s.1.push(serde_json::from_str(&body).unwrap());
-                        let next = s.0.pop_front().unwrap_or_else(|| text("(unscripted)"));
-                        ([("content-type", "text/event-stream")], next)
+                        if published.lock().unwrap().as_ref().is_some_and(|model|
+                            s.1.last().unwrap()["max_completion_tokens"].as_u64().unwrap() > model.max_output_tokens
+                        ) {
+                            return (axum::http::StatusCode::BAD_REQUEST, [("content-type", "application/json")],
+                                json!({"error":{"code":"invalid_request","message":"The request is invalid or unsupported."}}).to_string());
+                        }
+                        let next = if s.1.last().unwrap()["max_completion_tokens"].as_u64().unwrap()
+                            < minimum_output
+                        {
+                            reply("Unfinished summary", &[], "length")
+                        } else {
+                            s.0.pop_front().unwrap_or_else(|| text("(unscripted)"))
+                        };
+                        (axum::http::StatusCode::OK, [("content-type", "text/event-stream")], next)
                     }
                 }),
-            );
+            ).route("/v1/models", get(move || {
+                let catalog = catalog_state.clone();
+                async move {
+                    let model = catalog.lock().unwrap().clone();
+                    match model {
+                        Some(model) => (axum::http::StatusCode::OK, axum::Json(json!({"data":[model]}))),
+                        None => (axum::http::StatusCode::SERVICE_UNAVAILABLE, axum::Json(json!({}))),
+                    }
+                }
+            }));
             let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
             let base = format!("http://{}", listener.local_addr().unwrap());
             tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
@@ -649,6 +679,7 @@ mod tests {
                 _dir: dir,
                 app,
                 script,
+                catalog,
                 model,
             }
         }
@@ -1018,13 +1049,59 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn manual_compaction_uses_no_tools_and_keeps_original_messages() {
-        let mut harness = Harness::new(vec![text("Earlier work summarized")]).await;
+    async fn model_limit_changes_are_loaded_before_dispatch_without_retrying_inference() {
+        let mut harness = Harness::new(vec![text("first"), text("second")]).await;
         harness.model.context_window = 1_000_000;
-        harness.model.max_output_tokens = 65_536;
-        harness.model.default_max_output_tokens = Some(65_536);
+        harness.model.max_output_tokens = 393_216;
+        harness.model.default_max_output_tokens = Some(131_072);
+        let mut current = harness.model.clone();
+        current.max_output_tokens = 65_536;
+        current.default_max_output_tokens = Some(16_384);
+        *harness.catalog.lock().unwrap() = Some(current.clone());
+        assert_eq!(
+            harness.run(&shared("auto"), |_, _| {}).await.0,
+            Outcome::Done
+        );
+        current.max_output_tokens = 131_072;
+        *harness.catalog.lock().unwrap() = Some(current);
+        assert_eq!(
+            harness.run(&shared("auto"), |_, _| {}).await.0,
+            Outcome::Done
+        );
+        let requests = harness.requests();
+        assert_eq!(requests.len(), 2);
+        assert_eq!(requests[0]["max_completion_tokens"], 65_536);
+        assert_eq!(requests[1]["max_completion_tokens"], 131_072);
+    }
+
+    #[tokio::test]
+    async fn explicit_output_limit_survives_catalog_refresh() {
+        let harness = Harness::new(vec![text("done")]).await;
+        *harness.catalog.lock().unwrap() = Some(harness.model.clone());
+        let turn = Turn {
+            model: &harness.model,
+            agent_profile: None,
+            effort: None,
+            system: "sys",
+            messages: &[],
+            tools: &[],
+        };
+        let reply = chat::stream_with_limit(
+            &harness.app.api,
+            &turn,
+            &tokio_util::sync::CancellationToken::new(),
+            &mut |_| {},
+            Some(128),
+        )
+        .await;
+        assert_eq!(reply.finish, Finish::Done);
+        assert_eq!(harness.requests()[0]["max_completion_tokens"], 128);
+    }
+
+    #[tokio::test]
+    async fn truncated_compaction_preserves_the_original_context_without_retrying() {
+        let harness = Harness::with_output_floor(vec![], u64::MAX).await;
         let registry = Registry::builtin(&harness.app);
-        let state = shared("auto");
         let mut transcript = Transcript::new(None);
         assert!(transcript.push(Message::user_text("older request")).is_ok());
         assert!(
@@ -1032,6 +1109,7 @@ mod tests {
                 .push(Message::user_text("latest request"))
                 .is_ok()
         );
+        let before = serde_json::to_string(&transcript.context()).unwrap();
         let cx = RunCtx {
             app: &harness.app,
             model: &harness.model,
@@ -1041,16 +1119,62 @@ mod tests {
             plan_file: harness.plan_file(),
             emit: &|_| {},
         };
+        assert_eq!(
+            crate::agent::compact::run(&cx, &mut transcript, &shared("auto"), "").await,
+            Outcome::Failed
+        );
+        assert!(transcript.compactions.is_empty());
+        assert_eq!(
+            serde_json::to_string(&transcript.context()).unwrap(),
+            before
+        );
+        assert_eq!(harness.requests().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn manual_compaction_uses_provider_maximum_and_keeps_original_messages() {
+        let mut harness =
+            Harness::with_output_floor(vec![text("Earlier work summarized")], 4096).await;
+        harness.model.context_window = 1_000_000;
+        harness.model.max_output_tokens = 65_536;
+        harness.model.default_max_output_tokens = Some(16_384);
+        let registry = Registry::builtin(&harness.app);
+        let state = shared("auto");
+        let mut transcript = Transcript::new(None);
+        assert!(transcript.push(Message::user_text("older request")).is_ok());
+        assert!(
+            transcript
+                .push(Message::user_text("latest request"))
+                .is_ok()
+        );
+        let errors = Mutex::new(Vec::new());
+        let emit = |event| {
+            if let AgentEvent::CompactionEnd {
+                error: Some(error), ..
+            } = event
+            {
+                errors.lock().unwrap().push(error);
+            }
+        };
+        let cx = RunCtx {
+            app: &harness.app,
+            model: &harness.model,
+            effort: None,
+            system: "sys",
+            tools: &registry,
+            plan_file: harness.plan_file(),
+            emit: &emit,
+        };
         let outcome =
             crate::agent::compact::run(&cx, &mut transcript, &state, "retain tests").await;
-        assert_eq!(outcome, Outcome::Done);
+        assert_eq!(outcome, Outcome::Done, "{:?}", errors.lock().unwrap());
         assert_eq!(transcript.messages.len(), 2);
         assert_eq!(transcript.compactions.len(), 1);
         let requests = harness.requests();
         assert_eq!(requests.len(), 1);
         assert_eq!(
             requests[0]["max_completion_tokens"],
-            crate::limits::get().compaction.summary_tokens.value
+            harness.model.max_output_tokens
         );
         assert!(
             requests[0]

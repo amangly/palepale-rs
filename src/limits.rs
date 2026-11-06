@@ -72,7 +72,6 @@ pub struct SnapshotLimits {
 pub struct CompactionLimits {
     pub keep_tokens: Limit<usize>,
     pub trigger_percent: Limit<u64>,
-    pub summary_tokens: Limit<u64>,
 }
 
 #[derive(Debug, Deserialize)]
