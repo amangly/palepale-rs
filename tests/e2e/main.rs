@@ -4,6 +4,7 @@
 
 mod antigravity;
 mod chat;
+mod decision;
 mod discord;
 mod extensions;
 mod fake_palepale;

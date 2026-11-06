@@ -104,7 +104,7 @@ to copy it whole. `/copy` copies the last reply as Markdown.
 
 ## Permission modes
 
-New sessions start in AUTO. AUTO runs tools without asking and overrides deny rules.
+New sessions start in AUTO. AUTO runs ordinary tools without asking and overrides deny rules. Paid decisions still require confirmation.
 MANUAL asks before edits, fetches, and commands that do more than inspect. PLAN
 permits investigation and checks, with edits limited to the plan file.
 
@@ -156,6 +156,12 @@ With an image-capable model selected, ask `Inspect the screenshot at screenshots
 The agent can use `view_image` to open local PNG, JPEG, GIF, or WebP files up to 2 MiB
 each. Images follow read permissions and stay in the saved session. Give the path
 as plain text; `@` references still use the text reader.
+
+The `decision` tool reviews a short diff and test summary while your chat model stays
+selected. Ask for independent choices, probabilities or scores. It asks before each
+paid request and shows answers by question ID with token usage. Confidence is not
+a guarantee. Decisions never execute commands, merge changes or bypass review.
+Wallet charges share your spending cap; trial credit and passes do not cover them.
 
 ## Server profiles
 

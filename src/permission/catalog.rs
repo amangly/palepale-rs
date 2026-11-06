@@ -33,6 +33,7 @@ pub const BASH_WRITE: Permission = permission("bash_write", Effect::ChangesFiles
 /// Asked beside read, search or edit when the path leaves the project.
 pub const EXTERNAL_DIRECTORY: Permission = permission("external_directory", Effect::Other);
 pub const WEBFETCH: Permission = permission("webfetch", Effect::Other);
+pub const DECISION: Permission = permission("decision", Effect::Other);
 pub const WEBSEARCH: Permission = permission("websearch", Effect::Other);
 pub const TODO: Permission = permission("todo", Effect::Other);
 pub const TASK: Permission = permission("task", Effect::Other);
@@ -56,6 +57,7 @@ const ALL: &[Permission] = &[
     EXTERNAL_DIRECTORY,
     WEBFETCH,
     WEBSEARCH,
+    DECISION,
     TODO,
     TASK,
     QUESTION,

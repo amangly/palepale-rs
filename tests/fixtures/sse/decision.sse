@@ -1,0 +1,5 @@
+data: {"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"decision-review","type":"function","function":{"name":"decision","arguments":"{\"state\":\"diff: one line; tests: pass\",\"questions\":{\"review\":{\"type\":\"choice\",\"instructions\":\"Review\",\"criteria\":{\"accept\":\"ready\",\"review\":\"needs review\"}}}}"}}]}}]}
+
+data: {"choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}
+
+data: [DONE]

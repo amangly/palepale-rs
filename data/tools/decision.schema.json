@@ -1,0 +1,106 @@
+{
+  "type": "object",
+  "properties": {
+    "model": {
+      "type": "string",
+      "enum": [
+        "jev-latest",
+        "jev-latest:free"
+      ],
+      "default": "jev-latest"
+    },
+    "state": {
+      "description": "A concise diff and test summary",
+      "oneOf": [
+        {
+          "type": "string",
+          "minLength": 1
+        },
+        {
+          "type": "object"
+        },
+        {
+          "type": "array"
+        }
+      ]
+    },
+    "questions": {
+      "type": "object",
+      "minProperties": 1,
+      "maxProperties": 32,
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "choice",
+              "noul",
+              "score"
+            ]
+          },
+          "instructions": {
+            "oneOf": [
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "type": "object"
+              },
+              {
+                "type": "array"
+              }
+            ]
+          },
+          "criteria": {
+            "oneOf": [
+              {
+                "type": "object",
+                "minProperties": 1,
+                "maxProperties": 64,
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              {
+                "type": "array",
+                "minItems": 2,
+                "maxItems": 10,
+                "items": {
+                  "type": "string"
+                }
+              }
+            ],
+            "description": "Choice map, proposition criteria, or ordered score levels"
+          }
+        },
+        "required": [
+          "type",
+          "instructions"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "state",
+    "questions"
+  ],
+  "additionalProperties": false,
+  "examples": [
+    {
+      "state": "diff: one line; tests: pass",
+      "questions": {
+        "review": {
+          "type": "choice",
+          "instructions": "Review this change",
+          "criteria": {
+            "accept": "ready",
+            "review": "needs review"
+          }
+        }
+      }
+    }
+  ]
+}

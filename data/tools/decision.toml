@@ -1,0 +1,15 @@
+model = "jev-latest"
+models = ["jev-latest", "jev-latest:free"]
+max_input_bytes = 128000
+max_questions = 32
+max_options = 64
+min_levels = 2
+max_levels = 10
+timeout_seconds = 35
+invalid = "Invalid decision request. Use a short state and independent choice, noul or score questions."
+unavailable = "The decision helper needs wallet credit."
+preview = "Paid decision request: {count} question(s). Confirm to send."
+cancelled = "Decision request cancelled. Its charge may still update; do not retry automatically."
+response_error = "The decision service returned an invalid answer or usage. Do not retry automatically."
+heading = "Decision results (advisory; confidence is not a guarantee):"
+usage = "Usage: {input} input, {output} output tokens."

@@ -133,3 +133,9 @@ path = "/docs/opencode.json"
 origin = "api"
 method = "GET"
 path = "/docs/opencode-plugin.js"
+
+[endpoints.decision]
+origin = "api"
+method = "POST"
+path = "/v1/decisions"
+auth = true

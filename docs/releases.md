@@ -1,5 +1,13 @@
 # Releases
 
+## v0.1.54 — 2026-11-06
+
+Use the built-in `decision` tool to review a small diff and test summary with
+independent choice, yes/no probability or score questions. It asks before each
+paid request, keeps your chat model selected, and shows answers and token usage.
+Decisions are advice; they never merge changes or run commands.
+
+
 ## v0.1.53 — 2026-11-06
 
 `palepale antigravity --ide` opens a separate Palepale IDE profile so an existing

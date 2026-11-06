@@ -1,6 +1,7 @@
 //! Tools the model can call. Each is one file implementing `Tool`, registered once below.
 
 mod bash;
+mod decision;
 mod decompile;
 mod edit;
 mod edit_match;
@@ -221,6 +222,7 @@ impl Registry {
             Arc::new(grep::Grep),
             Arc::new(webfetch::WebFetch),
             Arc::new(websearch::WebSearch),
+            Arc::new(decision::Decision),
             Arc::new(todowrite::TodoWrite),
             Arc::new(task::Task),
             Arc::new(question::Question),
@@ -254,6 +256,9 @@ impl Registry {
 
     pub fn for_model(&self, model: &crate::api::models::Model, trial: bool) -> Self {
         let mut registry = self.snapshot();
+        if trial {
+            registry.tools.retain(|tool| tool.spec().name != "decision");
+        }
         if trial || !model.capabilities.web_search {
             registry
                 .tools
@@ -378,6 +383,9 @@ pub mod testing {
 
     /// A sample value for every property in `schema`, required or not.
     pub fn sample(schema: &Value) -> Value {
+        if let Some(value) = schema["examples"].as_array().and_then(|a| a.first()) {
+            return value.clone();
+        }
         match schema["type"].as_str() {
             Some("object") => {
                 let props = schema["properties"]
