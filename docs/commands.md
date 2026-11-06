@@ -9,7 +9,7 @@ starts with `//` sends a literal leading slash to the model.
 
 ## References
 
-Type `@` to find a project file, folder, or agent. Up/Down selects a result;
+Type `@` to find a project file or agent. Keep typing to filter. Up/Down selects a result;
 Tab or Enter inserts it. Press Enter again to send. Escape closes the picker.
 While a turn runs, Tab still steers whenever the picker is closed.
 
@@ -30,9 +30,9 @@ bounded task. The child inherits the current mode and spending budget. Use
 `@./explore` for a file named `explore`. Type `$` to find an installed skill.
 Tab or Enter inserts its name. Press Enter again to send the prompt.
 
-Discovery includes hidden and ignored files throughout the current directory.
-Up/Down scrolls through all matches. Git internals and directory symlinks are omitted.
-You can type an exact path for an omitted file; access still requires permission.
+Suggestions skip folders, hidden files and ignored paths. Up/Down scrolls through
+matches. To reference a folder or omitted file, type its exact path and press
+Escape to close suggestions before sending. Normal read permissions apply.
 Use quotes for spaces or punctuation. Email addresses, URLs, and backtick code
 remain text. `@@name` sends a literal `@name`.
 
@@ -104,8 +104,8 @@ to copy it whole. `/copy` copies the last reply as Markdown.
 
 ## Permission modes
 
-New sessions start in AUTO. AUTO runs ordinary tools without asking and overrides deny rules. Paid decisions still require confirmation.
-MANUAL asks before edits, fetches, and commands that do more than inspect. PLAN
+New sessions start in AUTO. AUTO runs tools without asking and overrides deny rules.
+MANUAL asks before paid decision reviews, edits, fetches, and commands that do more than inspect. PLAN
 permits investigation and checks, with edits limited to the plan file.
 
 ## Models and sessions
@@ -157,10 +157,11 @@ The agent can use `view_image` to open local PNG, JPEG, GIF, or WebP files up to
 each. Images follow read permissions and stay in the saved session. Give the path
 as plain text; `@` references still use the text reader.
 
-The `decision` tool reviews a short diff and test summary while your chat model stays
-selected. Ask for independent choices, probabilities or scores. It asks before each
-paid request and shows answers by question ID with token usage. Confidence is not
-a guarantee. Decisions never execute commands, merge changes or bypass review.
+The agent can call Jev through `decision` when a change or tool result needs extra
+review. It sends a short diff and test summary, keeps your chat model selected,
+and shows answers with token usage. AUTO runs it; MANUAL asks first by default.
+You can also ask, “Use Jev to review this change.” It does not run after every tool.
+Confidence is not a guarantee. Decisions never execute commands, merge changes or bypass review.
 Wallet charges share your spending cap; trial credit and passes do not cover them.
 
 ## Server profiles

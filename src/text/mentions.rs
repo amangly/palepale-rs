@@ -11,7 +11,6 @@ pub struct Text {
     pub incomplete: String,
     pub empty: String,
     pub file: String,
-    pub folder: String,
     pub skills_title: String,
     pub skills_empty: String,
     pub agent: String,

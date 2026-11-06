@@ -37,7 +37,8 @@ fn discover_mentions(root: &Path, cancel: &tokio_util::sync::CancellationToken) 
         truncated: false,
     };
     for (visited, entry) in WalkBuilder::new(root)
-        .standard_filters(false)
+        .standard_filters(true)
+        .require_git(false)
         .follow_links(false)
         .filter_entry(|e| e.file_name() != ".git")
         .build()
@@ -60,15 +61,13 @@ fn discover_mentions(root: &Path, cancel: &tokio_util::sync::CancellationToken) 
         let Some(kind) = entry.file_type() else {
             continue;
         };
-        if !kind.is_dir() && !kind.is_file() {
+        // Exact directory references still work without filling file suggestions.
+        if !kind.is_file() {
             continue;
         }
-        let mut name = relative_slashes(root, entry.path());
+        let name = relative_slashes(root, entry.path());
         if name.contains(['"', '\n', '\r', '`']) {
             continue;
-        }
-        if kind.is_dir() {
-            name.push('/');
         }
         result.paths.push(name);
     }
@@ -334,15 +333,26 @@ mod tests {
     }
 
     #[test]
-    fn mention_discovery_includes_ignored_and_hidden_files_and_cancels() {
+    fn mention_discovery_lists_searchable_files_only_and_cancels() {
         let dir = tree();
+        for (path, text) in [
+            (".hidden/private.txt", "hidden"),
+            (".ignore", "cache/\n"),
+            ("cache/compiled.txt", "ignored"),
+        ] {
+            crate::io::fs::write_atomic(
+                &dir.path().join(path),
+                text.as_bytes(),
+                crate::io::fs::Access::Shared,
+            )
+            .unwrap();
+        }
         let cancel = tokio_util::sync::CancellationToken::new();
         let result = discover_mentions(dir.path(), &cancel);
-        assert!(result.paths.contains(&"src/".to_owned()));
-        assert!(result.paths.contains(&"src/main.rs".to_owned()));
-        assert!(result.paths.contains(&"target/junk.rs".to_owned()));
-        assert!(result.paths.contains(&".gitignore".to_owned()));
-        assert!(!result.paths.iter().any(|p| p.starts_with(".git/")));
+        assert_eq!(result.paths, ["notes.md", "src/lib/util.rs", "src/main.rs"]);
+        assert!(!result.truncated);
+        std::fs::remove_dir(dir.path().join(".git")).unwrap();
+        assert_eq!(discover_mentions(dir.path(), &cancel).paths, result.paths);
         cancel.cancel();
         assert!(discover_mentions(dir.path(), &cancel).paths.is_empty());
     }

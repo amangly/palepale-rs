@@ -65,7 +65,7 @@ impl Tool for Decision {
                 DATA.preview
                     .replace("{count}", &args.questions.len().to_string()),
             ),
-            confirm: true,
+            confirm: false,
         })
     }
     fn run<'a>(&'a self, args: Value, cx: &'a ToolCx<'a>) -> BoxFuture<'a, Output> {
@@ -255,9 +255,22 @@ mod tests {
         assert!(render(&json!({"usage":{"input_tokens":1,"output_tokens":1}}), &a).is_err());
     }
     #[test]
-    fn confirmation_is_mandatory() {
+    fn follows_normal_permissions() {
         let p = super::super::testing::Project::new();
         let value = SPEC.parameters["examples"][0].clone();
-        assert!(Decision.check(&value, &p.cx()).unwrap().confirm);
+        let check = Decision.check(&value, &p.cx()).unwrap();
+        assert!(!check.confirm);
+        let rules = crate::settings::default_rules();
+        for (mode, expected) in [
+            ("auto", crate::permission::gate::Decision::Allow),
+            ("manual", crate::permission::gate::Decision::Ask),
+        ] {
+            let policy = crate::permission::gate::Policy {
+                rules: &rules,
+                mode: crate::mode::get(mode).unwrap(),
+                plan_file: "",
+            };
+            assert_eq!(policy.decide(&check.asks), expected);
+        }
     }
 }

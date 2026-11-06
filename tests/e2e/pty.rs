@@ -2129,10 +2129,10 @@ async fn typing_shortcuts_keeps_the_draft_until_submission() {
         s.wait_for("docs/review notes/guide.md");
         s.send("\r");
         s.wait_gone("┌ References");
-        s.type_text("@.hidden/ignored");
+        s.type_text("@.hidden/ignored.txt");
         s.wait_for("┌ References");
-        s.wait_for(".hidden/ignored.txt");
-        s.send("\r");
+        s.wait_for("No matching files or agents");
+        s.send("\x1b");
         s.wait_gone("┌ References");
         s.send("\r");
         s.wait_for("Hello there!");

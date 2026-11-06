@@ -8,13 +8,13 @@ instruction discovery in the existing session format. Read failures stop before
 inference. Agent mentions use recorded task calls, followed by the normal parent
 loop and verification. External reference roots and media remain out of scope.
 
-Typing `@` in a prompt opens a picker for project files, folders, and, in a second batch, available subagents. Selecting a file includes its contents with the next message. Selecting a folder includes a bounded directory listing. Selecting an agent delegates the prompt through the existing task system.
+Typing `@` opens a picker for project files and available subagents. Suggestions omit folders, hidden files and ignored paths. Selecting a file includes its contents with the next message. An exact folder reference adds a bounded directory listing. Selecting an agent delegates the prompt through the existing task system.
 
 ## Reference behavior
 
-Checked on 2026-11-02:
+Checked on 2026-11-06:
 
-- [OpenCode TUI](https://opencode.ai/docs/tui/#file-references): `@` fuzzy-searches project files and adds selected file contents to the conversation. Configured reference roots can also appear in the picker.
+- [OpenCode v2 TUI](https://opencode.ai/v2/docs/cli/tui/): `@` searches for a file, narrows matches as you type, and attaches the selected file. The filtering below is Palepale's policy.
 - [OpenCode agents](https://opencode.ai/docs/agents/#subagents): users can invoke subagents with `@` mentions.
 
 The behavior below is the proposed Palepale design. External reference roots, remote downloads, and image attachments are outside the first implementation.

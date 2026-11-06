@@ -49,7 +49,7 @@ Use `/login` to pair the device or enter an inference key. You can also set `PAL
 
 ## Start a session
 
-Type a task and press Enter. Use `/models` to choose a model and `/help` to see commands. New sessions start in AUTO, which runs ordinary tools without asking. Paid decisions still require confirmation. Use `/mode manual` for approval prompts or `/mode plan` to investigate before editing.
+Type a task and press Enter. Use `/models` to choose a model and `/help` to see commands. New sessions start in AUTO, which runs tools without asking, including paid decision reviews. Use `/mode manual` for approval prompts or `/mode plan` to investigate before editing.
 
 On supported paid models, the agent searches the web when it needs current information and includes source links. Search uses your selected model and shares the run's spending limit.
 

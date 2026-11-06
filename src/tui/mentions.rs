@@ -113,11 +113,7 @@ impl Picker {
             .paths
             .iter()
             .map(|p| {
-                let kind = if p.ends_with('/') {
-                    &mentions::text().folder
-                } else {
-                    &mentions::text().file
-                };
+                let kind = &mentions::text().file;
                 let path = if crate::tools::task::catalog().any(|(id, _)| id == p) {
                     format!("./{p}")
                 } else {

@@ -1,5 +1,13 @@
 # Releases
 
+## v0.1.55 — 2026-11-06
+
+The agent can use Jev for extra review when needed. AUTO runs paid reviews within
+your spending cap; MANUAL asks first. Your chat model stays selected.
+
+The `@` picker suggests files and agents. Folders, hidden files and ignored paths
+stay out of suggestions. Exact paths still work with normal read permissions.
+
 ## v0.1.54 — 2026-11-06
 
 Use the built-in `decision` tool to review a small diff and test summary with
