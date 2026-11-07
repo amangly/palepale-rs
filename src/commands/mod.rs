@@ -22,6 +22,7 @@ mod mcp;
 mod mode;
 pub mod models;
 mod new;
+mod nodecode;
 mod opencode;
 pub mod prompt;
 mod quit;
@@ -235,6 +236,7 @@ pub static COMMANDS: &[&dyn Command] = &[
     &web::Web,
     &antigravity::Antigravity,
     &opencode::OpenCode,
+    &nodecode::NodeCode,
     &clients::CODEX,
     &clients::CLAUDE,
     &cline::Cline,

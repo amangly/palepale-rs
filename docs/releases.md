@@ -1,5 +1,15 @@
 # Releases
 
+## v0.1.57 — 2026-11-07
+
+Connect NodeCode with `palepale nodecode`, then restart it. Setup selects a
+Palepale model, imports current context windows and saves the key in NodeCode's
+native secret store. Other providers remain available.
+
+Use `palepale nodecode <model-id>` to choose a model or `palepale nodecode --logout`
+to disconnect offline. Automatic inference retries are disabled to avoid
+submitting a potentially running request twice.
+
 ## v0.1.56 — 2026-11-07
 
 Chat, `/compact` and web search use the selected model's maximum output budget,

@@ -16,6 +16,7 @@ pub mod http;
 pub mod mcp;
 pub mod mcp_auth;
 mod mcp_sse;
+pub mod nodecode;
 pub mod opencode;
 pub mod proc;
 pub mod search;

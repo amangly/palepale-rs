@@ -295,7 +295,7 @@ async fn opencode_config(State(state): State<Shared>) -> impl IntoResponse {
 async fn client_config(State(state): State<Shared>) -> impl IntoResponse {
     let base = state.lock().unwrap().base.clone();
     axum::Json(
-        json!({"api_base_url":base,"protocols":["responses","messages","chat_completions"],"codex":{"models":[{"slug":"fixture"}]},"claude":{"models":[{"id":"fixture","name":"Fixture","max_output_tokens":1024,"context_window":32768},{"id":"fixture-two","name":"Fixture Two","max_output_tokens":512,"context_window":16384}]},"cline":{"models":[{"id":"fixture","name":"Fixture","max_output_tokens":1024,"context_window":32768,"input_modalities":["text","image"],"capabilities":{"tool_calling":true},"pricing":{"input_per_1m_usd":"0.5","cached_input_per_1m_usd":"0.05","output_per_1m_usd":"1.5"}}]}}),
+        json!({"api_base_url":base,"protocols":["responses","messages","chat_completions"],"nodecode":{"models":[{"id":"fixture","context_window":32768,"reasoning_efforts":["high"]}]},"codex":{"models":[{"slug":"fixture"}]},"claude":{"models":[{"id":"fixture","name":"Fixture","max_output_tokens":1024,"context_window":32768},{"id":"fixture-two","name":"Fixture Two","max_output_tokens":512,"context_window":16384}]},"cline":{"models":[{"id":"fixture","name":"Fixture","max_output_tokens":1024,"context_window":32768,"input_modalities":["text","image"],"capabilities":{"tool_calling":true},"pricing":{"input_per_1m_usd":"0.5","cached_input_per_1m_usd":"0.05","output_per_1m_usd":"1.5"}}]}}),
     )
 }
 

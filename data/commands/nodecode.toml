@@ -1,0 +1,9 @@
+name = "nodecode"
+summary = "Connect NodeCode to your Palepale account"
+usage = "nodecode [model | --logout]"
+requires_backend = false
+scope = ["cli"]
+
+[text]
+ready = "NodeCode connected to Palepale using {model}. Restart NodeCode or select Palepale in /models."
+disconnected = "NodeCode disconnected. Restart NodeCode. Your Palepale login stays active."

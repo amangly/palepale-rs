@@ -5,6 +5,66 @@ use std::process::Stdio;
 use std::time::Duration;
 
 #[tokio::test(flavor = "multi_thread")]
+async fn nodecode_setup_uses_native_secret_and_disconnects_offline() {
+    let fake = Fake::start().await;
+    let sandbox = Sandbox::default();
+    let root = sandbox.home().join("nodecode");
+    std::fs::create_dir_all(&root).unwrap();
+    std::fs::write(root.join("config.jsonc"), "{ // keep other providers\n\"general\":{\"default_model\":{\"provider\":\"existing\",\"model\":\"old\"}},\"providers\":{\"existing\":{\"sdk\":\"openai\"}}}").unwrap();
+    for disconnect in [false, true, true] {
+        let mut command = tokio::process::Command::new(binary());
+        command
+            .args(["nodecode", if disconnect { "--logout" } else { "fixture" }])
+            .current_dir(sandbox.project.path())
+            .envs(launch_env(
+                sandbox.home(),
+                if disconnect {
+                    "http://127.0.0.1:1"
+                } else {
+                    &fake.url
+                },
+                if disconnect { None } else { Some(CLIENT_KEY) },
+            ))
+            .env("NODECODE_HOME", &root)
+            .stdin(Stdio::null())
+            .kill_on_drop(true);
+        for name in CLEARED {
+            if *name != "PALEPALE_API_KEY" {
+                command.env_remove(name);
+            }
+        }
+        let run = Run(
+            tokio::time::timeout(Duration::from_secs(30), command.output())
+                .await
+                .unwrap()
+                .unwrap(),
+        );
+        run.success();
+        assert!(!run.stdout().contains(CLIENT_KEY));
+        assert!(!run.stderr().contains(CLIENT_KEY));
+        let raw = std::fs::read_to_string(root.join("config.jsonc")).unwrap();
+        assert!(!raw.contains(CLIENT_KEY));
+        let config: Value = serde_json::from_str(&raw).unwrap();
+        assert_eq!(config["providers"]["existing"]["sdk"], "openai");
+        let secret = root.join("secrets/providers.palepale.api_key");
+        if disconnect {
+            assert!(!secret.exists());
+            assert!(config["providers"]["palepale"].is_null());
+            assert_eq!(config["general"]["default_model"]["model"], "old");
+        } else {
+            assert_eq!(std::fs::read_to_string(secret).unwrap(), CLIENT_KEY);
+            assert_eq!(config["providers"]["palepale"]["sdk"], "openai-responses");
+            assert_eq!(config["providers"]["palepale"]["request_max_retries"], 0);
+            assert_eq!(config["providers"]["palepale"]["stream_max_retries"], 0);
+            assert_eq!(config["general"]["default_model"]["effort"], "high");
+        }
+    }
+    assert_eq!(fake.hits("/docs/clients.json"), 1);
+    assert_eq!(fake.hits("/v1/account/summary"), 1);
+    assert_eq!(fake.hits("/v1/chat/completions"), 0);
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn cline_setup_exports_the_catalog_and_disconnects_offline() {
     let fake = Fake::start().await;
     let sandbox = Sandbox::default();

@@ -73,6 +73,7 @@ With the client installed, connect it to Palepale in API mode:
 ```sh
 palepale codex
 palepale claude
+palepale nodecode
 ```
 
 Restart the client after connecting. Add a model ID to either command to choose

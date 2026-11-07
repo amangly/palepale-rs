@@ -52,6 +52,33 @@ Every changed existing file gets a private sibling `*.palepale-*.bak` backup.
 Reconnecting with unchanged settings makes no new backups. Rerun setup to refresh
 the model list.
 
+## NodeCode
+
+Install [NodeCode](https://github.com/nodecode-ai/nodecode), close it, then run:
+
+```sh
+palepale nodecode
+```
+
+Use `palepale nodecode <model-id>` to choose a model. Restart NodeCode after
+setup. Its provider list contains Palepale's available streaming tool models,
+with their context windows. The gateway chooses the output budget from the
+selected model's current maximum and remaining context.
+
+Setup merges `config.jsonc` under `NODECODE_HOME`, or the active NodeCode profile
+under `~/.nodecode`. It selects Palepale as the default provider through the
+Responses API and disables automatic request and stream retries. The inference
+failover chain is paused too, so NodeCode cannot resubmit an uncertain request
+through another provider. Disconnect restores those settings. The inference
+key is saved in NodeCode's native `secrets/providers.palepale.api_key` file.
+Other providers and settings remain. A private backup preserves the original
+JSONC file, including comments.
+
+Run `palepale nodecode --logout` to disconnect offline and remove the saved key.
+Settings changed by setup are restored only where they still match the installed
+values, so later edits remain. To connect a particular profile, set `NODECODE_HOME`
+to its absolute directory before setup.
+
 ## Cline CLI and VS Code
 
 Install the latest Cline CLI or VS Code extension, then close both clients and run:
